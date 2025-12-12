@@ -29,7 +29,9 @@ func run(args []string) error {
 	switch args[0] {
 	case "check":
 		return runCheck(args[1:])
-	case "schema-diff", "diff", "gen-pack", "apply":
+	case "schema-diff":
+		return runSchemaDiff(args[1:])
+	case "diff", "gen-pack", "apply":
 		printNotImplemented(args[0])
 		return nil
 	case "-h", "--help", "help":
@@ -94,6 +96,55 @@ func runCheck(args []string) error {
 	fmt.Printf("Ignore tables: %v\n", cfg.Ignore.Tables)
 	fmt.Printf("Ignore columns: %v\n", cfg.Ignore.Columns)
 	fmt.Println("Connections OK. Primary keys verified.")
+	return nil
+}
+
+func runSchemaDiff(args []string) error {
+	fs := flag.NewFlagSet("schema-diff", flag.ContinueOnError)
+	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	ctx := context.Background()
+
+	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	if err != nil {
+		return fmt.Errorf("prod connection failed: %w", err)
+	}
+	defer prodDB.Close()
+
+	devDB, err := drivers.Open(ctx, cfg.Dev)
+	if err != nil {
+		return fmt.Errorf("dev connection failed: %w", err)
+	}
+	defer devDB.Close()
+
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("load prod schema: %w", err)
+	}
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("load dev schema: %w", err)
+	}
+
+	diff := schema.DiffSchemas(prodSchema, devSchema)
+
+	if err := schema.WriteReports(diff, cfg.Output.Dir); err != nil {
+		return fmt.Errorf("write schema diff: %w", err)
+	}
+
+	if diff.HasDrift() {
+		return fmt.Errorf("schema drift detected; see %s and %s", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
+	}
+
+	fmt.Println("Schema match confirmed. No drift detected.")
 	return nil
 }
 
