@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/iamvirul/deepdiff-db/internal/drivers"
+	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 )
 
@@ -50,14 +53,47 @@ func runCheck(args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	fmt.Printf("Config loaded: prod(%s:%d/%s) dev(%s:%d/%s)\n",
-		cfg.Prod.Driver, cfg.Prod.Port, cfg.Prod.Database,
-		cfg.Dev.Driver, cfg.Dev.Port, cfg.Dev.Database,
-	)
-	fmt.Printf("Output directory: %s\n", cfg.Output.Dir)
+	ctx := context.Background()
+
+	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	if err != nil {
+		return fmt.Errorf("prod connection failed: %w", err)
+	}
+	defer prodDB.Close()
+
+	devDB, err := drivers.Open(ctx, cfg.Dev)
+	if err != nil {
+		return fmt.Errorf("dev connection failed: %w", err)
+	}
+	defer devDB.Close()
+
+	if err := os.MkdirAll(cfg.Output.Dir, 0o755); err != nil {
+		return fmt.Errorf("ensure output dir: %w", err)
+	}
+
+	prodMissing, err := schema.CheckPrimaryKeys(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("prod primary key check: %w", err)
+	}
+	if len(prodMissing) > 0 {
+		return fmt.Errorf("prod tables missing primary keys: %v", prodMissing)
+	}
+
+	devMissing, err := schema.CheckPrimaryKeys(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("dev primary key check: %w", err)
+	}
+	if len(devMissing) > 0 {
+		return fmt.Errorf("dev tables missing primary keys: %v", devMissing)
+	}
+
+	fmt.Println("Config loaded.")
+	fmt.Printf("Prod: %s:%d/%s\n", cfg.Prod.Host, cfg.Prod.Port, cfg.Prod.Database)
+	fmt.Printf("Dev : %s:%d/%s\n", cfg.Dev.Host, cfg.Dev.Port, cfg.Dev.Database)
+	fmt.Printf("Output directory ready: %s\n", cfg.Output.Dir)
 	fmt.Printf("Ignore tables: %v\n", cfg.Ignore.Tables)
 	fmt.Printf("Ignore columns: %v\n", cfg.Ignore.Columns)
-	fmt.Println("Check command completed. Diff logic to be implemented.")
+	fmt.Println("Connections OK. Primary keys verified.")
 	return nil
 }
 
