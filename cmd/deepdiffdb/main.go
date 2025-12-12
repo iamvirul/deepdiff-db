@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/iamvirul/deepdiff-db/internal/content"
 	"github.com/iamvirul/deepdiff-db/internal/drivers"
+	"github.com/iamvirul/deepdiff-db/internal/content"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 )
@@ -37,8 +37,7 @@ func run(args []string) error {
 	case "gen-pack":
 		return runGenPack(args[1:])
 	case "apply":
-		printNotImplemented(args[0])
-		return nil
+		return runApply(args[1:])
 	case "-h", "--help", "help":
 		printUsage()
 		return nil
@@ -281,6 +280,50 @@ func runGenPack(args []string) error {
 	return nil
 }
 
+func runApply(args []string) error {
+	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
+	packPath := fs.String("pack", "", "Path to migration pack SQL file (required)")
+	dryRun := fs.Bool("dry-run", false, "Validate SQL without executing")
+	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *packPath == "" {
+		return fmt.Errorf("--pack flag is required")
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	ctx := context.Background()
+
+	// Apply to prod database
+	targetDB, err := drivers.Open(ctx, cfg.Prod)
+	if err != nil {
+		return fmt.Errorf("target connection failed: %w", err)
+	}
+	defer targetDB.Close()
+
+	if *dryRun {
+		fmt.Println("Dry-run mode: validating SQL...")
+		if err := content.ApplyPack(ctx, targetDB, *packPath, true); err != nil {
+			return fmt.Errorf("dry-run validation failed: %w", err)
+		}
+		fmt.Println("Dry-run validation passed. SQL is valid.")
+		return nil
+	}
+
+	fmt.Printf("Applying migration pack: %s\n", *packPath)
+	if err := content.ApplyPack(ctx, targetDB, *packPath, false); err != nil {
+		return fmt.Errorf("apply failed: %w", err)
+	}
+	fmt.Println("Migration pack applied successfully.")
+	return nil
+}
+
 func runSchemaDiff(args []string) error {
 	fs := flag.NewFlagSet("schema-diff", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
@@ -346,7 +389,7 @@ Commands:
   schema-diff   Detect schema drift
   diff          Full diff: schema + data
   gen-pack      Generate SQL migration pack
-  apply         Apply migration pack (coming soon)
+  apply         Apply migration pack
 
 Use "%[1]s <command> -h" for flags specific to that command.
 `, exe)
