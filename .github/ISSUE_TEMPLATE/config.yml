@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/iamvirul/deepdiff-db#readme
+    about: Check the README for documentation and usage examples
+  - name: Discussions
+    url: https://github.com/iamvirul/deepdiff-db/discussions
+    about: Ask questions and discuss ideas with the community
+
