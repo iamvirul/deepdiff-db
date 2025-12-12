@@ -161,7 +161,7 @@ Usage:
 
 Commands:
   check         Validate configuration and show quick summary
-  schema-diff   Detect schema drift (coming soon)
+  schema-diff   Detect schema drift
   diff          Full diff: schema + data (coming soon)
   gen-pack      Generate SQL migration pack (coming soon)
   apply         Apply migration pack (coming soon)
