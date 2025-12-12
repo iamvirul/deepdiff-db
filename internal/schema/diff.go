@@ -20,15 +20,15 @@ type TableDiff struct {
 
 // ColumnDiff captures mismatches for a column across prod/dev.
 type ColumnDiff struct {
-	Column           string `json:"column"`
-	MissingInProd    bool   `json:"missing_in_prod,omitempty"`
-	MissingInDev     bool   `json:"missing_in_dev,omitempty"`
-	TypeMismatch     bool   `json:"type_mismatch,omitempty"`
-	ProdType         string `json:"prod_type,omitempty"`
-	DevType          string `json:"dev_type,omitempty"`
-	NullableMismatch bool   `json:"nullable_mismatch,omitempty"`
-	ProdNullable     *bool  `json:"prod_nullable,omitempty"`
-	DevNullable      *bool  `json:"dev_nullable,omitempty"`
+	Column          string `json:"column"`
+	MissingInProd   bool   `json:"missing_in_prod,omitempty"`
+	MissingInDev    bool   `json:"missing_in_dev,omitempty"`
+	TypeMismatch    bool   `json:"type_mismatch,omitempty"`
+	ProdType        string `json:"prod_type,omitempty"`
+	DevType         string `json:"dev_type,omitempty"`
+	NullableMismatch bool  `json:"nullable_mismatch,omitempty"`
+	ProdNullable     *bool `json:"prod_nullable,omitempty"`
+	DevNullable      *bool `json:"dev_nullable,omitempty"`
 }
 
 // DiffResult aggregates all table diffs.
@@ -155,3 +155,4 @@ func stringsDiffer(a, b string) bool {
 func normalizeType(t string) string {
 	return strings.TrimSpace(strings.ToLower(t))
 }
+

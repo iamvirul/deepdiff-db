@@ -155,3 +155,4 @@ func listSqliteColumns(ctx context.Context, db *sql.DB, table string) (map[strin
 	}
 	return cols, nil
 }
+
