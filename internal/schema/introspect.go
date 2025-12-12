@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -19,10 +20,23 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 	switch driver {
 	case "mysql":
 		rows, err := db.QueryContext(ctx, `
-			SELECT table_name, column_name, data_type, is_nullable
-			FROM information_schema.columns
-			WHERE table_schema = ?
-			ORDER BY table_name, ordinal_position
+			SELECT c.table_name,
+			       c.column_name,
+			       c.data_type,
+			       c.is_nullable,
+			       kcu.ordinal_position AS pk_ordinal
+			FROM information_schema.columns c
+			LEFT JOIN information_schema.key_column_usage kcu
+			  ON kcu.table_schema = c.table_schema
+			 AND kcu.table_name = c.table_name
+			 AND kcu.column_name = c.column_name
+			LEFT JOIN information_schema.table_constraints tc
+			  ON tc.table_schema = c.table_schema
+			 AND tc.table_name = c.table_name
+			 AND tc.constraint_name = kcu.constraint_name
+			 AND tc.constraint_type = 'PRIMARY KEY'
+			WHERE c.table_schema = ?
+			ORDER BY c.table_name, c.ordinal_position
 		`, database)
 		if err != nil {
 			return nil, fmt.Errorf("mysql columns: %w", err)
@@ -33,10 +47,26 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 		}
 	case "postgres", "postgresql":
 		rows, err := db.QueryContext(ctx, `
-			SELECT table_name, column_name, data_type, is_nullable
-			FROM information_schema.columns
-			WHERE table_schema = current_schema()
-			ORDER BY table_name, ordinal_position
+			SELECT c.table_name,
+			       c.column_name,
+			       COALESCE(c.udt_name, c.data_type) AS data_type,
+			       c.is_nullable,
+			       pk.ordinal_position AS pk_ordinal
+			FROM information_schema.columns c
+			LEFT JOIN (
+			  SELECT kc.table_name, kc.column_name, kc.ordinal_position
+			  FROM information_schema.table_constraints tc
+			  JOIN information_schema.key_column_usage kc
+			    ON kc.constraint_name = tc.constraint_name
+			   AND kc.table_schema = tc.table_schema
+			   AND kc.table_name = tc.table_name
+			  WHERE tc.constraint_type = 'PRIMARY KEY'
+			    AND tc.table_schema = current_schema()
+			) pk
+			  ON pk.table_name = c.table_name
+			 AND pk.column_name = c.column_name
+			WHERE c.table_schema = current_schema()
+			ORDER BY c.table_name, c.ordinal_position
 		`)
 		if err != nil {
 			return nil, fmt.Errorf("postgres columns: %w", err)
@@ -51,13 +81,14 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 			return nil, err
 		}
 		for _, tbl := range tables {
-			cols, err := listSqliteColumns(ctx, db, tbl)
+			cols, pk, err := listSqliteColumns(ctx, db, tbl)
 			if err != nil {
 				return nil, err
 			}
 			s.Tables[tbl] = Table{
-				Name:    tbl,
-				Columns: cols,
+				Name:       tbl,
+				Columns:    cols,
+				PrimaryKey: pk,
 			}
 		}
 	default:
@@ -67,9 +98,17 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 }
 
 func scanColumns(rows *sql.Rows, s *Schema, ignore map[string]struct{}) error {
+	type pkEntry struct {
+		table string
+		col   string
+		pos   int
+	}
+	var pks []pkEntry
+
 	for rows.Next() {
 		var tableName, columnName, dataType, isNullable string
-		if err := rows.Scan(&tableName, &columnName, &dataType, &isNullable); err != nil {
+		var pkOrdinal sql.NullInt64
+		if err := rows.Scan(&tableName, &columnName, &dataType, &isNullable, &pkOrdinal); err != nil {
 			return fmt.Errorf("scan columns: %w", err)
 		}
 
@@ -89,9 +128,29 @@ func scanColumns(rows *sql.Rows, s *Schema, ignore map[string]struct{}) error {
 			DataType:   strings.ToLower(dataType),
 			IsNullable: strings.EqualFold(isNullable, "YES") || isNullable == "1" || strings.EqualFold(isNullable, "true"),
 		}
+		if pkOrdinal.Valid {
+			pks = append(pks, pkEntry{table: tableName, col: columnName, pos: int(pkOrdinal.Int64)})
+		}
 		s.Tables[tableName] = tbl
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// finalize primary keys ordered by ordinal
+	sort.Slice(pks, func(i, j int) bool {
+		if pks[i].table == pks[j].table {
+			return pks[i].pos < pks[j].pos
+		}
+		return pks[i].table < pks[j].table
+	})
+	for _, pk := range pks {
+		t := s.Tables[pk.table]
+		t.PrimaryKey = append(t.PrimaryKey, pk.col)
+		s.Tables[pk.table] = t
+	}
+
+	return nil
 }
 
 func listSqliteTables(ctx context.Context, db *sql.DB, ignore map[string]struct{}) ([]string, error) {
@@ -124,14 +183,18 @@ func listSqliteTables(ctx context.Context, db *sql.DB, ignore map[string]struct{
 	return tables, nil
 }
 
-func listSqliteColumns(ctx context.Context, db *sql.DB, table string) (map[string]Column, error) {
+func listSqliteColumns(ctx context.Context, db *sql.DB, table string) (map[string]Column, []string, error) {
 	rows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s);", table))
 	if err != nil {
-		return nil, fmt.Errorf("sqlite pragma table_info: %w", err)
+		return nil, nil, fmt.Errorf("sqlite pragma table_info: %w", err)
 	}
 	defer rows.Close()
 
 	cols := make(map[string]Column)
+	var pkOrdered []struct {
+		name string
+		pos  int
+	}
 	for rows.Next() {
 		var (
 			cid       int
@@ -142,17 +205,29 @@ func listSqliteColumns(ctx context.Context, db *sql.DB, table string) (map[strin
 			pk        int
 		)
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
-			return nil, fmt.Errorf("scan sqlite column: %w", err)
+			return nil, nil, fmt.Errorf("scan sqlite column: %w", err)
 		}
 		cols[name] = Column{
 			Name:       name,
 			DataType:   strings.ToLower(ctype),
 			IsNullable: notnull == 0,
 		}
+		if pk > 0 {
+			pkOrdered = append(pkOrdered, struct {
+				name string
+				pos  int
+			}{name: name, pos: pk})
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate sqlite columns: %w", err)
+		return nil, nil, fmt.Errorf("iterate sqlite columns: %w", err)
 	}
-	return cols, nil
-}
+	sort.Slice(pkOrdered, func(i, j int) bool { return pkOrdered[i].pos < pkOrdered[j].pos })
 
+	var pk []string
+	for _, p := range pkOrdered {
+		pk = append(pk, p.name)
+	}
+
+	return cols, pk, nil
+}

@@ -11,6 +11,7 @@ type Column struct {
 type Table struct {
 	Name    string            `json:"name"`
 	Columns map[string]Column `json:"columns"`
+	PrimaryKey []string       `json:"primary_key"`
 }
 
 // Schema represents the collection of tables for a database.
