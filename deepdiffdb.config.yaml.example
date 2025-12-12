@@ -1,0 +1,26 @@
+prod:
+  driver: "postgres"
+  host: "127.0.0.1"
+  port: 5432
+  user: "postgres"
+  password: "password"
+  database: "prod_db"
+
+dev:
+  driver: "postgres"
+  host: "127.0.0.1"
+  port: 5432
+  user: "postgres"
+  password: "password"
+  database: "dev_db"
+
+ignore:
+  tables:
+    - "logs"
+    - "audit"
+  columns:
+    - "*.updated_at"
+
+output:
+  dir: "./diff-output"
+

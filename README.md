@@ -184,6 +184,8 @@ output:
 
 You can override values using CLI flags if needed.
 
+An example config is included at `deepdiffdb.config.yaml.example`.
+
 ---
 
 # Commands
@@ -251,7 +253,13 @@ deepdiffdb apply --pack migration_pack.sql --dry-run
 deepdiffdb check --config deepdiffdb.config.yaml
 ```
 
-Displays a simple terminal summary.
+Validates:
+
+* connectivity to both databases
+* primary keys exist on all tables (unless ignored)
+* output directory is writable
+
+Displays a simple terminal summary on success.
 
 ---
 
