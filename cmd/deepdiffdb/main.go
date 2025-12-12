@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/iamvirul/deepdiff-db/internal/content"
 	"github.com/iamvirul/deepdiff-db/internal/drivers"
+	"github.com/iamvirul/deepdiff-db/internal/content"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 )
