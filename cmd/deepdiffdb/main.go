@@ -176,7 +176,15 @@ func runFullDiff(args []string) error {
 	}
 
 	dataDiff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
-	if err := content.WriteReports(dataDiff, conflicts, cfg.Output.Dir); err != nil {
+
+	tablesScanned := 0
+	for name := range prodSchema.Tables {
+		if _, ok := devSchema.Tables[name]; ok {
+			tablesScanned++
+		}
+	}
+
+	if err := content.WriteReportsWithInfo(dataDiff, conflicts, cfg.Output.Dir, "OK", tablesScanned, ""); err != nil {
 		return fmt.Errorf("write content diff: %w", err)
 	}
 
@@ -265,13 +273,21 @@ func runGenPack(args []string) error {
 	}
 
 	dataDiff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
-	if err := content.WriteReports(dataDiff, conflicts, cfg.Output.Dir); err != nil {
-		return fmt.Errorf("write content diff: %w", err)
+
+	tablesScanned := 0
+	for name := range prodSchema.Tables {
+		if _, ok := devSchema.Tables[name]; ok {
+			tablesScanned++
+		}
 	}
 
 	packPath, err := content.GeneratePack(ctx, cfg.Prod.Driver, devDB, devSchema, dataDiff, ignoreColumn, cfg.Output.Dir)
 	if err != nil {
 		return fmt.Errorf("generate pack: %w", err)
+	}
+
+	if err := content.WriteReportsWithInfo(dataDiff, conflicts, cfg.Output.Dir, "OK", tablesScanned, packPath); err != nil {
+		return fmt.Errorf("write content diff: %w", err)
 	}
 
 	fmt.Println("Schema OK. Data diff complete.")

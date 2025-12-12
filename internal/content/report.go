@@ -10,6 +10,11 @@ import (
 
 // WriteReports writes data diff in JSON and appends a summary to summary.txt.
 func WriteReports(diff DataDiff, conflicts Conflicts, outDir string) error {
+	return WriteReportsWithInfo(diff, conflicts, outDir, "", 0, "")
+}
+
+// WriteReportsWithInfo writes data diff in JSON and creates a summary.txt with schema info.
+func WriteReportsWithInfo(diff DataDiff, conflicts Conflicts, outDir string, schemaStatus string, tablesScanned int, migrationPack string) error {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
@@ -19,7 +24,7 @@ func WriteReports(diff DataDiff, conflicts Conflicts, outDir string) error {
 	if err := writeConflictsJSON(conflicts, filepath.Join(outDir, "conflicts.json")); err != nil {
 		return err
 	}
-	if err := writeSummary(diff, conflicts, filepath.Join(outDir, "summary.txt")); err != nil {
+	if err := writeSummary(diff, conflicts, filepath.Join(outDir, "summary.txt"), schemaStatus, tablesScanned, migrationPack); err != nil {
 		return err
 	}
 	return nil
@@ -47,7 +52,7 @@ func writeConflictsJSON(conflicts Conflicts, path string) error {
 	return nil
 }
 
-func writeSummary(diff DataDiff, conflicts Conflicts, path string) error {
+func writeSummary(diff DataDiff, conflicts Conflicts, path string, schemaStatus string, tablesScanned int, migrationPack string) error {
 	var b strings.Builder
 	totalAdded, totalRemoved, totalUpdated := 0, 0, 0
 
@@ -57,27 +62,27 @@ func writeSummary(diff DataDiff, conflicts Conflicts, path string) error {
 		totalUpdated += len(t.Updated)
 	}
 
-	fmt.Fprintf(&b, "Data Diff Summary\n")
-	fmt.Fprintf(&b, "=================\n")
-	fmt.Fprintf(&b, "Added rows   : %d\n", totalAdded)
-	fmt.Fprintf(&b, "Removed rows : %d\n", totalRemoved)
-	fmt.Fprintf(&b, "Updated rows : %d\n", totalUpdated)
-	fmt.Fprintf(&b, "Conflicts    : %d\n", len(conflicts.Conflicts))
-
-	for _, t := range diff.Tables {
-		if len(t.Added)+len(t.Removed)+len(t.Updated) == 0 {
-			continue
-		}
-		fmt.Fprintf(&b, "\nTable: %s\n", t.Table)
-		if len(t.Added) > 0 {
-			fmt.Fprintf(&b, "  Added keys   (%d): %v\n", len(t.Added), t.Added)
-		}
-		if len(t.Removed) > 0 {
-			fmt.Fprintf(&b, "  Removed keys (%d): %v\n", len(t.Removed), t.Removed)
-		}
-		if len(t.Updated) > 0 {
-			fmt.Fprintf(&b, "  Updated keys (%d): %v\n", len(t.Updated), t.Updated)
-		}
+	// Match README format
+	if schemaStatus != "" {
+		fmt.Fprintf(&b, "Schema: %s\n", schemaStatus)
+	}
+	if tablesScanned > 0 {
+		fmt.Fprintf(&b, "Tables scanned: %d\n", tablesScanned)
+	}
+	if totalAdded > 0 {
+		fmt.Fprintf(&b, "Added rows: %d\n", totalAdded)
+	}
+	if totalRemoved > 0 {
+		fmt.Fprintf(&b, "Removed rows: %d\n", totalRemoved)
+	}
+	if totalUpdated > 0 {
+		fmt.Fprintf(&b, "Updated rows: %d\n", totalUpdated)
+	}
+	if len(conflicts.Conflicts) > 0 {
+		fmt.Fprintf(&b, "Conflicts: %d\n", len(conflicts.Conflicts))
+	}
+	if migrationPack != "" {
+		fmt.Fprintf(&b, "Migration pack: %s\n", filepath.Base(migrationPack))
 	}
 
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
