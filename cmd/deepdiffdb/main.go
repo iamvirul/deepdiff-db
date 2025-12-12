@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/iamvirul/deepdiff-db/internal/drivers"
 	"github.com/iamvirul/deepdiff-db/internal/content"
+	"github.com/iamvirul/deepdiff-db/internal/drivers"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 )
@@ -34,7 +34,9 @@ func run(args []string) error {
 		return runSchemaDiff(args[1:])
 	case "diff":
 		return runFullDiff(args[1:])
-	case "gen-pack", "apply":
+	case "gen-pack":
+		return runGenPack(args[1:])
+	case "apply":
 		printNotImplemented(args[0])
 		return nil
 	case "-h", "--help", "help":
@@ -188,6 +190,97 @@ func runFullDiff(args []string) error {
 	return nil
 }
 
+func runGenPack(args []string) error {
+	fs := flag.NewFlagSet("gen-pack", flag.ContinueOnError)
+	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	ctx := context.Background()
+
+	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	if err != nil {
+		return fmt.Errorf("prod connection failed: %w", err)
+	}
+	defer prodDB.Close()
+
+	devDB, err := drivers.Open(ctx, cfg.Dev)
+	if err != nil {
+		return fmt.Errorf("dev connection failed: %w", err)
+	}
+	defer devDB.Close()
+
+	if err := os.MkdirAll(cfg.Output.Dir, 0o755); err != nil {
+		return fmt.Errorf("ensure output dir: %w", err)
+	}
+
+	// Schema diff first
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("load prod schema: %w", err)
+	}
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("load dev schema: %w", err)
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	if err := schema.WriteReports(schemaDiff, cfg.Output.Dir); err != nil {
+		return fmt.Errorf("write schema diff: %w", err)
+	}
+	if schemaDiff.HasDrift() {
+		return fmt.Errorf("schema drift detected; see %s and %s", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
+	}
+
+	// Data diff
+	ignoreColumn := content.IgnoreMatcher(cfg.Ignore.Columns)
+	prodHashes := make(map[string]map[string]string)
+	devHashes := make(map[string]map[string]string)
+
+	for name, prodTable := range prodSchema.Tables {
+		devTable, ok := devSchema.Tables[name]
+		if !ok {
+			continue
+		}
+
+		pHashes, err := content.HashTable(ctx, prodDB, cfg.Prod.Driver, prodTable, ignoreColumn)
+		if err != nil {
+			return fmt.Errorf("hash prod table %s: %w", name, err)
+		}
+		dHashes, err := content.HashTable(ctx, devDB, cfg.Dev.Driver, devTable, ignoreColumn)
+		if err != nil {
+			return fmt.Errorf("hash dev table %s: %w", name, err)
+		}
+
+		prodHashes[name] = pHashes
+		devHashes[name] = dHashes
+	}
+
+	dataDiff := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
+	if err := content.WriteReports(dataDiff, cfg.Output.Dir); err != nil {
+		return fmt.Errorf("write content diff: %w", err)
+	}
+
+	packPath, err := content.GeneratePack(ctx, cfg.Prod.Driver, devDB, devSchema, dataDiff, ignoreColumn, cfg.Output.Dir)
+	if err != nil {
+		return fmt.Errorf("generate pack: %w", err)
+	}
+
+	fmt.Println("Schema OK. Data diff complete.")
+	if dataDiff.HasChanges() {
+		fmt.Printf("Changes detected. Pack written to %s\n", packPath)
+	} else {
+		fmt.Println("No data differences found. Pack not required.")
+	}
+	return nil
+}
+
 func runSchemaDiff(args []string) error {
 	fs := flag.NewFlagSet("schema-diff", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
@@ -252,7 +345,7 @@ Commands:
   check         Validate configuration and show quick summary
   schema-diff   Detect schema drift
   diff          Full diff: schema + data
-  gen-pack      Generate SQL migration pack (coming soon)
+  gen-pack      Generate SQL migration pack
   apply         Apply migration pack (coming soon)
 
 Use "%[1]s <command> -h" for flags specific to that command.
