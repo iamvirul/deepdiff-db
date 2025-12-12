@@ -9,14 +9,17 @@ import (
 )
 
 // WriteReports writes data diff in JSON and appends a summary to summary.txt.
-func WriteReports(diff DataDiff, outDir string) error {
+func WriteReports(diff DataDiff, conflicts Conflicts, outDir string) error {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
 	if err := writeJSON(diff, filepath.Join(outDir, "content_diff.json")); err != nil {
 		return err
 	}
-	if err := writeSummary(diff, filepath.Join(outDir, "summary.txt")); err != nil {
+	if err := writeConflictsJSON(conflicts, filepath.Join(outDir, "conflicts.json")); err != nil {
+		return err
+	}
+	if err := writeSummary(diff, conflicts, filepath.Join(outDir, "summary.txt")); err != nil {
 		return err
 	}
 	return nil
@@ -33,7 +36,18 @@ func writeJSON(diff DataDiff, path string) error {
 	return nil
 }
 
-func writeSummary(diff DataDiff, path string) error {
+func writeConflictsJSON(conflicts Conflicts, path string) error {
+	data, err := json.MarshalIndent(conflicts, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal conflicts: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write conflicts json: %w", err)
+	}
+	return nil
+}
+
+func writeSummary(diff DataDiff, conflicts Conflicts, path string) error {
 	var b strings.Builder
 	totalAdded, totalRemoved, totalUpdated := 0, 0, 0
 
@@ -48,6 +62,7 @@ func writeSummary(diff DataDiff, path string) error {
 	fmt.Fprintf(&b, "Added rows   : %d\n", totalAdded)
 	fmt.Fprintf(&b, "Removed rows : %d\n", totalRemoved)
 	fmt.Fprintf(&b, "Updated rows : %d\n", totalUpdated)
+	fmt.Fprintf(&b, "Conflicts    : %d\n", len(conflicts.Conflicts))
 
 	for _, t := range diff.Tables {
 		if len(t.Added)+len(t.Removed)+len(t.Updated) == 0 {

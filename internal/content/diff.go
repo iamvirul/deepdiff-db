@@ -15,6 +15,24 @@ type DataDiff struct {
 	Tables []TableDataDiff `json:"tables"`
 }
 
+// Conflict represents a row that exists in both prod and dev but differs.
+type Conflict struct {
+	Table    string `json:"table"`
+	Key      string `json:"key"`
+	ProdHash string `json:"prod_hash"`
+	DevHash  string `json:"dev_hash"`
+}
+
+// Conflicts aggregates all conflicts.
+type Conflicts struct {
+	Conflicts []Conflict `json:"conflicts"`
+}
+
+// HasConflicts reports whether any conflicts exist.
+func (c Conflicts) HasConflicts() bool {
+	return len(c.Conflicts) > 0
+}
+
 // HasChanges reports whether any table has additions/removals/updates.
 func (d DataDiff) HasChanges() bool {
 	for _, t := range d.Tables {
@@ -46,8 +64,9 @@ func DiffTableHashes(table string, prod, dev map[string]string) TableDataDiff {
 }
 
 // BuildDataDiff produces diffs for all shared tables (schema drift should be checked separately).
-func BuildDataDiff(prodSchema, devSchema *schema.Schema, prodHashes, devHashes map[string]map[string]string) DataDiff {
+func BuildDataDiff(prodSchema, devSchema *schema.Schema, prodHashes, devHashes map[string]map[string]string) (DataDiff, Conflicts) {
 	diff := DataDiff{}
+	conflicts := Conflicts{}
 	for name := range prodSchema.Tables {
 		if _, ok := devSchema.Tables[name]; !ok {
 			continue
@@ -58,6 +77,18 @@ func BuildDataDiff(prodSchema, devSchema *schema.Schema, prodHashes, devHashes m
 
 		td := DiffTableHashes(name, pHashes, dHashes)
 		diff.Tables = append(diff.Tables, td)
+
+		// Detect conflicts (rows that exist in both but differ)
+		for k, prodHash := range pHashes {
+			if devHash, ok := dHashes[k]; ok && devHash != prodHash {
+				conflicts.Conflicts = append(conflicts.Conflicts, Conflict{
+					Table:    name,
+					Key:      k,
+					ProdHash: prodHash,
+					DevHash:  devHash,
+				})
+			}
+		}
 	}
-	return diff
+	return diff, conflicts
 }

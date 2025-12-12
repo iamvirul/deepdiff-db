@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/iamvirul/deepdiff-db/internal/drivers"
 	"github.com/iamvirul/deepdiff-db/internal/content"
+	"github.com/iamvirul/deepdiff-db/internal/drivers"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 )
@@ -175,14 +175,17 @@ func runFullDiff(args []string) error {
 		devHashes[name] = dHashes
 	}
 
-	dataDiff := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
-	if err := content.WriteReports(dataDiff, cfg.Output.Dir); err != nil {
+	dataDiff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
+	if err := content.WriteReports(dataDiff, conflicts, cfg.Output.Dir); err != nil {
 		return fmt.Errorf("write content diff: %w", err)
 	}
 
 	fmt.Println("Schema OK. Data diff complete.")
 	if dataDiff.HasChanges() {
-		fmt.Printf("Changes detected. See %s and %s\n", filepath.Join(cfg.Output.Dir, "content_diff.json"), filepath.Join(cfg.Output.Dir, "summary.txt"))
+		fmt.Printf("Changes detected. See %s, %s, and %s\n", filepath.Join(cfg.Output.Dir, "content_diff.json"), filepath.Join(cfg.Output.Dir, "conflicts.json"), filepath.Join(cfg.Output.Dir, "summary.txt"))
+		if conflicts.HasConflicts() {
+			fmt.Printf("Warning: %d conflicts detected. Review %s\n", len(conflicts.Conflicts), filepath.Join(cfg.Output.Dir, "conflicts.json"))
+		}
 	} else {
 		fmt.Println("No data differences found.")
 	}
@@ -261,8 +264,8 @@ func runGenPack(args []string) error {
 		devHashes[name] = dHashes
 	}
 
-	dataDiff := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
-	if err := content.WriteReports(dataDiff, cfg.Output.Dir); err != nil {
+	dataDiff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
+	if err := content.WriteReports(dataDiff, conflicts, cfg.Output.Dir); err != nil {
 		return fmt.Errorf("write content diff: %w", err)
 	}
 
@@ -274,6 +277,9 @@ func runGenPack(args []string) error {
 	fmt.Println("Schema OK. Data diff complete.")
 	if dataDiff.HasChanges() {
 		fmt.Printf("Changes detected. Pack written to %s\n", packPath)
+		if conflicts.HasConflicts() {
+			fmt.Printf("Warning: %d conflicts detected. Review %s before applying pack.\n", len(conflicts.Conflicts), filepath.Join(cfg.Output.Dir, "conflicts.json"))
+		}
 	} else {
 		fmt.Println("No data differences found. Pack not required.")
 	}
