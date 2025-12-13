@@ -69,9 +69,7 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 func orderedColumns(tbl schema.Table, ignoreFn func(table, column string) bool) []string {
 	var cols []string
 	// Ensure primary keys first (and always included)
-	for _, pk := range tbl.PrimaryKey {
-		cols = append(cols, pk)
-	}
+	cols = append(cols, tbl.PrimaryKey...)
 	var nonPK []string
 	for name := range tbl.Columns {
 		if contains(tbl.PrimaryKey, name) {

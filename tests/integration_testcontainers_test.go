@@ -28,7 +28,7 @@ func TestIntegration_MySQL_FullWorkflow(t *testing.T) {
 	ctx := context.Background()
 
 	// Start MySQL containers for prod and dev
-	prodContainer, err := mysql.RunContainer(ctx,
+	prodContainer, err := mysql.Run(ctx, "mysql:8.0",
 		mysql.WithDatabase("prod_db"),
 		mysql.WithUsername("testuser"),
 		mysql.WithPassword("testpass"),
@@ -46,7 +46,7 @@ func TestIntegration_MySQL_FullWorkflow(t *testing.T) {
 		}
 	}()
 
-	devContainer, err := mysql.RunContainer(ctx,
+	devContainer, err := mysql.Run(ctx, "mysql:8.0",
 		mysql.WithDatabase("dev_db"),
 		mysql.WithUsername("testuser"),
 		mysql.WithPassword("testpass"),
@@ -572,7 +572,7 @@ func TestIntegration_PostgreSQL_FullWorkflow(t *testing.T) {
 	ctx := context.Background()
 
 	// Start PostgreSQL containers
-	prodContainer, err := postgres.RunContainer(ctx,
+	prodContainer, err := postgres.Run(ctx, "postgres:15-alpine",
 		postgres.WithDatabase("prod_db"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
@@ -590,7 +590,7 @@ func TestIntegration_PostgreSQL_FullWorkflow(t *testing.T) {
 		}
 	}()
 
-	devContainer, err := postgres.RunContainer(ctx,
+	devContainer, err := postgres.Run(ctx, "postgres:15-alpine",
 		postgres.WithDatabase("dev_db"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),

@@ -395,10 +395,6 @@ func runSchemaDiff(args []string) error {
 	return nil
 }
 
-func printNotImplemented(cmd string) {
-	fmt.Printf("%s command is not implemented yet. Coming soon.\n", cmd)
-}
-
 func printUsage() {
 	exe := filepath.Base(os.Args[0])
 	fmt.Printf(`DeepDiff DB (Go CLI)
