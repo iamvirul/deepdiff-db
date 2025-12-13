@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 )
@@ -137,16 +138,64 @@ func literal(v any) string {
 	case nil:
 		return "NULL"
 	case []byte:
+		// Try to parse as timestamp first
+		if t, err := time.Parse(time.RFC3339, string(val)); err == nil {
+			return "'" + t.Format("2006-01-02 15:04:05") + "'"
+		}
+		// Try MySQL timestamp format
+		if t, err := time.Parse("2006-01-02 15:04:05", string(val)); err == nil {
+			return "'" + t.Format("2006-01-02 15:04:05") + "'"
+		}
 		return "'" + escape(string(val)) + "'"
 	case string:
+		// Try to parse as timestamp first
+		if t, err := time.Parse(time.RFC3339, val); err == nil {
+			return "'" + t.Format("2006-01-02 15:04:05") + "'"
+		}
+		// Try MySQL timestamp format
+		if t, err := time.Parse("2006-01-02 15:04:05", val); err == nil {
+			return "'" + t.Format("2006-01-02 15:04:05") + "'"
+		}
+		// Try to parse common timestamp formats
+		for _, layout := range []string{
+			"2006-01-02 15:04:05.000000",
+			"2006-01-02T15:04:05Z07:00",
+			"2006-01-02 15:04:05",
+		} {
+			if t, err := time.Parse(layout, val); err == nil {
+				return "'" + t.Format("2006-01-02 15:04:05") + "'"
+			}
+		}
 		return "'" + escape(val) + "'"
 	case bool:
 		if val {
 			return "TRUE"
 		}
 		return "FALSE"
+	case time.Time:
+		// Format timestamp for SQL: 'YYYY-MM-DD HH:MM:SS'
+		return "'" + val.Format("2006-01-02 15:04:05") + "'"
 	default:
-		return fmt.Sprintf("%v", val)
+		// Check if it's a time.Time wrapped in interface{}
+		if t, ok := val.(time.Time); ok {
+			return "'" + t.Format("2006-01-02 15:04:05") + "'"
+		}
+		// For other types, format as string and escape if needed
+		str := fmt.Sprintf("%v", val)
+		// If it looks like a timestamp string, try to parse it
+		if strings.Contains(str, ":") && (strings.Contains(str, "-") || strings.Contains(str, "/")) {
+			for _, layout := range []string{
+				time.RFC3339,
+				"2006-01-02 15:04:05.000000",
+				"2006-01-02T15:04:05Z07:00",
+				"2006-01-02 15:04:05",
+			} {
+				if t, err := time.Parse(layout, str); err == nil {
+					return "'" + t.Format("2006-01-02 15:04:05") + "'"
+				}
+			}
+		}
+		return "'" + escape(str) + "'"
 	}
 }
 
