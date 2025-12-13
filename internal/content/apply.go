@@ -41,9 +41,7 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
-			// Ignore rollback errors if transaction was already committed
-		}
+		_ = tx.Rollback() // Ignore rollback errors (transaction may already be committed)
 	}()
 
 	statements := SplitStatements(sqlText)
