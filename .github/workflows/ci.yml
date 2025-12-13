@@ -32,7 +32,12 @@ jobs:
 
       - name: Run unit tests (no Docker required)
         run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./tests/... -run '^((?!TestIntegration_MySQL|TestIntegration_PostgreSQL).)*$'
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./tests/config ./tests/content ./tests/drivers ./tests/schema
+        continue-on-error: false
+
+      - name: Run basic integration test (SQLite, no Docker)
+        run: |
+          go test -v -race ./tests -run 'TestIntegration_FullWorkflow|TestIntegration_WithConfig'
         continue-on-error: false
 
       - name: Upload coverage
@@ -65,9 +70,9 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run all integration tests
+      - name: Run testcontainers integration tests
         run: |
-          go test -v -timeout=20m ./tests -run 'TestIntegration'
+          go test -v -timeout=20m ./tests -run 'TestIntegration_MySQL_FullWorkflow|TestIntegration_PostgreSQL_FullWorkflow|TestIntegration_AllReportsGenerated'
 
   lint:
     name: Lint
