@@ -15,12 +15,18 @@ import (
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 )
 
+// main is the CLI entry point for DeepDiff DB; it dispatches the requested subcommand and exits with a fatal log on error.
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		log.Fatalf("deepdiffdb: %v", err)
 	}
 }
 
+// run dispatches CLI subcommands based on the first element of args.
+// 
+// It invokes the corresponding command handler with the remaining arguments,
+// prints usage and returns an error when no command is provided or when the
+// command is unknown, and prints usage without error for help flags.
 func run(args []string) error {
 	if len(args) == 0 {
 		printUsage()
@@ -47,6 +53,9 @@ func run(args []string) error {
 	}
 }
 
+// runCheck validates configuration, opens prod/dev database connections, and verifies that all non-ignored tables have primary keys.
+//
+// It parses the "check" command flags (supports --config to specify the config file, default "deepdiffdb.config.yaml"), loads the configuration, opens production and development connections, ensures the configured output directory exists, and checks each database for tables missing primary keys (respecting the configured ignore table list). Returns an error if flag parsing, config loading, any database connection, output directory creation, or primary key checks fail; otherwise prints connection and ignore info and returns nil.
 func runCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
@@ -103,6 +112,11 @@ func runCheck(args []string) error {
 	return nil
 }
 
+// runFullDiff performs a full schema and data comparison between the production and development
+// databases using command-line arguments (e.g., --config). It writes schema and data diff reports
+// into the configured output directory and prints a concise summary to stdout.
+// It returns an error if configuration loading, database connections, report generation fail, or
+// if schema drift is detected.
 func runFullDiff(args []string) error {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
@@ -200,6 +214,9 @@ func runFullDiff(args []string) error {
 	return nil
 }
 
+// runGenPack performs the "gen-pack" command: it loads configuration, compares prod and dev schemas, and generates a migration pack for any detected data differences while writing schema and data reports to the configured output directory.
+// It opens prod and dev database connections, ensures the output directory exists, fails if schema drift is detected (after writing schema reports), computes per-table content hashes with configured ignore rules, builds the data diff and any conflicts, generates a migration pack when changes exist, writes data reports including the pack path and conflicts, and prints a brief status summary.
+// It returns a non-nil error for failures during configuration loading, database connections, schema loading or reporting, hashing, pack generation, or report writing; it also returns an error when schema drift is detected so the pack is not produced.
 func runGenPack(args []string) error {
 	fs := flag.NewFlagSet("gen-pack", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
@@ -302,6 +319,17 @@ func runGenPack(args []string) error {
 	return nil
 }
 
+// runApply parses command-line flags and applies or validates a migration pack against
+// the configured production database.
+//
+// It accepts the following flags on args:
+//   --pack   Path to the migration pack SQL file (required).
+//   --dry-run  Validate the SQL without executing it.
+//   --config Path to the configuration file (default "deepdiffdb.config.yaml").
+//
+// runApply returns an error when flag parsing fails, the required --pack is missing,
+// the configuration cannot be loaded, the target database connection cannot be opened,
+// or when validation/application of the pack fails.
 func runApply(args []string) error {
 	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
 	packPath := fs.String("pack", "", "Path to migration pack SQL file (required)")
@@ -346,6 +374,7 @@ func runApply(args []string) error {
 	return nil
 }
 
+// runSchemaDiff parses flags for the "schema-diff" command, loads configuration, opens production and development databases, loads their schemas, writes schema diff reports to the configured output directory, and returns an error if schema drift is detected or any operation fails.
 func runSchemaDiff(args []string) error {
 	fs := flag.NewFlagSet("schema-diff", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
@@ -395,6 +424,7 @@ func runSchemaDiff(args []string) error {
 	return nil
 }
 
+// printUsage prints the CLI usage text including available commands, brief descriptions, and how to display flags for a specific command.
 func printUsage() {
 	exe := filepath.Base(os.Args[0])
 	fmt.Printf(`DeepDiff DB (Go CLI)

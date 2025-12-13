@@ -36,7 +36,8 @@ type DiffResult struct {
 	Tables []TableDiff `json:"tables"`
 }
 
-// DiffSchemas compares two schemas and returns a structured diff.
+// DiffSchemas compares two Schema values and returns a DiffResult that describes table- and column-level differences between them.
+// It aggregates table names from both schemas, processes tables in sorted order, marks tables present only on one side (setting MissingInProd/MissingInDev and OnlyInProd/OnlyInDev) and computes column-level differences for tables present in both, setting HasDifferences when any mismatches are found.
 func DiffSchemas(prod, dev *Schema) DiffResult {
 	result := DiffResult{}
 
@@ -92,6 +93,11 @@ func (d DiffResult) HasDrift() bool {
 	return false
 }
 
+// diffColumns computes column-level differences between prodCols and devCols.
+// It returns a slice of ColumnDiff describing columns that are missing on one side,
+// have differing type strings (normalized for comparison), or have differing nullability.
+// Each ColumnDiff includes the column name and populated fields for observed types
+// and nullable values where applicable. The returned diffs are ordered by column name.
 func diffColumns(prodCols, devCols map[string]Column) []ColumnDiff {
 	seen := make(map[string]struct{})
 	for name := range prodCols {
@@ -148,17 +154,20 @@ func diffColumns(prodCols, devCols map[string]Column) []ColumnDiff {
 	return diffs
 }
 
+// stringsDiffer reports whether two type strings differ after normalization.
+// The comparison ignores surrounding whitespace and letter case.
 func stringsDiffer(a, b string) bool {
 	return normalizeType(a) != normalizeType(b)
 }
 
+// normalizeType trims leading and trailing whitespace from t and converts it to lower-case.
+// The result is suitable for case- and space-insensitive type comparisons.
 func normalizeType(t string) string {
 	return strings.TrimSpace(strings.ToLower(t))
 }
 
 // NormalizeType normalizes a data type string for comparison.
-// Exported for testing purposes.
+// NormalizeType returns a normalized form of the type string by trimming whitespace and converting it to lower case.
 func NormalizeType(t string) string {
 	return normalizeType(t)
 }
-

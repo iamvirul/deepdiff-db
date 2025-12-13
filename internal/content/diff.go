@@ -43,7 +43,9 @@ func (d DataDiff) HasChanges() bool {
 	return false
 }
 
-// DiffTableHashes compares two hash maps keyed by primary key composite.
+// DiffTableHashes computes per-key differences between prod and dev hash maps for a table.
+// It returns a TableDataDiff with keys present only in prod listed in Removed, keys present
+// only in dev listed in Added, and keys present in both with differing hash values listed in Updated.
 func DiffTableHashes(table string, prod, dev map[string]string) TableDataDiff {
 	td := TableDataDiff{Table: table}
 
@@ -63,7 +65,10 @@ func DiffTableHashes(table string, prod, dev map[string]string) TableDataDiff {
 	return td
 }
 
-// BuildDataDiff produces diffs for all shared tables (schema drift should be checked separately).
+// BuildDataDiff builds per-table data diffs for tables present in both prodSchema and devSchema.
+// It compares the provided per-table row-hash maps and records added, removed, and updated keys for each shared table.
+// It also collects conflicts for rows that exist in both prod and dev but have different hashes.
+// The returned DataDiff aggregates TableDataDiff entries for each shared table; the returned Conflicts lists each differing row as a Conflict (table, key, prod hash, dev hash).
 func BuildDataDiff(prodSchema, devSchema *schema.Schema, prodHashes, devHashes map[string]map[string]string) (DataDiff, Conflicts) {
 	diff := DataDiff{}
 	conflicts := Conflicts{}

@@ -8,7 +8,12 @@ import (
 )
 
 // CheckPrimaryKeys returns any tables that lack a primary key for the given driver.
-// Ignored tables are skipped.
+// CheckPrimaryKeys identifies tables that do not have a primary key for the given driver and database/schema.
+// It supports "mysql", "postgres"/"postgresql", and "sqlite". Tables listed in ignoreTables are skipped
+// (match is case-insensitive).
+//
+// It returns a slice of table names that are missing a primary key (after applying ignores). An error is
+// returned for unsupported drivers or when any database query, scan, or iteration fails.
 func CheckPrimaryKeys(ctx context.Context, db *sql.DB, driver string, database string, ignoreTables []string) ([]string, error) {
 	driver = strings.ToLower(driver)
 	ignore := make(map[string]struct{}, len(ignoreTables))
@@ -94,6 +99,9 @@ func CheckPrimaryKeys(ctx context.Context, db *sql.DB, driver string, database s
 	return missing, nil
 }
 
+// sqliteTableHasPK reports whether the named SQLite table has a primary key.
+// It inspects the table's column metadata (PRAGMA table_info) and returns `true` if any column has `pk > 0`.
+// Returns `false` if no primary key column is found. An error is returned if the metadata query or row scanning fails.
 func sqliteTableHasPK(ctx context.Context, db *sql.DB, table string) (bool, error) {
 	rows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s);", table))
 	if err != nil {

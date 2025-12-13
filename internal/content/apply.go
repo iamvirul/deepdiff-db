@@ -9,7 +9,13 @@ import (
 )
 
 // ApplyPack executes a SQL migration pack file against the target database.
-// If dryRun is true, it validates the SQL but does not execute it.
+// ApplyPack reads the SQL migration pack at packPath and either validates its statements or applies them to db.
+// 
+// If dryRun is true, each non-empty statement is prepared against db to validate syntax; the first preparation
+// error is returned with the 1-based statement index. If dryRun is false, all non-empty statements are executed
+// in a single transaction; any execution error is returned with the 1-based statement index and the transaction
+// is rolled back. Returns an error if the pack file cannot be read or is empty, or if beginning or committing
+// the transaction fails.
 func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) error {
 	data, err := os.ReadFile(packPath)
 	if err != nil {
@@ -62,6 +68,11 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 	return nil
 }
 
+// splitStatements splits sqlText into individual SQL statements separated by semicolons.
+// It preserves semicolons that appear inside single quotes, double quotes, or backticks
+// and respects backslash-escaped characters when determining statement boundaries.
+// The returned slice contains trimmed, non-empty statements; a final statement is included
+// even if the input does not end with a semicolon.
 func splitStatements(sqlText string) []string {
 	var statements []string
 	var current strings.Builder
@@ -117,7 +128,11 @@ func splitStatements(sqlText string) []string {
 }
 
 // SplitStatements splits SQL text by semicolons, handling edge cases.
-// Exported for testing purposes.
+// SplitStatements splits sqlText into individual SQL statements.
+// It treats semicolons that occur outside string literals as statement terminators,
+// preserves quoted strings using single quotes ('), double quotes ("), and backticks (`),
+// respects backslash escapes inside strings, trims surrounding whitespace from each statement,
+// and omits empty statements from the result.
 func SplitStatements(sqlText string) []string {
 	return splitStatements(sqlText)
 }
