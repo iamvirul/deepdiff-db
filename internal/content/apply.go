@@ -34,9 +34,11 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 			if strings.TrimSpace(stmt) == "" {
 				continue
 			}
-			if _, err := db.PrepareContext(ctx, stmt); err != nil {
+			prepared, err := db.PrepareContext(ctx, stmt)
+			if err != nil {
 				return fmt.Errorf("dry-run validation failed at statement %d: %w", i+1, err)
 			}
+			prepared.Close()
 		}
 		return nil
 	}
