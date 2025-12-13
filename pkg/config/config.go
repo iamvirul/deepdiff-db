@@ -84,7 +84,7 @@ func (c *DBConfig) validate(prefix string) error {
 	if c.Database == "" {
 		return fmt.Errorf("%s.database is required", prefix)
 	}
-	if c.Port == 0 {
+	if c.Port == 0 && c.Driver != "sqlite" {
 		return fmt.Errorf("%s.port is required", prefix)
 	}
 	switch c.Driver {
