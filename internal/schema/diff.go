@@ -39,6 +39,12 @@ type DiffResult struct {
 // DiffSchemas compares two Schema values and returns a DiffResult that describes table- and column-level differences between them.
 // It aggregates table names from both schemas, processes tables in sorted order, marks tables present only on one side (setting MissingInProd/MissingInDev and OnlyInProd/OnlyInDev) and computes column-level differences for tables present in both, setting HasDifferences when any mismatches are found.
 func DiffSchemas(prod, dev *Schema) DiffResult {
+	if prod == nil {
+		prod = &Schema{}
+	}
+	if dev == nil {
+		dev = &Schema{}
+	}
 	result := DiffResult{}
 
 	seen := make(map[string]struct{})
