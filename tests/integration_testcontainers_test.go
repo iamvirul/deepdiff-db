@@ -64,24 +64,19 @@ func TestIntegration_MySQL_FullWorkflow(t *testing.T) {
 		}
 	}()
 
-	// Get connection strings
-	prodHost, err := prodContainer.Host(ctx)
-	if err != nil {
-		t.Fatalf("failed to get prod host: %v", err)
-	}
+	// Get connection strings - use localhost for port-mapped containers
 	prodPort, err := prodContainer.MappedPort(ctx, "3306")
 	if err != nil {
 		t.Fatalf("failed to get prod port: %v", err)
 	}
 
-	devHost, err := devContainer.Host(ctx)
-	if err != nil {
-		t.Fatalf("failed to get dev host: %v", err)
-	}
 	devPort, err := devContainer.MappedPort(ctx, "3306")
 	if err != nil {
 		t.Fatalf("failed to get dev port: %v", err)
 	}
+
+	prodHost := "localhost"
+	devHost := "localhost"
 
 	// Create config
 	tmpDir := t.TempDir()
@@ -144,16 +139,36 @@ output:
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	// Connect to databases
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	// Wait a bit for containers to be fully ready
+	time.Sleep(2 * time.Second)
+
+	// Connect to databases with retry
+	var prodDB, devDB *sql.DB
+	for i := 0; i < 5; i++ {
+		prodDB, err = drivers.Open(ctx, cfg.Prod)
+		if err == nil {
+			break
+		}
+		if i < 4 {
+			time.Sleep(time.Second)
+		}
+	}
 	if err != nil {
-		t.Fatalf("failed to connect to prod: %v", err)
+		t.Fatalf("failed to connect to prod after retries: %v", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	for i := 0; i < 5; i++ {
+		devDB, err = drivers.Open(ctx, cfg.Dev)
+		if err == nil {
+			break
+		}
+		if i < 4 {
+			time.Sleep(time.Second)
+		}
+	}
 	if err != nil {
-		t.Fatalf("failed to connect to dev: %v", err)
+		t.Fatalf("failed to connect to dev after retries: %v", err)
 	}
 	defer devDB.Close()
 
@@ -608,24 +623,19 @@ func TestIntegration_PostgreSQL_FullWorkflow(t *testing.T) {
 		}
 	}()
 
-	// Get connection strings
-	prodHost, err := prodContainer.Host(ctx)
-	if err != nil {
-		t.Fatalf("failed to get prod host: %v", err)
-	}
+	// Get connection strings - use localhost for port-mapped containers
 	prodPort, err := prodContainer.MappedPort(ctx, "5432")
 	if err != nil {
 		t.Fatalf("failed to get prod port: %v", err)
 	}
 
-	devHost, err := devContainer.Host(ctx)
-	if err != nil {
-		t.Fatalf("failed to get dev host: %v", err)
-	}
 	devPort, err := devContainer.MappedPort(ctx, "5432")
 	if err != nil {
 		t.Fatalf("failed to get dev port: %v", err)
 	}
+
+	prodHost := "localhost"
+	devHost := "localhost"
 
 	// Create config
 	tmpDir := t.TempDir()
@@ -657,16 +667,36 @@ func TestIntegration_PostgreSQL_FullWorkflow(t *testing.T) {
 		},
 	}
 
-	// Connect to databases
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	// Wait a bit for containers to be fully ready
+	time.Sleep(2 * time.Second)
+
+	// Connect to databases with retry
+	var prodDB, devDB *sql.DB
+	for i := 0; i < 5; i++ {
+		prodDB, err = drivers.Open(ctx, cfg.Prod)
+		if err == nil {
+			break
+		}
+		if i < 4 {
+			time.Sleep(time.Second)
+		}
+	}
 	if err != nil {
-		t.Fatalf("failed to connect to prod: %v", err)
+		t.Fatalf("failed to connect to prod after retries: %v", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	for i := 0; i < 5; i++ {
+		devDB, err = drivers.Open(ctx, cfg.Dev)
+		if err == nil {
+			break
+		}
+		if i < 4 {
+			time.Sleep(time.Second)
+		}
+	}
 	if err != nil {
-		t.Fatalf("failed to connect to dev: %v", err)
+		t.Fatalf("failed to connect to dev after retries: %v", err)
 	}
 	defer devDB.Close()
 
