@@ -8,7 +8,9 @@ import (
 	"strings"
 )
 
-// WriteReports writes both JSON and text summaries to the output directory.
+// WriteReports writes JSON and human-readable schema diff reports to outDir.
+// It ensures the output directory exists, then writes schema_diff.json (JSON)
+// and schema_diff.txt (text). An error is returned if any step fails.
 func WriteReports(result DiffResult, outDir string) error {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
@@ -22,6 +24,8 @@ func WriteReports(result DiffResult, outDir string) error {
 	return nil
 }
 
+// writeJSON marshals result to indented JSON and writes it to the given path.
+// It returns an error if marshaling or writing fails; the returned error wraps the underlying cause.
 func writeJSON(result DiffResult, path string) error {
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -33,6 +37,11 @@ func writeJSON(result DiffResult, path string) error {
 	return nil
 }
 
+// writeText writes a human-readable schema diff for result to the file at path.
+// It emits per-table sections for tables that have differences and lists column-level
+// changes (missing in prod/dev, type mismatches, and nullable mismatches). If no
+// differences are found it writes "Schema: OK (no differences)".
+// It returns an error if the report cannot be written to the provided path.
 func writeText(result DiffResult, path string) error {
 	var b strings.Builder
 
@@ -74,6 +83,8 @@ func writeText(result DiffResult, path string) error {
 	return nil
 }
 
+// boolString returns a human-readable string for a *bool.
+// It returns "unknown" when the pointer is nil, "true" when it points to true, and "false" when it points to false.
 func boolString(v *bool) string {
 	if v == nil {
 		return "unknown"
@@ -83,4 +94,3 @@ func boolString(v *bool) string {
 	}
 	return "false"
 }
-

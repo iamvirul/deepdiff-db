@@ -37,7 +37,13 @@ type OutputConfig struct {
 	Dir string `yaml:"dir"`
 }
 
-// Load reads and validates configuration from a YAML file.
+// Load reads configuration from the YAML file at path, unmarshals it into a Config,
+// validates the resulting configuration, and ensures Output.Dir defaults to "./diff-output"
+// when not specified.
+// 
+// If the file cannot be read the returned error is wrapped with the prefix "read config",
+// and if the YAML cannot be parsed the error is wrapped with the prefix "parse config".
+// Validation errors from Config.Validate are returned as-is.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

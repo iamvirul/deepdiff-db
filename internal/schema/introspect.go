@@ -8,7 +8,10 @@ import (
 	"strings"
 )
 
-// LoadSchema collects table/column metadata for the given driver.
+// LoadSchema loads table and column metadata for the specified SQL driver into a Schema,
+// building Table entries with Columns and ordered PrimaryKey values and respecting the provided ignoreTables (case-insensitive).
+// Supported drivers: "mysql", "postgres"/"postgresql", and "sqlite"; the database parameter is used for MySQL queries.
+// Returns an error if the driver is unsupported or if any database query or row scanning fails.
 func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string, ignoreTables []string) (*Schema, error) {
 	driver = strings.ToLower(driver)
 	ignore := make(map[string]struct{}, len(ignoreTables))
@@ -97,6 +100,11 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 	return s, nil
 }
 
+// scanColumns reads column metadata from rows and populates s.Tables with Table and Column entries.
+// It skips tables present in ignore (keys compared case-insensitively), normalizes data types to lower case,
+// interprets common nullable representations for Column.IsNullable, and collects primary key columns with
+// their ordinal positions. After scanning, primary key columns are ordered by ordinal and assigned to each
+// table's PrimaryKey slice. Returns any scan or iteration error encountered.
 func scanColumns(rows *sql.Rows, s *Schema, ignore map[string]struct{}) error {
 	type pkEntry struct {
 		table string
@@ -153,6 +161,10 @@ func scanColumns(rows *sql.Rows, s *Schema, ignore map[string]struct{}) error {
 	return nil
 }
 
+// listSqliteTables returns a sorted list of non-system table names from the SQLite database,
+// excluding any names whose lowercase form appears as a key in the provided ignore map.
+// It queries sqlite_master for entries of type "table" that do not start with "sqlite_".
+// An error is returned if the query, row scan, or iteration fails.
 func listSqliteTables(ctx context.Context, db *sql.DB, ignore map[string]struct{}) ([]string, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT name
@@ -183,6 +195,10 @@ func listSqliteTables(ctx context.Context, db *sql.DB, ignore map[string]struct{
 	return tables, nil
 }
 
+// listSqliteColumns returns column metadata and the ordered primary-key column names for the named SQLite table.
+// The first return value is a map from column name to Column (DataType is lowercased; IsNullable is true when the column is not marked NOT NULL).
+// The second return value is a slice of primary key column names ordered by their PK ordinal as reported by PRAGMA table_info.
+// A non-nil error is returned if the PRAGMA query fails or if rows cannot be scanned or iterated.
 func listSqliteColumns(ctx context.Context, db *sql.DB, table string) (map[string]Column, []string, error) {
 	rows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s);", table))
 	if err != nil {

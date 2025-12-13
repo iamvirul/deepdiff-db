@@ -12,7 +12,11 @@ import (
 )
 
 // Open returns a ready-to-use *sql.DB for the given database config and driver.
-// It validates the driver, builds a DSN, and pings the database to ensure connectivity.
+// Open creates and returns a ready-to-use *sql.DB for the given DBConfig.
+// It validates the driver and DSN, opens the database driver, sets connection pool
+// parameters (connection max lifetime 5 minutes, max open connections 10, max idle connections 5),
+// and verifies connectivity by pinging the database with a 5-second timeout.
+// If the ping fails the opened connection is closed and an error containing the driver name is returned.
 func Open(ctx context.Context, cfg config.DBConfig) (*sql.DB, error) {
 	driverName, dsn, err := BuildDSN(cfg)
 	if err != nil {
@@ -40,7 +44,15 @@ func Open(ctx context.Context, cfg config.DBConfig) (*sql.DB, error) {
 }
 
 // BuildDSN builds a DSN string for the given database config.
-// Exported for testing purposes.
+// BuildDSN constructs a driver name and DSN string from cfg for use with sql.Open.
+//
+// For MySQL it returns driver "mysql" and a DSN that includes parseTime=true, UTF-8 mb4 charset,
+// and utf8mb4_unicode_ci collation; user and password are URL-escaped and host/port are joined.
+// For PostgreSQL it returns driver "pgx" and a lib/pq-like DSN with sslmode=disable.
+// For SQLite it returns driver "sqlite" and treats cfg.Database as the file path.
+//
+// It returns the chosen driver name, the corresponding DSN string, and an error if the driver
+// is unsupported or if SQLite is selected but cfg.Database is empty.
 func BuildDSN(cfg config.DBConfig) (string, string, error) {
 	switch cfg.Driver {
 	case "mysql":

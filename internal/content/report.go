@@ -8,12 +8,22 @@ import (
 	"strings"
 )
 
-// WriteReports writes data diff in JSON and appends a summary to summary.txt.
+// WriteReports writes the given data diff and conflicts into outDir as JSON files and produces a summary.txt using an empty schema status, zero tables scanned, and no migration pack.
+// It creates content_diff.json, conflicts.json, and summary.txt in outDir and returns any error encountered.
 func WriteReports(diff DataDiff, conflicts Conflicts, outDir string) error {
 	return WriteReportsWithInfo(diff, conflicts, outDir, "", 0, "")
 }
 
-// WriteReportsWithInfo writes data diff in JSON and creates a summary.txt with schema info.
+// WriteReportsWithInfo creates the output directory (if needed) and writes the data diff,
+// conflicts, and a human-readable summary to the specified output directory.
+//
+// The function writes three files into outDir:
+//  - content_diff.json: the provided DataDiff serialized as indented JSON,
+//  - conflicts.json: the provided Conflicts serialized as indented JSON,
+//  - summary.txt: a textual summary that may include schemaStatus, tablesScanned,
+//    aggregated counts of added/removed/updated rows, conflicts count, and migrationPack.
+//
+// It returns an error if directory creation or any file write fails.
 func WriteReportsWithInfo(diff DataDiff, conflicts Conflicts, outDir string, schemaStatus string, tablesScanned int, migrationPack string) error {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
@@ -30,6 +40,8 @@ func WriteReportsWithInfo(diff DataDiff, conflicts Conflicts, outDir string, sch
 	return nil
 }
 
+// writeJSON writes the given DataDiff as pretty-printed JSON to the provided file path.
+// It returns an error if marshaling the data or writing the file fails.
 func writeJSON(diff DataDiff, path string) error {
 	data, err := json.MarshalIndent(diff, "", "  ")
 	if err != nil {
@@ -41,6 +53,8 @@ func writeJSON(diff DataDiff, path string) error {
 	return nil
 }
 
+// writeConflictsJSON marshals the provided conflicts to indented JSON and writes the result to path.
+// It returns an error that wraps any failure to marshal the conflicts or to write the file.
 func writeConflictsJSON(conflicts Conflicts, path string) error {
 	data, err := json.MarshalIndent(conflicts, "", "  ")
 	if err != nil {
@@ -52,6 +66,10 @@ func writeConflictsJSON(conflicts Conflicts, path string) error {
 	return nil
 }
 
+// writeSummary writes a textual summary of the provided DataDiff and Conflicts to the file at path.
+// The summary includes optional schema status, number of tables scanned, totals of added/removed/updated
+// rows across all tables, the count of conflicts, and the base name of the migrationPack if provided.
+// It returns an error if writing the summary file fails.
 func writeSummary(diff DataDiff, conflicts Conflicts, path string, schemaStatus string, tablesScanned int, migrationPack string) error {
 	var b strings.Builder
 	totalAdded, totalRemoved, totalUpdated := 0, 0, 0
