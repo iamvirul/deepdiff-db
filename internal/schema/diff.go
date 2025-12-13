@@ -156,3 +156,9 @@ func normalizeType(t string) string {
 	return strings.TrimSpace(strings.ToLower(t))
 }
 
+// NormalizeType normalizes a data type string for comparison.
+// Exported for testing purposes.
+func NormalizeType(t string) string {
+	return normalizeType(t)
+}
+

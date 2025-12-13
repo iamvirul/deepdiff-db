@@ -23,7 +23,7 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 
 	if dryRun {
 		// Validate SQL syntax by preparing statements
-		statements := splitStatements(sqlText)
+		statements := SplitStatements(sqlText)
 		for i, stmt := range statements {
 			if strings.TrimSpace(stmt) == "" {
 				continue
@@ -42,7 +42,7 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 	}
 	defer tx.Rollback()
 
-	statements := splitStatements(sqlText)
+	statements := SplitStatements(sqlText)
 	for i, stmt := range statements {
 		stmt = strings.TrimSpace(stmt)
 		if stmt == "" {
@@ -60,7 +60,6 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 	return nil
 }
 
-// splitStatements splits SQL text by semicolons, handling edge cases.
 func splitStatements(sqlText string) []string {
 	var statements []string
 	var current strings.Builder
@@ -113,4 +112,10 @@ func splitStatements(sqlText string) []string {
 	}
 
 	return statements
+}
+
+// SplitStatements splits SQL text by semicolons, handling edge cases.
+// Exported for testing purposes.
+func SplitStatements(sqlText string) []string {
+	return splitStatements(sqlText)
 }
