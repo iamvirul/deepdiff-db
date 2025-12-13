@@ -17,6 +17,11 @@ import (
 func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devSchema *schema.Schema, diff DataDiff, ignoreFn func(table, column string) bool, outDir string) (string, error) {
 	var stmts []string
 	stmts = append(stmts, "BEGIN;")
+	
+	// Disable foreign key checks for MySQL to allow out-of-order operations
+	if prodDriver == "mysql" {
+		stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 0;")
+	}
 
 	for _, td := range diff.Tables {
 		if len(td.Added)+len(td.Removed)+len(td.Updated) == 0 {
@@ -61,6 +66,11 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devSche
 				strings.Join(valLiterals, ", "),
 			))
 		}
+	}
+
+	// Re-enable foreign key checks for MySQL
+	if prodDriver == "mysql" {
+		stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 1;")
 	}
 
 	stmts = append(stmts, "COMMIT;")
