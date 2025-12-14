@@ -72,7 +72,9 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: '*'
           path: release-binaries
+          merge-multiple: true
 
       - name: Get tag name
         id: tag
@@ -81,7 +83,8 @@ jobs:
       - name: Create checksums
         run: |
           cd release-binaries
-          find . -type f -name "deepdiffdb-*" -exec sha256sum {} \; > checksums.txt
+          find . -type f -name "deepdiffdb-*" -exec sh -c 'sha256sum "$1" >> checksums.txt' _ {} \;
+          cat checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -95,7 +98,9 @@ jobs:
 
             Precompiled binaries for Linux (x64, ARM64), macOS (Intel, Apple Silicon), and Windows (x64).
 
-### Checksums
+            ### Checksums
+
+            SHA256 checksums are included in the `checksums.txt` file.
 
             ### Installation
 
