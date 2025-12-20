@@ -387,8 +387,7 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 				LIMIT 1
 			`, tableName).Scan(&schemaName)
 			if err != nil {
-				// If query fails, default to "public" schema
-				schemaName = "public"
+				return "", fmt.Errorf("could not determine schema for table %s: %w (hint: provide explicit schema via database parameter)", tableName, err)
 			}
 		}
 		
