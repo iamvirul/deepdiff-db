@@ -19,6 +19,8 @@ const (
 	updateBatchSize = 1000
 	// progressLogThreshold is the minimum number of rows before progress logging is enabled
 	progressLogThreshold = 10000
+	// queryPageSize is the number of rows to fetch per database query to avoid memory issues on large tables
+	queryPageSize = 10000
 )
 
 // GeneratePack builds a SQL migration pack for applying data diffs to prod.
@@ -480,32 +482,6 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 		return nil, fmt.Errorf("no columns to select for table %s", tableName)
 	}
 	
-	// Build SELECT query
-	quotedCols := make([]string, len(allCols))
-	for i, c := range allCols {
-		quotedCols[i] = quoteIdent(driver, c)
-	}
-	quotedPK := make([]string, len(devTbl.PrimaryKey))
-	for i, c := range devTbl.PrimaryKey {
-		quotedPK[i] = quoteIdent(driver, c)
-	}
-	query := fmt.Sprintf("SELECT %s FROM %s ORDER BY %s",
-		strings.Join(quotedCols, ", "),
-		quoteIdent(driver, tableName),
-		strings.Join(quotedPK, ", "),
-	)
-	rows, err := devDB.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("query dev rows: %w", err)
-	}
-	defer rows.Close()
-	
-	dest := make([]any, len(allCols))
-	for i := range dest {
-		var holder any
-		dest[i] = &holder
-	}
-	
 	// Build index map for column positions
 	colIndex := make(map[string]int)
 	for i, col := range allCols {
@@ -523,6 +499,25 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 	var stmts []string
 	rowCount := 0
 	totalRows := 0
+	
+	// Helper to build cursor-based WHERE clause for pagination
+	buildCursorWhere := func(lastPKValues []any) string {
+		if len(lastPKValues) == 0 {
+			return ""
+		}
+		// For composite keys, use lexicographic comparison: (pk1 > v1) OR (pk1 = v1 AND pk2 > v2) OR ...
+		// For single key, just: pk1 > v1
+		var conditions []string
+		for i := 0; i < len(devTbl.PrimaryKey); i++ {
+			var parts []string
+			for j := 0; j < i; j++ {
+				parts = append(parts, fmt.Sprintf("%s = %s", quoteIdent(driver, devTbl.PrimaryKey[j]), literal(lastPKValues[j])))
+			}
+			parts = append(parts, fmt.Sprintf("%s > %s", quoteIdent(driver, devTbl.PrimaryKey[i]), literal(lastPKValues[i])))
+			conditions = append(conditions, "("+strings.Join(parts, " AND ")+")")
+		}
+		return "WHERE " + strings.Join(conditions, " OR ")
+	}
 	
 	// Helper to flush current batch
 	flushBatch := func() error {
@@ -590,65 +585,129 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 		return nil
 	}
 	
-	// Process rows and batch them
-	for rows.Next() {
-		if err := rows.Scan(dest...); err != nil {
-			return nil, fmt.Errorf("scan row: %w", err)
-		}
-		
-		// Dereference values
-		values := make([]any, len(allCols))
-		for i, v := range dest {
-			values[i] = *(v.(*any))
-		}
-		
-		// Build primary key
-		key, err := buildKey(allCols, values, devTbl.PrimaryKey)
-		if err != nil {
-			return nil, fmt.Errorf("build key: %w", err)
-		}
-		
-		// Skip rows that will be updated via DELETE/INSERT
-		if skipKeys[key] {
-			continue
-		}
-		
-		// Extract PK values
-		pkValues := make([]any, len(devTbl.PrimaryKey))
-		for i, pkCol := range devTbl.PrimaryKey {
-			idx := colIndex[pkCol]
-			pkValues[i] = values[idx]
-		}
-		
-		// Extract values for new columns
-		rowValues := make(map[string]any)
-		for _, newCol := range newColumns {
-			idx, ok := colIndex[newCol]
-			if !ok {
-				continue
-			}
-			rowValues[newCol] = values[idx]
-		}
-		
-		// Add to batch
-		batch = append(batch, batchRow{
-			key:      key,
-			pkValues: pkValues,
-			values:   rowValues,
-		})
-		rowCount++
-		totalRows++
-		
-		// Flush batch when it reaches the batch size
-		if rowCount >= updateBatchSize {
-			if err := flushBatch(); err != nil {
-				return nil, err
-			}
-		}
+	// Process rows using cursor-based pagination to avoid loading all rows into memory
+	quotedCols := make([]string, len(allCols))
+	for i, c := range allCols {
+		quotedCols[i] = quoteIdent(driver, c)
+	}
+	quotedPK := make([]string, len(devTbl.PrimaryKey))
+	for i, c := range devTbl.PrimaryKey {
+		quotedPK[i] = quoteIdent(driver, c)
 	}
 	
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows: %w", err)
+	dest := make([]any, len(allCols))
+	for i := range dest {
+		var holder any
+		dest[i] = &holder
+	}
+	
+	var lastPKValues []any // Track last primary key for cursor-based pagination
+	
+	for {
+		// Build query with cursor-based pagination
+		baseQuery := fmt.Sprintf("SELECT %s FROM %s",
+			strings.Join(quotedCols, ", "),
+			quoteIdent(driver, tableName),
+		)
+		orderBy := " ORDER BY " + strings.Join(quotedPK, ", ")
+		limit := fmt.Sprintf(" LIMIT %d", queryPageSize)
+		
+		var query string
+		if len(lastPKValues) > 0 {
+			cursorWhere := buildCursorWhere(lastPKValues)
+			query = baseQuery + " " + cursorWhere + orderBy + limit
+		} else {
+			query = baseQuery + orderBy + limit
+		}
+		
+		rows, err := devDB.QueryContext(ctx, query)
+		if err != nil {
+			return nil, fmt.Errorf("query dev rows: %w", err)
+		}
+		
+		pageRowCount := 0
+		hasMoreRows := false
+		
+		for rows.Next() {
+			if err := rows.Scan(dest...); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan row: %w", err)
+			}
+			
+			// Dereference values
+			values := make([]any, len(allCols))
+			for i, v := range dest {
+				values[i] = *(v.(*any))
+			}
+			
+			// Build primary key
+			key, err := buildKey(allCols, values, devTbl.PrimaryKey)
+			if err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("build key: %w", err)
+			}
+			
+			// Skip rows that will be updated via DELETE/INSERT
+			if skipKeys[key] {
+				continue
+			}
+			
+			// Extract PK values
+			pkValues := make([]any, len(devTbl.PrimaryKey))
+			for i, pkCol := range devTbl.PrimaryKey {
+				idx := colIndex[pkCol]
+				pkValues[i] = values[idx]
+			}
+			
+			// Extract values for new columns
+			rowValues := make(map[string]any)
+			for _, newCol := range newColumns {
+				idx, ok := colIndex[newCol]
+				if !ok {
+					continue
+				}
+				rowValues[newCol] = values[idx]
+			}
+			
+			// Add to batch
+			batch = append(batch, batchRow{
+				key:      key,
+				pkValues: pkValues,
+				values:   rowValues,
+			})
+			rowCount++
+			totalRows++
+			pageRowCount++
+			
+			// Update last PK values for cursor
+			lastPKValues = make([]any, len(pkValues))
+			copy(lastPKValues, pkValues)
+			
+			// Flush batch when it reaches the batch size
+			if rowCount >= updateBatchSize {
+				if err := flushBatch(); err != nil {
+					rows.Close()
+					return nil, err
+				}
+			}
+		}
+		
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("iterate rows: %w", err)
+		}
+		rows.Close()
+		
+		// If we got fewer rows than the page size, we've reached the end
+		if pageRowCount < queryPageSize {
+			break
+		}
+		
+		// If we got exactly the page size, there might be more rows
+		hasMoreRows = pageRowCount == queryPageSize
+		if !hasMoreRows {
+			break
+		}
 	}
 	
 	// Flush remaining batch
