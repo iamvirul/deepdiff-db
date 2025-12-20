@@ -159,7 +159,6 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 		t.Fatalf("failed to create output dir: %v", err)
 	}
 
-	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, outDir)
 	if err != nil {
 		t.Fatalf("failed to generate pack: %v", err)
