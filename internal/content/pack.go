@@ -48,9 +48,6 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 			continue
 		}
 
-		// Track columns that need to be added
-		var columnsToAdd []string
-		
 		// Add ALTER TABLE statements for columns missing in prod
 		for _, cd := range td.ColumnDiffs {
 			if cd.MissingInProd {
@@ -71,7 +68,6 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 				// Build ALTER TABLE ADD COLUMN statement with full type definition
 				alterStmt := buildAlterTableAddColumn(prodDriver, td.Table, cd.Column, fullType, devCol.IsNullable)
 				stmts = append(stmts, alterStmt)
-				columnsToAdd = append(columnsToAdd, cd.Column)
 			}
 		}
 	}
