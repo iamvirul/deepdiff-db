@@ -520,7 +520,8 @@ output:
 
 		dataDiff, _ := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
 
-		packPath, err := content.GeneratePack(ctx, "mysql", devDB, prodSchema, devSchema, dataDiff, ignoreColumn, outputDir)
+		schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+		packPath, err := content.GeneratePack(ctx, "mysql", devDB, "dev_db", prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, outputDir)
 		if err != nil {
 			t.Fatalf("failed to generate pack: %v", err)
 		}
