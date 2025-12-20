@@ -1,5 +1,8 @@
 # DeepDiff DB
 
+[![codecov](https://codecov.io/gh/iamvirul/deepdiff-db/branch/main/graph/badge.svg)](https://codecov.io/gh/iamvirul/deepdiff-db)
+[![Go Report Card](https://goreportcard.com/badge/github.com/iamvirul/deepdiff-db)](https://goreportcard.com/report/github.com/iamvirul/deepdiff-db)
+
 DeepDiff DB is a high-speed Go CLI tool for comparing two databases, detecting schema drift, identifying data-level differences, and generating safe migration packs that can be applied to production without risking corruption.
 
 It solves the real-world problem where dev backups drift away from production and accidentally overwrite or break real data. DeepDiff DB forces structural validation first, then performs controlled content merging.
