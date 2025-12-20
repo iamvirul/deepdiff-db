@@ -214,7 +214,7 @@ func TestGeneratePack_WithIgnore(t *testing.T) {
 
 	ignoreFn := content.IgnoreMatcher([]string{"*.updated_at"})
 	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
-	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, prodSchema, devSchema, schemaDiff, diff, ignoreFn, tmpDir)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, ignoreFn, tmpDir)
 	if err != nil {
 		t.Fatalf("content.content.GeneratePack failed: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestGeneratePack_NoPrimaryKey(t *testing.T) {
 
 	prodSchema := devSchema
 	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
-	_, err = content.GeneratePack(ctx, "sqlite", devDB, prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	_, err = content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
 	if err == nil {
 		t.Error("expected error for table without primary key")
 	}
