@@ -402,6 +402,8 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 		}
 		
 		// Query information_schema to get full type definition using explicit schema
+		// Note: Integer types (integer, bigint, smallint, serial types) have numeric_precision
+		// but don't accept precision notation, so we exclude precision/scale for these types.
 		var fullType string
 		err := devDB.QueryRowContext(ctx, `
 			SELECT 
@@ -409,9 +411,11 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 					WHEN c.data_type = 'ARRAY' THEN c.udt_name || '[]'
 					WHEN c.character_maximum_length IS NOT NULL THEN 
 						c.udt_name || '(' || c.character_maximum_length || ')'
-					WHEN c.numeric_precision IS NOT NULL AND c.numeric_scale IS NOT NULL THEN
+					WHEN c.numeric_precision IS NOT NULL AND c.numeric_scale IS NOT NULL 
+						AND c.data_type NOT IN ('integer', 'bigint', 'smallint', 'serial', 'bigserial', 'smallserial') THEN
 						c.udt_name || '(' || c.numeric_precision || ',' || c.numeric_scale || ')'
-					WHEN c.numeric_precision IS NOT NULL THEN
+					WHEN c.numeric_precision IS NOT NULL 
+						AND c.data_type NOT IN ('integer', 'bigint', 'smallint', 'serial', 'bigserial', 'smallserial') THEN
 						c.udt_name || '(' || c.numeric_precision || ')'
 					ELSE c.udt_name
 				END AS full_type
