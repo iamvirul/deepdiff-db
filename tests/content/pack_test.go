@@ -5,6 +5,7 @@ import (
 
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -312,6 +313,573 @@ func TestGeneratePack_TableNotFound(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(sqlText), "\n")
 	if len(lines) > 2 {
 		t.Errorf("expected only BEGIN and COMMIT, got %d lines", len(lines))
+	}
+}
+
+func TestGeneratePack_MySQLDriver(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			email TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	_, err = devDB.ExecContext(ctx, `
+		INSERT INTO users (id, name, email) VALUES
+		(1, 'Alice', 'alice@example.com')
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert data: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":    {Name: "id", DataType: "integer", IsNullable: false},
+					"name":  {Name: "name", DataType: "text", IsNullable: false},
+					"email": {Name: "email", DataType: "text", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	prodSchema := devSchema
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "users",
+				Added: []string{"1"},
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "mysql", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack failed: %v", err)
+	}
+
+	packContent, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatalf("failed to read pack file: %v", err)
+	}
+
+	sqlText := string(packContent)
+	// MySQL should have FOREIGN_KEY_CHECKS statements
+	if !strings.Contains(sqlText, "SET FOREIGN_KEY_CHECKS = 0;") {
+		t.Error("MySQL pack should disable foreign key checks")
+	}
+	if !strings.Contains(sqlText, "SET FOREIGN_KEY_CHECKS = 1;") {
+		t.Error("MySQL pack should re-enable foreign key checks")
+	}
+	// MySQL uses backticks for identifiers
+	if !strings.Contains(sqlText, "`users`") {
+		t.Error("MySQL pack should use backticks for table names")
+	}
+}
+
+func TestGeneratePack_CompositePrimaryKey(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE orders (
+			user_id INTEGER,
+			order_id INTEGER,
+			amount REAL,
+			PRIMARY KEY (user_id, order_id)
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	_, err = devDB.ExecContext(ctx, `
+		INSERT INTO orders (user_id, order_id, amount) VALUES
+		(1, 100, 50.0),
+		(1, 101, 75.0)
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert data: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"orders": {
+				Name: "orders",
+				Columns: map[string]schema.Column{
+					"user_id":  {Name: "user_id", DataType: "integer", IsNullable: false},
+					"order_id": {Name: "order_id", DataType: "integer", IsNullable: false},
+					"amount":   {Name: "amount", DataType: "real", IsNullable: true},
+				},
+				PrimaryKey: []string{"user_id", "order_id"},
+			},
+		},
+	}
+
+	prodSchema := devSchema
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table:   "orders",
+				Added:   []string{"1|100"},
+				Removed: []string{"1|101"},
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack failed: %v", err)
+	}
+
+	packContent, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatalf("failed to read pack file: %v", err)
+	}
+
+	sqlText := string(packContent)
+	// Should have DELETE with composite key WHERE clause
+	if !strings.Contains(sqlText, "DELETE FROM") {
+		t.Error("pack should contain DELETE statement")
+	}
+	// Should have INSERT with composite key
+	if !strings.Contains(sqlText, "INSERT INTO") {
+		t.Error("pack should contain INSERT statement")
+	}
+}
+
+func TestGeneratePack_SchemaDiffWithNewColumns(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			email TEXT,
+			age INTEGER
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	_, err = devDB.ExecContext(ctx, `
+		INSERT INTO users (id, name, email, age) VALUES
+		(1, 'Alice', 'alice@example.com', 30)
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert data: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":    {Name: "id", DataType: "integer", IsNullable: false},
+					"name":  {Name: "name", DataType: "text", IsNullable: false},
+					"email": {Name: "email", DataType: "text", IsNullable: true},
+					"age":   {Name: "age", DataType: "integer", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	// Prod schema missing 'age' column
+	prodSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":    {Name: "id", DataType: "integer", IsNullable: false},
+					"name":  {Name: "name", DataType: "text", IsNullable: false},
+					"email": {Name: "email", DataType: "text", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "users",
+				Added: []string{"1"},
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack failed: %v", err)
+	}
+
+	packContent, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatalf("failed to read pack file: %v", err)
+	}
+
+	sqlText := string(packContent)
+	// Should have ALTER TABLE to add the missing column
+	if !strings.Contains(sqlText, "ALTER TABLE") {
+		t.Error("pack should contain ALTER TABLE statement for new column")
+	}
+	if !strings.Contains(sqlText, "age") {
+		t.Error("pack should contain the new column name")
+	}
+}
+
+func TestGeneratePack_InvalidKeyFormat(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":   {Name: "id", DataType: "integer", IsNullable: false},
+					"name": {Name: "name", DataType: "text", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	prodSchema := devSchema
+
+	// Invalid key format (composite key format for single key)
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "users",
+				Added: []string{"1|2"}, // Invalid: single PK but composite format
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	_, err = content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err == nil {
+		t.Error("expected error for invalid key format")
+	}
+}
+
+func TestGeneratePack_PostgreSQLDriver(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	_, err = devDB.ExecContext(ctx, `
+		INSERT INTO users (id, name) VALUES (1, 'Alice')
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert data: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":   {Name: "id", DataType: "integer", IsNullable: false},
+					"name": {Name: "name", DataType: "text", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	prodSchema := devSchema
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "users",
+				Added: []string{"1"},
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "postgres", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack failed: %v", err)
+	}
+
+	packContent, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatalf("failed to read pack file: %v", err)
+	}
+
+	sqlText := string(packContent)
+	// PostgreSQL uses double quotes for identifiers
+	if !strings.Contains(sqlText, `"users"`) {
+		t.Error("PostgreSQL pack should use double quotes for table names")
+	}
+	// PostgreSQL should not have FOREIGN_KEY_CHECKS
+	if strings.Contains(sqlText, "FOREIGN_KEY_CHECKS") {
+		t.Error("PostgreSQL pack should not contain FOREIGN_KEY_CHECKS")
+	}
+}
+
+func TestGeneratePack_WithNewColumnsAndUpdates(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			email TEXT,
+			age INTEGER,
+			created_at TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	// Insert multiple rows to test batching
+	for i := 1; i <= 5; i++ {
+		_, err = devDB.ExecContext(ctx, `
+			INSERT INTO users (id, name, email, age, created_at) VALUES (?, ?, ?, ?, ?)
+		`, i, fmt.Sprintf("User%d", i), fmt.Sprintf("user%d@example.com", i), 20+i, "2024-01-01")
+		if err != nil {
+			t.Fatalf("failed to insert data: %v", err)
+		}
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":         {Name: "id", DataType: "integer", IsNullable: false},
+					"name":       {Name: "name", DataType: "text", IsNullable: false},
+					"email":      {Name: "email", DataType: "text", IsNullable: true},
+					"age":        {Name: "age", DataType: "integer", IsNullable: true},
+					"created_at": {Name: "created_at", DataType: "text", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	// Prod schema missing 'age' and 'created_at' columns
+	prodSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":    {Name: "id", DataType: "integer", IsNullable: false},
+					"name":  {Name: "name", DataType: "text", IsNullable: false},
+					"email": {Name: "email", DataType: "text", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	// Data diff with existing rows (not removed) - these will get UPDATE statements for new columns
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table:   "users",
+				Added:   []string{"1", "2"}, // New rows
+				Updated: []string{"3"},      // Updated row - will get UPDATE for new columns
+				// Note: Removed rows won't get UPDATE statements
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack failed: %v", err)
+	}
+
+	packContent, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatalf("failed to read pack file: %v", err)
+	}
+
+	sqlText := string(packContent)
+	// Should have ALTER TABLE statements
+	if !strings.Contains(sqlText, "ALTER TABLE") {
+		t.Error("pack should contain ALTER TABLE statements for new columns")
+	}
+	// Should have UPDATE statements for new columns (for existing rows)
+	if !strings.Contains(sqlText, "UPDATE") {
+		t.Error("pack should contain UPDATE statements for new columns")
+	}
+	// Should have INSERT statements
+	if !strings.Contains(sqlText, "INSERT INTO") {
+		t.Error("pack should contain INSERT statements")
+	}
+}
+
+func TestGeneratePack_WithIgnoredNewColumns(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			email TEXT,
+			updated_at TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	_, err = devDB.ExecContext(ctx, `
+		INSERT INTO users (id, name, email, updated_at) VALUES
+		(1, 'Alice', 'alice@example.com', '2024-01-01')
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert data: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":         {Name: "id", DataType: "integer", IsNullable: false},
+					"name":       {Name: "name", DataType: "text", IsNullable: false},
+					"email":      {Name: "email", DataType: "text", IsNullable: true},
+					"updated_at": {Name: "updated_at", DataType: "text", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	// Prod schema missing 'updated_at' column
+	prodSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":    {Name: "id", DataType: "integer", IsNullable: false},
+					"name":  {Name: "name", DataType: "text", IsNullable: false},
+					"email": {Name: "email", DataType: "text", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "users",
+				Added: []string{"1"},
+			},
+		},
+	}
+
+	ignoreFn := content.IgnoreMatcher([]string{"*.updated_at"})
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, ignoreFn, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack failed: %v", err)
+	}
+
+	packContent, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatalf("failed to read pack file: %v", err)
+	}
+
+	sqlText := string(packContent)
+	// Should not have ALTER TABLE for ignored column
+	if strings.Contains(sqlText, "ALTER TABLE") && strings.Contains(sqlText, "updated_at") {
+		t.Error("pack should not contain ALTER TABLE for ignored column")
+	}
+	// Should not have UPDATE for ignored column
+	if strings.Contains(sqlText, "UPDATE") && strings.Contains(sqlText, "updated_at") {
+		t.Error("pack should not contain UPDATE for ignored column")
 	}
 }
 
