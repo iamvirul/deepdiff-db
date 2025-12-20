@@ -354,6 +354,8 @@ func escape(s string) string {
 
 // getFullColumnType queries the dev database to get the complete column type definition
 // including length, precision, and scale. This preserves the exact column definition from dev.
+// For PostgreSQL, the database parameter is used as the schema name. If empty, the function
+// queries information_schema to find the table's schema, defaulting to "public" if not found.
 func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tableName, columnName string) (string, error) {
 	driver = strings.ToLower(driver)
 	
@@ -374,7 +376,27 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 		return fullType, nil
 		
 	case "postgres", "postgresql":
-		// Query information_schema to get full type definition
+		// For PostgreSQL, determine the schema to use
+		// Priority: 1) explicit database parameter (used as schema), 2) query table's actual schema, 3) default to "public"
+		var schemaName string
+		if database != "" {
+			schemaName = database
+		} else {
+			// Query to find which schema contains this table
+			err := devDB.QueryRowContext(ctx, `
+				SELECT table_schema
+				FROM information_schema.tables
+				WHERE table_name = $1
+				ORDER BY table_schema = 'public' DESC, table_schema
+				LIMIT 1
+			`, tableName).Scan(&schemaName)
+			if err != nil {
+				// If query fails, default to "public" schema
+				schemaName = "public"
+			}
+		}
+		
+		// Query information_schema to get full type definition using explicit schema
 		var fullType string
 		err := devDB.QueryRowContext(ctx, `
 			SELECT 
@@ -389,12 +411,12 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 					ELSE c.udt_name
 				END AS full_type
 			FROM information_schema.columns c
-			WHERE c.table_schema = current_schema()
-			  AND c.table_name = $1
-			  AND c.column_name = $2
-		`, tableName, columnName).Scan(&fullType)
+			WHERE c.table_schema = $1
+			  AND c.table_name = $2
+			  AND c.column_name = $3
+		`, schemaName, tableName, columnName).Scan(&fullType)
 		if err != nil {
-			return "", fmt.Errorf("query column type: %w", err)
+			return "", fmt.Errorf("query column type for schema %s, table %s, column %s: %w", schemaName, tableName, columnName, err)
 		}
 		return fullType, nil
 		
