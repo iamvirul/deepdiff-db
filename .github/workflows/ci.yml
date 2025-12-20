@@ -58,15 +58,13 @@ jobs:
           echo "Coverage file size: $(wc -l < coverage.txt) lines"
           head -5 coverage.txt
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+      - name: Upload coverage artifact for merging
         if: matrix.go-version == '1.24'
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.txt
-          flags: unit-tests
-          name: unit-tests-coverage
-          fail_ci_if_error: true
+          name: coverage-unit-${{ github.run_id }}
+          path: coverage.txt
+          retention-days: 1
 
   integration-tests:
     name: Integration Tests
@@ -103,13 +101,65 @@ jobs:
           echo "Coverage file size: $(wc -l < coverage-integration.txt) lines"
           head -5 coverage-integration.txt
 
-      - name: Upload coverage reports to Codecov
+      - name: Upload coverage artifact for merging
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-integration-${{ github.run_id }}
+          path: coverage-integration.txt
+          retention-days: 1
+
+      - name: Upload coverage reports to Codecov (integration-tests flag)
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage-integration.txt
           flags: integration-tests
           name: integration-tests-coverage
+          fail_ci_if_error: true
+
+  coverage-merge:
+    name: Merge and Upload Overall Coverage
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: go.sum
+
+      - name: Download unit test coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-unit-${{ github.run_id }}
+          path: coverage-artifacts
+
+      - name: Download integration test coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-integration-${{ github.run_id }}
+          path: coverage-artifacts
+
+      - name: Merge all coverage files
+        run: |
+          echo "mode: atomic" > coverage-combined.txt
+          # Merge all coverage files, removing duplicate mode lines
+          find coverage-artifacts -type f -name "*.txt" -exec grep -h -v "^mode:" {} \; | sort -u >> coverage-combined.txt || true
+          echo "Combined coverage file size: $(wc -l < coverage-combined.txt) lines"
+          echo "Coverage percentage:"
+          go tool cover -func=coverage-combined.txt | grep total
+
+      - name: Upload overall coverage to Codecov (no flags for badge)
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage-combined.txt
+          name: overall-coverage
           fail_ci_if_error: true
 
   lint:
