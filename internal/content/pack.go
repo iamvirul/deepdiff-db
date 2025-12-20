@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,6 +12,13 @@ import (
 	"time"
 
 	"github.com/iamvirul/deepdiff-db/internal/schema"
+)
+
+const (
+	// updateBatchSize is the number of rows to batch together in a single UPDATE statement
+	updateBatchSize = 1000
+	// progressLogThreshold is the minimum number of rows before progress logging is enabled
+	progressLogThreshold = 10000
 )
 
 // GeneratePack builds a SQL migration pack for applying data diffs to prod.
@@ -450,18 +458,15 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 	}
 }
 
-// generateUpdateStatementsForNewColumns generates UPDATE statements to set values for newly added columns
-// from the dev database. It updates existing rows (rows that exist in both prod and dev) with the
-// values from dev for the newly added columns. Rows in skipKeys will be skipped (they'll be updated via DELETE/INSERT).
+// generateUpdateStatementsForNewColumns generates batched UPDATE statements to set values for newly added columns
+// from the dev database. It uses CASE expressions to batch multiple rows into single UPDATE statements for efficiency.
+// Rows in skipKeys will be skipped (they'll be updated via DELETE/INSERT).
 func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, driver, tableName string, devTbl schema.Table, newColumns []string, skipKeys map[string]bool, ignoreFn func(table, column string) bool) ([]string, error) {
 	if len(devTbl.PrimaryKey) == 0 {
 		return nil, fmt.Errorf("table %s lacks primary key", tableName)
 	}
 	
-	var stmts []string
-	
 	// Get all rows from dev database for this table
-	// We need to update all existing rows in prod with the new column values from dev
 	// Build column list: primary keys + new columns (to fetch values)
 	allCols := append([]string{}, devTbl.PrimaryKey...)
 	for _, newCol := range newColumns {
@@ -475,7 +480,7 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 		return nil, fmt.Errorf("no columns to select for table %s", tableName)
 	}
 	
-	// Build SELECT query using quoteIdent from hash.go (same package)
+	// Build SELECT query
 	quotedCols := make([]string, len(allCols))
 	for i, c := range allCols {
 		quotedCols[i] = quoteIdent(driver, c)
@@ -507,6 +512,85 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 		colIndex[col] = i
 	}
 	
+	// Batch data structures
+	type batchRow struct {
+		key      string
+		pkValues []any
+		values   map[string]any // column name -> value
+	}
+	
+	var batch []batchRow
+	var stmts []string
+	rowCount := 0
+	totalRows := 0
+	
+	// Helper to flush current batch
+	flushBatch := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		
+		// Build CASE expressions for each new column
+		var setParts []string
+		for _, newCol := range newColumns {
+			if _, exists := devTbl.Columns[newCol]; !exists {
+				continue
+			}
+			
+			// Build CASE expression: CASE WHEN pk_match THEN val1 WHEN pk_match2 THEN val2 ... ELSE col END
+			var caseParts []string
+			for _, row := range batch {
+				// Build primary key match condition
+				var pkConditions []string
+				for i, pkCol := range devTbl.PrimaryKey {
+					pkConditions = append(pkConditions, fmt.Sprintf("%s = %s", quoteIdent(driver, pkCol), literal(row.pkValues[i])))
+				}
+				pkMatch := strings.Join(pkConditions, " AND ")
+				
+				// Get value for this column
+				val := row.values[newCol]
+				caseParts = append(caseParts, fmt.Sprintf("WHEN %s THEN %s", pkMatch, literal(val)))
+			}
+			
+			// Complete CASE expression: CASE ... ELSE col END
+			caseExpr := fmt.Sprintf("CASE %s ELSE %s END", strings.Join(caseParts, " "), quoteIdent(driver, newCol))
+			setParts = append(setParts, fmt.Sprintf("%s = %s", quoteIdent(driver, newCol), caseExpr))
+		}
+		
+		if len(setParts) == 0 {
+			return nil
+		}
+		
+		// Build WHERE clause with all primary keys in batch
+		var whereParts []string
+		for _, row := range batch {
+			var pkConditions []string
+			for i, pkCol := range devTbl.PrimaryKey {
+				pkConditions = append(pkConditions, fmt.Sprintf("%s = %s", quoteIdent(driver, pkCol), literal(row.pkValues[i])))
+			}
+			whereParts = append(whereParts, "("+strings.Join(pkConditions, " AND ")+")")
+		}
+		whereClause := strings.Join(whereParts, " OR ")
+		
+		// Generate batched UPDATE statement
+		updateStmt := fmt.Sprintf("UPDATE %s SET %s WHERE %s;",
+			quoteIdent(driver, tableName),
+			strings.Join(setParts, ", "),
+			whereClause,
+		)
+		stmts = append(stmts, updateStmt)
+		
+		// Log progress for large datasets
+		if totalRows >= progressLogThreshold {
+			log.Printf("Generated batch %d for table %s (%d rows processed)", len(stmts), tableName, totalRows)
+		}
+		
+		batch = batch[:0] // Clear batch but keep capacity
+		rowCount = 0
+		return nil
+	}
+	
+	// Process rows and batch them
 	for rows.Next() {
 		if err := rows.Scan(dest...); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
@@ -518,7 +602,7 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 			values[i] = *(v.(*any))
 		}
 		
-		// Build primary key for WHERE clause using buildKey from hash.go
+		// Build primary key
 		key, err := buildKey(allCols, values, devTbl.PrimaryKey)
 		if err != nil {
 			return nil, fmt.Errorf("build key: %w", err)
@@ -529,40 +613,52 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 			continue
 		}
 		
-		// Build SET clause with only the new columns
-		// Include all new columns, even if they are NULL, so explicit NULL values from dev are written to prod
-		var setParts []string
+		// Extract PK values
+		pkValues := make([]any, len(devTbl.PrimaryKey))
+		for i, pkCol := range devTbl.PrimaryKey {
+			idx := colIndex[pkCol]
+			pkValues[i] = values[idx]
+		}
+		
+		// Extract values for new columns
+		rowValues := make(map[string]any)
 		for _, newCol := range newColumns {
 			idx, ok := colIndex[newCol]
 			if !ok {
 				continue
 			}
-			val := values[idx]
-			// Always append, including NULL values (literal(nil) returns "NULL")
-			setParts = append(setParts, fmt.Sprintf("%s = %s", quoteIdent(driver, newCol), literal(val)))
+			rowValues[newCol] = values[idx]
 		}
 		
-		if len(setParts) == 0 {
-			continue
-		}
+		// Add to batch
+		batch = append(batch, batchRow{
+			key:      key,
+			pkValues: pkValues,
+			values:   rowValues,
+		})
+		rowCount++
+		totalRows++
 		
-		// Build WHERE clause from primary key
-		where, err := keyToWhere(driver, devTbl.PrimaryKey, key)
-		if err != nil {
-			return nil, fmt.Errorf("build where clause: %w", err)
+		// Flush batch when it reaches the batch size
+		if rowCount >= updateBatchSize {
+			if err := flushBatch(); err != nil {
+				return nil, err
+			}
 		}
-		
-		// Generate UPDATE statement
-		updateStmt := fmt.Sprintf("UPDATE %s SET %s WHERE %s;",
-			quoteIdent(driver, tableName),
-			strings.Join(setParts, ", "),
-			where,
-		)
-		stmts = append(stmts, updateStmt)
 	}
 	
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate rows: %w", err)
+	}
+	
+	// Flush remaining batch
+	if err := flushBatch(); err != nil {
+		return nil, err
+	}
+	
+	// Final progress log if we processed many rows
+	if totalRows >= progressLogThreshold {
+		log.Printf("Completed table %s: %d total rows processed in %d batches", tableName, totalRows, len(stmts))
 	}
 	
 	return stmts, nil
