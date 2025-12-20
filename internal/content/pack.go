@@ -535,6 +535,7 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 		}
 		
 		// Build SET clause with only the new columns
+		// Include all new columns, even if they are NULL, so explicit NULL values from dev are written to prod
 		var setParts []string
 		for _, newCol := range newColumns {
 			idx, ok := colIndex[newCol]
@@ -542,10 +543,8 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 				continue
 			}
 			val := values[idx]
-			// Skip NULL values - only update if there's an actual value
-			if val != nil {
-				setParts = append(setParts, fmt.Sprintf("%s = %s", quoteIdent(driver, newCol), literal(val)))
-			}
+			// Always append, including NULL values (literal(nil) returns "NULL")
+			setParts = append(setParts, fmt.Sprintf("%s = %s", quoteIdent(driver, newCol), literal(val)))
 		}
 		
 		if len(setParts) == 0 {
