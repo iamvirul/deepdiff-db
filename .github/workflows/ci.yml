@@ -32,7 +32,7 @@ jobs:
 
       - name: Run unit tests (no Docker required)
         run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./tests/config ./tests/content ./tests/drivers ./tests/schema
+          go test -v -race -coverprofile=coverage.txt -covermode=atomic ./tests/config ./tests/content ./tests/drivers ./tests/schema
         continue-on-error: false
 
       - name: Run basic integration test (SQLite, no Docker)
@@ -40,15 +40,15 @@ jobs:
           go test -v -race ./tests -run 'TestIntegration_FullWorkflow|TestIntegration_WithConfig'
         continue-on-error: false
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
         if: matrix.go-version == '1.24'
         continue-on-error: true
         with:
-          file: ./coverage.out
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.txt
           flags: unit-tests
           name: unit-tests-coverage
-          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
   integration-tests:
@@ -74,17 +74,17 @@ jobs:
 
       - name: Run testcontainers integration tests
         run: |
-          go test -v -timeout=20m -coverprofile=coverage-integration.out -covermode=atomic ./tests -run 'TestIntegration_MySQL_FullWorkflow|TestIntegration_PostgreSQL_FullWorkflow|TestIntegration_AllReportsGenerated'
+          go test -v -timeout=20m -coverprofile=coverage-integration.txt -covermode=atomic ./tests -run 'TestIntegration_MySQL_FullWorkflow|TestIntegration_PostgreSQL_FullWorkflow|TestIntegration_AllReportsGenerated'
         continue-on-error: false
 
-      - name: Upload integration test coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
         continue-on-error: true
         with:
-          file: ./coverage-integration.out
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage-integration.txt
           flags: integration-tests
           name: integration-tests-coverage
-          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
   lint:
