@@ -262,7 +262,8 @@ func runGenPack(args []string) error {
 		return fmt.Errorf("write schema diff: %w", err)
 	}
 	if schemaDiff.HasDrift() {
-		return fmt.Errorf("schema drift detected; see %s and %s", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
+		fmt.Fprintf(os.Stderr, "Warning: schema drift detected; see %s and %s\n", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
+		fmt.Fprintf(os.Stderr, "Warning: continuing with pack generation. Only tables with matching schemas will be included.\n")
 	}
 
 	// Data diff
@@ -298,7 +299,7 @@ func runGenPack(args []string) error {
 		}
 	}
 
-	packPath, err := content.GeneratePack(ctx, cfg.Prod.Driver, devDB, devSchema, dataDiff, ignoreColumn, cfg.Output.Dir)
+	packPath, err := content.GeneratePack(ctx, cfg.Prod.Driver, devDB, cfg.Dev.Database, prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, cfg.Output.Dir)
 	if err != nil {
 		return fmt.Errorf("generate pack: %w", err)
 	}
@@ -307,7 +308,11 @@ func runGenPack(args []string) error {
 		return fmt.Errorf("write content diff: %w", err)
 	}
 
-	fmt.Println("Schema OK. Data diff complete.")
+	if schemaDiff.HasDrift() {
+		fmt.Println("Schema drift detected. Data diff complete.")
+	} else {
+		fmt.Println("Schema OK. Data diff complete.")
+	}
 	if dataDiff.HasChanges() {
 		fmt.Printf("Changes detected. Pack written to %s\n", packPath)
 		if conflicts.HasConflicts() {
