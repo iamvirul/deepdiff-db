@@ -994,7 +994,6 @@ func TestIntegration_AllReportsGenerated(t *testing.T) {
 	dataDiff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
 
 	// Generate pack
-	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, outputDir)
 	if err != nil {
 		t.Fatalf("failed to generate pack: %v", err)
