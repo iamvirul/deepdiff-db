@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed noisy test that was testing incompatible driver/database combinations
 - Improved test assertions to fail on unexpected behavior instead of just logging
 
-## [0.1.0] - Initial Release
+## [0.1] - Initial Release
 
 ### Added
 - Fast Go-based diff engine for database comparison
