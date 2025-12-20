@@ -1155,7 +1155,7 @@ func TestGeneratePack_UnsupportedDriver(t *testing.T) {
 	}
 }
 
-func TestGeneratePack_BuildAlterTableAllDrivers(t *testing.T) {
+func TestGeneratePack_BuildAlterTableSQLite(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
 
@@ -1236,21 +1236,12 @@ func TestGeneratePack_BuildAlterTableAllDrivers(t *testing.T) {
 	if !strings.Contains(sqlText, "ALTER TABLE") {
 		t.Error("pack should contain ALTER TABLE")
 	}
-
-	// Test with other drivers - these will fail on SQLite DB but test the driver-specific code paths
-	// MySQL and PostgreSQL require their own databases, so we just verify the error handling
-	otherDrivers := []string{"mysql", "postgres", "postgresql"}
-	for _, driver := range otherDrivers {
-		_, err := content.GeneratePack(ctx, driver, devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
-		// Expected to fail because SQLite doesn't have information_schema for MySQL/PostgreSQL
-		if err == nil {
-			t.Logf("Driver %s unexpectedly succeeded (may need actual DB)", driver)
-		} else {
-			// Verify error is related to column type lookup (expected with SQLite)
-			if !strings.Contains(err.Error(), "column type") && !strings.Contains(err.Error(), "schema") && !strings.Contains(err.Error(), "information_schema") {
-				t.Logf("Driver %s error: %v", driver, err)
-			}
-		}
+	if !strings.Contains(sqlText, "age") {
+		t.Error("pack should contain the new column name 'age'")
+	}
+	// Verify the ALTER TABLE statement format for SQLite
+	if !strings.Contains(sqlText, "ALTER TABLE") || !strings.Contains(sqlText, "ADD COLUMN") {
+		t.Error("pack should contain properly formatted ALTER TABLE ADD COLUMN statement")
 	}
 }
 
