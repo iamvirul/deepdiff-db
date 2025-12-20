@@ -74,13 +74,6 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 				columnsToAdd = append(columnsToAdd, cd.Column)
 			}
 		}
-		
-		// Track columns that need UPDATE statements after INSERT
-		// (we'll generate these after DELETE/INSERT since INSERT doesn't include new columns)
-		if len(columnsToAdd) > 0 {
-			// Store columns to add for later UPDATE generation
-			// We'll handle this after the DELETE/INSERT loop
-		}
 	}
 
 	// Track which tables need UPDATE statements for new columns (after INSERT)
