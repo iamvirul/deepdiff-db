@@ -74,7 +74,7 @@ prod:
 Then, run the `apply` command:
 
 ```bash
-deepdiffdb apply -config deepdiffdb.apply.config.yaml -pack diff-output/pack.sql
+deepdiffdb apply -config deepdiffdb.apply.config.yaml -pack diff-output/migration_pack.sql
 ```
 
 ## 7. Verify the Migration
