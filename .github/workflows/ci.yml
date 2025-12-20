@@ -32,7 +32,7 @@ jobs:
 
       - name: Run unit tests (no Docker required)
         run: |
-          go test -v -race -coverprofile=coverage.txt -covermode=atomic ./tests/config ./tests/content ./tests/drivers ./tests/schema
+          go test -v -race -coverprofile=coverage.txt -covermode=atomic -coverpkg=./internal/...,./pkg/... ./tests/config ./tests/content ./tests/drivers ./tests/schema
         continue-on-error: false
 
       - name: Run basic integration test (SQLite, no Docker)
@@ -40,16 +40,25 @@ jobs:
           go test -v -race ./tests -run 'TestIntegration_FullWorkflow|TestIntegration_WithConfig'
         continue-on-error: false
 
+      - name: Verify coverage file exists
+        if: matrix.go-version == '1.24'
+        run: |
+          if [ ! -f coverage.txt ]; then
+            echo "Error: coverage.txt not found"
+            exit 1
+          fi
+          echo "Coverage file size: $(wc -l < coverage.txt) lines"
+          head -5 coverage.txt
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         if: matrix.go-version == '1.24'
-        continue-on-error: true
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.txt
           flags: unit-tests
           name: unit-tests-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
   integration-tests:
     name: Integration Tests
@@ -74,18 +83,26 @@ jobs:
 
       - name: Run testcontainers integration tests
         run: |
-          go test -v -timeout=20m -coverprofile=coverage-integration.txt -covermode=atomic ./tests -run 'TestIntegration_MySQL_FullWorkflow|TestIntegration_PostgreSQL_FullWorkflow|TestIntegration_AllReportsGenerated'
+          go test -v -timeout=20m -coverprofile=coverage-integration.txt -covermode=atomic -coverpkg=./internal/...,./pkg/... ./tests -run 'TestIntegration_MySQL_FullWorkflow|TestIntegration_PostgreSQL_FullWorkflow|TestIntegration_AllReportsGenerated'
         continue-on-error: false
+
+      - name: Verify integration coverage file exists
+        run: |
+          if [ ! -f coverage-integration.txt ]; then
+            echo "Error: coverage-integration.txt not found"
+            exit 1
+          fi
+          echo "Coverage file size: $(wc -l < coverage-integration.txt) lines"
+          head -5 coverage-integration.txt
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
-        continue-on-error: true
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage-integration.txt
           flags: integration-tests
           name: integration-tests-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
   lint:
     name: Lint
