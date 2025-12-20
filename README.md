@@ -1,5 +1,8 @@
 # DeepDiff DB
 
+[![codecov](https://codecov.io/gh/iamvirul/deepdiff-db/branch/main/graph/badge.svg)](https://codecov.io/gh/iamvirul/deepdiff-db)
+[![Go Report Card](https://goreportcard.com/badge/github.com/iamvirul/deepdiff-db)](https://goreportcard.com/report/github.com/iamvirul/deepdiff-db)
+
 DeepDiff DB is a high-speed Go CLI tool for comparing two databases, detecting schema drift, identifying data-level differences, and generating safe migration packs that can be applied to production without risking corruption.
 
 It solves the real-world problem where dev backups drift away from production and accidentally overwrite or break real data. DeepDiff DB forces structural validation first, then performs controlled content merging.
@@ -45,11 +48,53 @@ DeepDiff DB makes the entire process deterministic, reviewable, and safe.
 
 # Installation
 
-You can install DeepDiff DB in two ways:
+You can install DeepDiff DB in several ways:
 
 ---
 
-## Option 1: Download Precompiled Binaries (Recommended)
+## Option 1: Local Development Build (Latest Unreleased Version)
+
+For developers who want to test the latest changes without waiting for a release:
+
+**macOS/Linux:**
+```bash
+# Build and install to ~/bin (no sudo required)
+./scripts/build-local.sh --install --install-dir ~/bin
+
+# Or install to /usr/local/bin (requires sudo)
+sudo ./scripts/build-local.sh --install
+
+# Or just build without installing (outputs to bin/deepdiffdb)
+./scripts/build-local.sh --build-only
+```
+
+**Windows (PowerShell):**
+```powershell
+# Build and install
+.\scripts\build-local.ps1 -Install
+
+# Or just build
+.\scripts\build-local.ps1 -BuildOnly
+```
+
+**Features:**
+- ✅ Builds optimized binaries with version information
+- ✅ Automatically includes git commit hash in version
+- ✅ Handles installation permissions automatically
+- ✅ Validates binary after build
+- ✅ Cross-platform support (macOS, Linux, Windows)
+- ✅ Cross-compilation support (build for different platforms)
+
+**Note:** Make sure `~/bin` is in your PATH to use the binary from anywhere:
+```bash
+export PATH="$HOME/bin:$PATH"  # Add to ~/.zshrc or ~/.bashrc
+```
+
+See [scripts/README.md](scripts/README.md) for more options, examples, and troubleshooting.
+
+---
+
+## Option 2: Download Precompiled Binaries (Recommended for Users)
 
 Each release ships with binaries for:
 
@@ -90,12 +135,12 @@ After that `deepdiffdb` is ready to use.
 
 ---
 
-## Option 2: Install via `go install`
+## Option 3: Install via `go install`
 
-If you want to build from source:
+If you want to build from source using Go's install command:
 
 ```bash
-go install github.com/iamvirul/deepdiffdb@latest
+go install github.com/iamvirul/deepdiff-db/cmd/deepdiffdb@latest
 ```
 
 This produces a static binary in your GOPATH/bin.

@@ -1,1 +1,6 @@
 bin/
+deepdiffdb
+diff-output/
+coverage.out
+coverage-integration.out
+*.out

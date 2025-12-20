@@ -1,0 +1,15 @@
+prod:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3312
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+dev:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3311
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"

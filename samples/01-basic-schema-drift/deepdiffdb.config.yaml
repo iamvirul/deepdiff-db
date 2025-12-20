@@ -1,0 +1,22 @@
+prod:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3308
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+dev:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3307
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+ignore:
+  tables: []
+  columns: []
+
+output:
+  dir: "./diff-output"

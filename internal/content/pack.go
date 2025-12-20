@@ -4,27 +4,40 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 )
 
+const (
+	// updateBatchSize is the number of rows to batch together in a single UPDATE statement
+	updateBatchSize = 1000
+	// progressLogThreshold is the minimum number of rows before progress logging is enabled
+	progressLogThreshold = 10000
+	// queryPageSize is the number of rows to fetch per database query to avoid memory issues on large tables
+	queryPageSize = 10000
+)
+
 // GeneratePack builds a SQL migration pack for applying data diffs to prod.
 // GeneratePack builds a SQL migration script that applies the provided data diff to a production database,
 // using the development database as the source of truth for inserted and updated rows.
 // 
-// The generated script contains transactional statements and, for MySQL, temporarily disables and
-// re-enables foreign key checks. For each table with changes, rows identified by primary keys are
-// deleted (for removed and updated entries) and inserted (for added and updated entries) with column
-// values taken from the development database. The script is written to outDir/migration_pack.sql and
-// the returned string is the written file path.
+// The generated script contains:
+// 1. ALTER TABLE statements to add columns missing in prod (from schemaDiff)
+// 2. Transactional statements and, for MySQL, temporarily disables and re-enables foreign key checks
+// 3. For each table with changes, rows identified by primary keys are deleted (for removed and updated entries)
+//    and inserted (for added and updated entries) with column values taken from the development database.
+// Only columns that exist in both prod and dev schemas are included in INSERT statements to handle schema drift.
+// The script is written to outDir/migration_pack.sql and the returned string is the written file path.
 // 
 // Errors are returned if a table lacks a primary key, if row fetching or WHERE-clause construction fails,
 // or if writing the output file fails.
-func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devSchema *schema.Schema, diff DataDiff, ignoreFn func(table, column string) bool, outDir string) (string, error) {
+func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devDatabase string, prodSchema, devSchema *schema.Schema, schemaDiff schema.DiffResult, diff DataDiff, ignoreFn func(table, column string) bool, outDir string) (string, error) {
 	var stmts []string
 	stmts = append(stmts, "BEGIN;")
 	
@@ -33,34 +46,103 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devSche
 		stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 0;")
 	}
 
+	// Generate ALTER TABLE statements for columns missing in prod
+	for _, td := range schemaDiff.Tables {
+		if !td.HasDifferences {
+			continue
+		}
+		// Only process tables that exist in both schemas (skip tables that only exist in dev)
+		_, prodOK := prodSchema.Tables[td.Table]
+		devTbl, devOK := devSchema.Tables[td.Table]
+		if !prodOK || !devOK {
+			continue
+		}
+
+		// Add ALTER TABLE statements for columns missing in prod
+		for _, cd := range td.ColumnDiffs {
+			if cd.MissingInProd {
+				// Skip if column should be ignored
+				if ignoreFn != nil && ignoreFn(td.Table, cd.Column) {
+					continue
+				}
+				// Get column definition from dev schema
+				devCol, ok := devTbl.Columns[cd.Column]
+				if !ok {
+					continue
+				}
+				// Get full column type definition from dev database (includes length, precision, etc.)
+				fullType, err := getFullColumnType(ctx, devDB, prodDriver, devDatabase, td.Table, cd.Column)
+				if err != nil {
+					return "", fmt.Errorf("get column type for %s.%s: %w", td.Table, cd.Column, err)
+				}
+				// Build ALTER TABLE ADD COLUMN statement with full type definition
+				alterStmt := buildAlterTableAddColumn(prodDriver, td.Table, cd.Column, fullType, devCol.IsNullable)
+				stmts = append(stmts, alterStmt)
+			}
+		}
+	}
+
+	// Track which tables need UPDATE statements for new columns (after INSERT)
+	tableColumnsToUpdate := make(map[string][]string)
+	for _, td := range schemaDiff.Tables {
+		if !td.HasDifferences {
+			continue
+		}
+		_, prodOK := prodSchema.Tables[td.Table]
+		devTbl, devOK := devSchema.Tables[td.Table]
+		if !prodOK || !devOK {
+			continue
+		}
+		var columnsToAdd []string
+		for _, cd := range td.ColumnDiffs {
+			if cd.MissingInProd {
+				if ignoreFn != nil && ignoreFn(td.Table, cd.Column) {
+					continue
+				}
+				if _, exists := devTbl.Columns[cd.Column]; exists {
+					columnsToAdd = append(columnsToAdd, cd.Column)
+				}
+			}
+		}
+		if len(columnsToAdd) > 0 {
+			tableColumnsToUpdate[td.Table] = columnsToAdd
+		}
+	}
+
 	for _, td := range diff.Tables {
 		if len(td.Added)+len(td.Removed)+len(td.Updated) == 0 {
 			continue
 		}
-		tbl, ok := devSchema.Tables[td.Table]
+		devTbl, ok := devSchema.Tables[td.Table]
 		if !ok {
 			continue
 		}
-		pk := tbl.PrimaryKey
-		if len(pk) == 0 {
-			return "", fmt.Errorf("table %s lacks primary key; cannot build pack", tbl.Name)
+		prodTbl, ok := prodSchema.Tables[td.Table]
+		if !ok {
+			// Skip tables that don't exist in prod
+			continue
 		}
-		cols := orderedColumns(tbl, ignoreFn)
+		pk := devTbl.PrimaryKey
+		if len(pk) == 0 {
+			return "", fmt.Errorf("table %s lacks primary key; cannot build pack", devTbl.Name)
+		}
+		// Only include columns that exist in both schemas
+		cols := orderedColumnsIntersection(devTbl, prodTbl, ignoreFn)
 
 		// Deletes for removed/updated
 		for _, key := range append(td.Removed, td.Updated...) {
 			where, err := keyToWhere(prodDriver, pk, key)
 			if err != nil {
-				return "", fmt.Errorf("table %s delete where: %w", tbl.Name, err)
+				return "", fmt.Errorf("table %s delete where: %w", devTbl.Name, err)
 			}
-			stmts = append(stmts, fmt.Sprintf("DELETE FROM %s WHERE %s;", quoteIdent(prodDriver, tbl.Name), where))
+			stmts = append(stmts, fmt.Sprintf("DELETE FROM %s WHERE %s;", quoteIdent(prodDriver, devTbl.Name), where))
 		}
 
 		// Inserts (for added) and re-inserts (for updated)
 		for _, key := range append(td.Added, td.Updated...) {
-			rowVals, err := fetchRow(ctx, devDB, prodDriver, tbl, cols, pk, key)
+			rowVals, err := fetchRow(ctx, devDB, prodDriver, devTbl, cols, pk, key)
 			if err != nil {
-				return "", fmt.Errorf("fetch row %s.%s: %w", tbl.Name, key, err)
+				return "", fmt.Errorf("fetch row %s.%s: %w", devTbl.Name, key, err)
 			}
 			valLiterals := make([]string, len(cols))
 			for i, v := range rowVals {
@@ -71,11 +153,36 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devSche
 				colsQuoted[i] = quoteIdent(prodDriver, c)
 			}
 			stmts = append(stmts, fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s);",
-				quoteIdent(prodDriver, tbl.Name),
+				quoteIdent(prodDriver, devTbl.Name),
 				strings.Join(colsQuoted, ", "),
 				strings.Join(valLiterals, ", "),
 			))
 		}
+	}
+
+	// Generate UPDATE statements for new columns AFTER INSERT
+	// (INSERT statements don't include new columns, so we need to update them after insertion)
+	for tableName, columnsToAdd := range tableColumnsToUpdate {
+		devTbl, ok := devSchema.Tables[tableName]
+		if !ok {
+			continue
+		}
+		// Track which rows to skip (only Removed rows, since they won't exist after deletion)
+		rowsToSkipUpdate := make(map[string]bool)
+		for _, dataDiffTable := range diff.Tables {
+			if dataDiffTable.Table == tableName {
+				// Only skip Removed rows (they won't exist after deletion)
+				for _, key := range dataDiffTable.Removed {
+					rowsToSkipUpdate[key] = true
+				}
+			}
+		}
+		
+		updateStmts, err := generateUpdateStatementsForNewColumns(ctx, devDB, prodDriver, tableName, devTbl, columnsToAdd, rowsToSkipUpdate, ignoreFn)
+		if err != nil {
+			return "", fmt.Errorf("generate update statements for %s: %w", tableName, err)
+		}
+		stmts = append(stmts, updateStmts...)
 	}
 
 	// Re-enable foreign key checks for MySQL
@@ -249,6 +356,436 @@ func literal(v any) string {
 // It performs only the quote-doubling and does not add surrounding quotes.
 func escape(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
+}
+
+// getFullColumnType queries the dev database to get the complete column type definition
+// including length, precision, and scale. This preserves the exact column definition from dev.
+// For PostgreSQL, the database parameter is used as the schema name. If empty, the function
+// queries information_schema to find the table's schema, defaulting to "public" if not found.
+func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tableName, columnName string) (string, error) {
+	driver = strings.ToLower(driver)
+	
+	switch driver {
+	case "mysql":
+		// Query information_schema to get COLUMN_TYPE which includes full definition
+		var fullType string
+		err := devDB.QueryRowContext(ctx, `
+			SELECT COLUMN_TYPE
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = ?
+			  AND TABLE_NAME = ?
+			  AND COLUMN_NAME = ?
+		`, database, tableName, columnName).Scan(&fullType)
+		if err != nil {
+			return "", fmt.Errorf("query column type: %w", err)
+		}
+		return fullType, nil
+		
+	case "postgres", "postgresql":
+		// For PostgreSQL, determine the schema to use
+		// Priority: 1) explicit database parameter (used as schema), 2) query table's actual schema, 3) default to "public"
+		var schemaName string
+		if database != "" {
+			schemaName = database
+		} else {
+			// Query to find which schema contains this table
+			err := devDB.QueryRowContext(ctx, `
+				SELECT table_schema
+				FROM information_schema.tables
+				WHERE table_name = $1
+				ORDER BY table_schema = 'public' DESC, table_schema
+				LIMIT 1
+			`, tableName).Scan(&schemaName)
+			if err != nil {
+				return "", fmt.Errorf("could not determine schema for table %s: %w (hint: provide explicit schema via database parameter)", tableName, err)
+			}
+		}
+		
+		// Query information_schema to get full type definition using explicit schema
+		// Note: Integer types (integer, bigint, smallint, serial types) have numeric_precision
+		// but don't accept precision notation, so we exclude precision/scale for these types.
+		var fullType string
+		err := devDB.QueryRowContext(ctx, `
+			SELECT 
+				CASE 
+					WHEN c.data_type = 'ARRAY' THEN c.udt_name || '[]'
+					WHEN c.character_maximum_length IS NOT NULL THEN 
+						c.udt_name || '(' || c.character_maximum_length || ')'
+					WHEN c.numeric_precision IS NOT NULL AND c.numeric_scale IS NOT NULL 
+						AND c.data_type NOT IN ('integer', 'bigint', 'smallint', 'serial', 'bigserial', 'smallserial') THEN
+						c.udt_name || '(' || c.numeric_precision || ',' || c.numeric_scale || ')'
+					WHEN c.numeric_precision IS NOT NULL 
+						AND c.data_type NOT IN ('integer', 'bigint', 'smallint', 'serial', 'bigserial', 'smallserial') THEN
+						c.udt_name || '(' || c.numeric_precision || ')'
+					ELSE c.udt_name
+				END AS full_type
+			FROM information_schema.columns c
+			WHERE c.table_schema = $1
+			  AND c.table_name = $2
+			  AND c.column_name = $3
+		`, schemaName, tableName, columnName).Scan(&fullType)
+		if err != nil {
+			return "", fmt.Errorf("query column type for schema %s, table %s, column %s: %w", schemaName, tableName, columnName, err)
+		}
+		return fullType, nil
+		
+	case "sqlite":
+		// SQLite PRAGMA table_info returns the full type definition
+		// Note: PRAGMA must be called directly, not in a subquery
+		rows, err := devDB.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", quoteIdent(driver, tableName)))
+		if err != nil {
+			return "", fmt.Errorf("query table info: %w", err)
+		}
+		defer rows.Close()
+		
+		for rows.Next() {
+			var (
+				cid       int
+				name      string
+				ctype     string
+				notnull   int
+				dfltValue any
+				pk        int
+			)
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+				return "", fmt.Errorf("scan column info: %w", err)
+			}
+			if name == columnName {
+				return ctype, nil
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return "", fmt.Errorf("iterate columns: %w", err)
+		}
+		return "", fmt.Errorf("column %s not found in table %s", columnName, tableName)
+		
+	default:
+		return "", fmt.Errorf("unsupported driver: %s", driver)
+	}
+}
+
+// generateUpdateStatementsForNewColumns generates batched UPDATE statements to set values for newly added columns
+// from the dev database. It uses CASE expressions to batch multiple rows into single UPDATE statements for efficiency.
+// Rows in skipKeys will be skipped (they'll be updated via DELETE/INSERT).
+func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, driver, tableName string, devTbl schema.Table, newColumns []string, skipKeys map[string]bool, ignoreFn func(table, column string) bool) ([]string, error) {
+	if len(devTbl.PrimaryKey) == 0 {
+		return nil, fmt.Errorf("table %s lacks primary key", tableName)
+	}
+	
+	// Get all rows from dev database for this table
+	// Build column list: primary keys + new columns (to fetch values)
+	allCols := append([]string{}, devTbl.PrimaryKey...)
+	for _, newCol := range newColumns {
+		// Check if column exists in dev table
+		if _, exists := devTbl.Columns[newCol]; exists {
+			allCols = append(allCols, newCol)
+		}
+	}
+	
+	if len(allCols) == 0 {
+		return nil, fmt.Errorf("no columns to select for table %s", tableName)
+	}
+	
+	// Build index map for column positions
+	colIndex := make(map[string]int)
+	for i, col := range allCols {
+		colIndex[col] = i
+	}
+	
+	// Batch data structures
+	type batchRow struct {
+		key      string
+		pkValues []any
+		values   map[string]any // column name -> value
+	}
+	
+	var batch []batchRow
+	var stmts []string
+	rowCount := 0
+	totalRows := 0
+	
+	// Helper to build cursor-based WHERE clause for pagination
+	buildCursorWhere := func(lastPKValues []any) string {
+		if len(lastPKValues) == 0 {
+			return ""
+		}
+		// For composite keys, use lexicographic comparison: (pk1 > v1) OR (pk1 = v1 AND pk2 > v2) OR ...
+		// For single key, just: pk1 > v1
+		var conditions []string
+		for i := 0; i < len(devTbl.PrimaryKey); i++ {
+			var parts []string
+			for j := 0; j < i; j++ {
+				parts = append(parts, fmt.Sprintf("%s = %s", quoteIdent(driver, devTbl.PrimaryKey[j]), literal(lastPKValues[j])))
+			}
+			parts = append(parts, fmt.Sprintf("%s > %s", quoteIdent(driver, devTbl.PrimaryKey[i]), literal(lastPKValues[i])))
+			conditions = append(conditions, "("+strings.Join(parts, " AND ")+")")
+		}
+		return "WHERE " + strings.Join(conditions, " OR ")
+	}
+	
+	// Helper to flush current batch
+	flushBatch := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		
+		// Build CASE expressions for each new column
+		var setParts []string
+		for _, newCol := range newColumns {
+			if _, exists := devTbl.Columns[newCol]; !exists {
+				continue
+			}
+			
+			// Build CASE expression: CASE WHEN pk_match THEN val1 WHEN pk_match2 THEN val2 ... ELSE col END
+			var caseParts []string
+			for _, row := range batch {
+				// Build primary key match condition
+				var pkConditions []string
+				for i, pkCol := range devTbl.PrimaryKey {
+					pkConditions = append(pkConditions, fmt.Sprintf("%s = %s", quoteIdent(driver, pkCol), literal(row.pkValues[i])))
+				}
+				pkMatch := strings.Join(pkConditions, " AND ")
+				
+				// Get value for this column
+				val := row.values[newCol]
+				caseParts = append(caseParts, fmt.Sprintf("WHEN %s THEN %s", pkMatch, literal(val)))
+			}
+			
+			// Complete CASE expression: CASE ... ELSE col END
+			caseExpr := fmt.Sprintf("CASE %s ELSE %s END", strings.Join(caseParts, " "), quoteIdent(driver, newCol))
+			setParts = append(setParts, fmt.Sprintf("%s = %s", quoteIdent(driver, newCol), caseExpr))
+		}
+		
+		if len(setParts) == 0 {
+			return nil
+		}
+		
+		// Build WHERE clause with all primary keys in batch
+		var whereParts []string
+		for _, row := range batch {
+			var pkConditions []string
+			for i, pkCol := range devTbl.PrimaryKey {
+				pkConditions = append(pkConditions, fmt.Sprintf("%s = %s", quoteIdent(driver, pkCol), literal(row.pkValues[i])))
+			}
+			whereParts = append(whereParts, "("+strings.Join(pkConditions, " AND ")+")")
+		}
+		whereClause := strings.Join(whereParts, " OR ")
+		
+		// Generate batched UPDATE statement
+		updateStmt := fmt.Sprintf("UPDATE %s SET %s WHERE %s;",
+			quoteIdent(driver, tableName),
+			strings.Join(setParts, ", "),
+			whereClause,
+		)
+		stmts = append(stmts, updateStmt)
+		
+		// Log progress for large datasets
+		if totalRows >= progressLogThreshold {
+			log.Printf("Generated batch %d for table %s (%d rows processed)", len(stmts), tableName, totalRows)
+		}
+		
+		batch = batch[:0] // Clear batch but keep capacity
+		rowCount = 0
+		return nil
+	}
+	
+	// Process rows using cursor-based pagination to avoid loading all rows into memory
+	quotedCols := make([]string, len(allCols))
+	for i, c := range allCols {
+		quotedCols[i] = quoteIdent(driver, c)
+	}
+	quotedPK := make([]string, len(devTbl.PrimaryKey))
+	for i, c := range devTbl.PrimaryKey {
+		quotedPK[i] = quoteIdent(driver, c)
+	}
+	
+	dest := make([]any, len(allCols))
+	for i := range dest {
+		var holder any
+		dest[i] = &holder
+	}
+	
+	var lastPKValues []any // Track last primary key for cursor-based pagination
+	
+	for {
+		// Build query with cursor-based pagination
+		baseQuery := fmt.Sprintf("SELECT %s FROM %s",
+			strings.Join(quotedCols, ", "),
+			quoteIdent(driver, tableName),
+		)
+		orderBy := " ORDER BY " + strings.Join(quotedPK, ", ")
+		limit := fmt.Sprintf(" LIMIT %d", queryPageSize)
+		
+		var query string
+		if len(lastPKValues) > 0 {
+			cursorWhere := buildCursorWhere(lastPKValues)
+			query = baseQuery + " " + cursorWhere + orderBy + limit
+		} else {
+			query = baseQuery + orderBy + limit
+		}
+		
+		rows, err := devDB.QueryContext(ctx, query)
+		if err != nil {
+			return nil, fmt.Errorf("query dev rows: %w", err)
+		}
+		
+		pageRowCount := 0
+		hasMoreRows := false
+		
+		for rows.Next() {
+			if err := rows.Scan(dest...); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan row: %w", err)
+			}
+			
+			// Dereference values
+			values := make([]any, len(allCols))
+			for i, v := range dest {
+				values[i] = *(v.(*any))
+			}
+			
+			// Build primary key
+			key, err := buildKey(allCols, values, devTbl.PrimaryKey)
+			if err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("build key: %w", err)
+			}
+			
+			// Skip rows that will be updated via DELETE/INSERT
+			if skipKeys[key] {
+				continue
+			}
+			
+			// Extract PK values
+			pkValues := make([]any, len(devTbl.PrimaryKey))
+			for i, pkCol := range devTbl.PrimaryKey {
+				idx := colIndex[pkCol]
+				pkValues[i] = values[idx]
+			}
+			
+			// Extract values for new columns
+			rowValues := make(map[string]any)
+			for _, newCol := range newColumns {
+				idx, ok := colIndex[newCol]
+				if !ok {
+					continue
+				}
+				rowValues[newCol] = values[idx]
+			}
+			
+			// Add to batch
+			batch = append(batch, batchRow{
+				key:      key,
+				pkValues: pkValues,
+				values:   rowValues,
+			})
+			rowCount++
+			totalRows++
+			pageRowCount++
+			
+			// Update last PK values for cursor
+			lastPKValues = make([]any, len(pkValues))
+			copy(lastPKValues, pkValues)
+			
+			// Flush batch when it reaches the batch size
+			if rowCount >= updateBatchSize {
+				if err := flushBatch(); err != nil {
+					rows.Close()
+					return nil, err
+				}
+			}
+		}
+		
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("iterate rows: %w", err)
+		}
+		rows.Close()
+		
+		// If we got fewer rows than the page size, we've reached the end
+		if pageRowCount < queryPageSize {
+			break
+		}
+		
+		// If we got exactly the page size, there might be more rows
+		hasMoreRows = pageRowCount == queryPageSize
+		if !hasMoreRows {
+			break
+		}
+	}
+	
+	// Flush remaining batch
+	if err := flushBatch(); err != nil {
+		return nil, err
+	}
+	
+	// Final progress log if we processed many rows
+	if totalRows >= progressLogThreshold {
+		log.Printf("Completed table %s: %d total rows processed in %d batches", tableName, totalRows, len(stmts))
+	}
+	
+	return stmts, nil
+}
+
+// buildAlterTableAddColumn generates an ALTER TABLE ADD COLUMN statement for the given column.
+// It uses the full type definition from the dev database to preserve exact column definitions.
+func buildAlterTableAddColumn(driver, tableName, columnName, fullType string, isNullable bool) string {
+	colName := quoteIdent(driver, columnName)
+	tableNameQuoted := quoteIdent(driver, tableName)
+	
+	// Build column definition with the full type from dev database
+	colDef := colName + " " + fullType
+	if !isNullable {
+		colDef += " NOT NULL"
+	}
+	
+	// Driver-specific handling
+	switch driver {
+	case "mysql":
+		// MySQL: ALTER TABLE table ADD COLUMN col TYPE [NOT NULL]
+		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s;", tableNameQuoted, colDef)
+	case "postgres", "postgresql":
+		// PostgreSQL: ALTER TABLE table ADD COLUMN col TYPE [NOT NULL]
+		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s;", tableNameQuoted, colDef)
+	case "sqlite":
+		// SQLite: ALTER TABLE table ADD COLUMN col TYPE [NOT NULL]
+		// Note: SQLite has limited ALTER TABLE support, but ADD COLUMN is supported
+		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s;", tableNameQuoted, colDef)
+	default:
+		// Generic SQL
+		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s;", tableNameQuoted, colDef)
+	}
+}
+
+// orderedColumnsIntersection returns an ordered list of column names that exist in both devTbl and prodTbl.
+// Primary key columns are always included first in their original order.
+// Non-primary columns that exist in both tables follow, sorted alphabetically, excluding any for which
+// ignoreFn(table, column) returns true. If ignoreFn is nil, no non-primary columns are excluded.
+func orderedColumnsIntersection(devTbl, prodTbl schema.Table, ignoreFn func(table, column string) bool) []string {
+	var cols []string
+	// Ensure primary keys first (and always included)
+	cols = append(cols, devTbl.PrimaryKey...)
+	
+	var nonPK []string
+	// Only include columns that exist in both schemas
+	for name := range devTbl.Columns {
+		// Skip primary key columns (already added)
+		if contains(devTbl.PrimaryKey, name) {
+			continue
+		}
+		// Skip if column doesn't exist in prod schema
+		if _, exists := prodTbl.Columns[name]; !exists {
+			continue
+		}
+		// Skip if ignored
+		if ignoreFn != nil && ignoreFn(devTbl.Name, name) {
+			continue
+		}
+		nonPK = append(nonPK, name)
+	}
+	sort.Strings(nonPK)
+	cols = append(cols, nonPK...)
+	return cols
 }
 
 // writeFile writes content to the file at path using file mode 0644.

@@ -432,7 +432,8 @@ output:
 
 		dataDiff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
 
-		packPath, err := content.GeneratePack(ctx, "mysql", devDB, devSchema, dataDiff, ignoreColumn, outputDir)
+		schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+		packPath, err := content.GeneratePack(ctx, "mysql", devDB, "dev_db", prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, outputDir)
 		if err != nil {
 			t.Fatalf("failed to generate pack: %v", err)
 		}
@@ -519,7 +520,8 @@ output:
 
 		dataDiff, _ := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
 
-		packPath, err := content.GeneratePack(ctx, "mysql", devDB, devSchema, dataDiff, ignoreColumn, outputDir)
+		schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+		packPath, err := content.GeneratePack(ctx, "mysql", devDB, "dev_db", prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, outputDir)
 		if err != nil {
 			t.Fatalf("failed to generate pack: %v", err)
 		}
@@ -798,7 +800,7 @@ func TestIntegration_PostgreSQL_FullWorkflow(t *testing.T) {
 	}
 
 	// Generate pack
-	packPath, err := content.GeneratePack(ctx, "postgres", devDB, devSchema, dataDiff, ignoreColumn, outputDir)
+	packPath, err := content.GeneratePack(ctx, "postgres", devDB, "dev_db", prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, outputDir)
 	if err != nil {
 		t.Fatalf("failed to generate pack: %v", err)
 	}
@@ -992,7 +994,7 @@ func TestIntegration_AllReportsGenerated(t *testing.T) {
 	dataDiff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
 
 	// Generate pack
-	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, devSchema, dataDiff, ignoreColumn, outputDir)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, outputDir)
 	if err != nil {
 		t.Fatalf("failed to generate pack: %v", err)
 	}
