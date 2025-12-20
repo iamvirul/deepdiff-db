@@ -799,7 +799,6 @@ func TestIntegration_PostgreSQL_FullWorkflow(t *testing.T) {
 	}
 
 	// Generate pack
-	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 	packPath, err := content.GeneratePack(ctx, "postgres", devDB, "dev_db", prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, outputDir)
 	if err != nil {
 		t.Fatalf("failed to generate pack: %v", err)
