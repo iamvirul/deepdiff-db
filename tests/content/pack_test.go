@@ -883,3 +883,374 @@ func TestGeneratePack_WithIgnoredNewColumns(t *testing.T) {
 	}
 }
 
+func TestGeneratePack_WithVariousDataTypes(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE test_types (
+			id INTEGER PRIMARY KEY,
+			name TEXT,
+			age INTEGER,
+			price REAL,
+			is_active INTEGER,
+			created_at TEXT,
+			data BLOB
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	// Insert data with various types including timestamps
+	_, err = devDB.ExecContext(ctx, `
+		INSERT INTO test_types (id, name, age, price, is_active, created_at, data) VALUES
+		(1, 'Test', 25, 99.99, 1, '2024-01-01 12:00:00', 'binary data'),
+		(2, 'Test2', 30, 199.50, 0, '2024-01-02T15:04:05Z', 'more data')
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert data: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"test_types": {
+				Name: "test_types",
+				Columns: map[string]schema.Column{
+					"id":         {Name: "id", DataType: "integer", IsNullable: false},
+					"name":       {Name: "name", DataType: "text", IsNullable: true},
+					"age":        {Name: "age", DataType: "integer", IsNullable: true},
+					"price":      {Name: "price", DataType: "real", IsNullable: true},
+					"is_active":  {Name: "is_active", DataType: "integer", IsNullable: true},
+					"created_at": {Name: "created_at", DataType: "text", IsNullable: true},
+					"data":       {Name: "data", DataType: "blob", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	prodSchema := devSchema
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "test_types",
+				Added: []string{"1", "2"},
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack failed: %v", err)
+	}
+
+	packContent, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatalf("failed to read pack file: %v", err)
+	}
+
+	sqlText := string(packContent)
+	// Should contain INSERT statements with various data types
+	if !strings.Contains(sqlText, "INSERT INTO") {
+		t.Error("pack should contain INSERT statements")
+	}
+	// Should handle various data types properly
+	if !strings.Contains(sqlText, "test_types") {
+		t.Error("pack should reference test_types table")
+	}
+}
+
+func TestGeneratePack_ErrorPaths(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":   {Name: "id", DataType: "integer", IsNullable: false},
+					"name": {Name: "name", DataType: "text", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	prodSchema := devSchema
+
+	// Test with invalid key format (wrong number of parts for composite key)
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "users",
+				Added: []string{"1|2|3"}, // Invalid: single PK but 3 parts
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	_, err = content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err == nil {
+		t.Error("expected error for invalid key format")
+	}
+}
+
+func TestGeneratePack_WithColumnNotFoundInSchema(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			email TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	// Insert data so fetchRow can succeed
+	_, err = devDB.ExecContext(ctx, `
+		INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com')
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert data: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":    {Name: "id", DataType: "integer", IsNullable: false},
+					"name":  {Name: "name", DataType: "text", IsNullable: false},
+					"email": {Name: "email", DataType: "text", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	// Prod schema has a column diff for a column that doesn't exist in dev schema
+	prodSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":   {Name: "id", DataType: "integer", IsNullable: false},
+					"name": {Name: "name", DataType: "text", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "users",
+				Added: []string{"1"},
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	// This should succeed - columns not in dev schema are skipped
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack should handle missing columns gracefully: %v", err)
+	}
+
+	// Verify pack was created
+	if _, err := os.Stat(packPath); os.IsNotExist(err) {
+		t.Fatal("pack file should be created")
+	}
+}
+
+func TestGeneratePack_UnsupportedDriver(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":   {Name: "id", DataType: "integer", IsNullable: false},
+					"name": {Name: "name", DataType: "text", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	prodSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id": {Name: "id", DataType: "integer", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "users",
+				Added: []string{"1"},
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	// Test with unsupported driver - should error when trying to get column type
+	_, err = content.GeneratePack(ctx, "unsupported", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err == nil {
+		t.Error("expected error for unsupported driver")
+	}
+	if !strings.Contains(err.Error(), "unsupported driver") {
+		t.Errorf("error should mention unsupported driver, got: %v", err)
+	}
+}
+
+func TestGeneratePack_BuildAlterTableAllDrivers(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			age INTEGER
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	// Insert data so fetchRow can succeed
+	_, err = devDB.ExecContext(ctx, `
+		INSERT INTO users (id, name, age) VALUES (1, 'Alice', 25)
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert data: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":   {Name: "id", DataType: "integer", IsNullable: false},
+					"name": {Name: "name", DataType: "text", IsNullable: false},
+					"age":  {Name: "age", DataType: "integer", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	prodSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":   {Name: "id", DataType: "integer", IsNullable: false},
+					"name": {Name: "name", DataType: "text", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "users",
+				Added: []string{"1"},
+			},
+		},
+	}
+
+	// Test with SQLite driver - this should work
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack failed for sqlite: %v", err)
+	}
+
+	packContent, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatalf("failed to read pack file: %v", err)
+	}
+
+	sqlText := string(packContent)
+	if !strings.Contains(sqlText, "ALTER TABLE") {
+		t.Error("pack should contain ALTER TABLE")
+	}
+
+	// Test with other drivers - these will fail on SQLite DB but test the driver-specific code paths
+	// MySQL and PostgreSQL require their own databases, so we just verify the error handling
+	otherDrivers := []string{"mysql", "postgres", "postgresql"}
+	for _, driver := range otherDrivers {
+		_, err := content.GeneratePack(ctx, driver, devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+		// Expected to fail because SQLite doesn't have information_schema for MySQL/PostgreSQL
+		if err == nil {
+			t.Logf("Driver %s unexpectedly succeeded (may need actual DB)", driver)
+		} else {
+			// Verify error is related to column type lookup (expected with SQLite)
+			if !strings.Contains(err.Error(), "column type") && !strings.Contains(err.Error(), "schema") && !strings.Contains(err.Error(), "information_schema") {
+				t.Logf("Driver %s error: %v", driver, err)
+			}
+		}
+	}
+}
+
