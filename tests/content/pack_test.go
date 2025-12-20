@@ -59,6 +59,9 @@ func TestGeneratePack(t *testing.T) {
 		},
 	}
 
+	// For unit tests, prodSchema matches devSchema
+	prodSchema := devSchema
+
 	diff := content.DataDiff{
 		Tables: []content.TableDataDiff{
 			{
@@ -70,7 +73,8 @@ func TestGeneratePack(t *testing.T) {
 		},
 	}
 
-	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, devSchema, diff, nil, tmpDir)
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
 	if err != nil {
 		t.Fatalf("content.content.GeneratePack failed: %v", err)
 	}
@@ -124,13 +128,17 @@ func TestGeneratePack_NoChanges(t *testing.T) {
 		Tables: map[string]schema.Table{},
 	}
 
+	// For unit tests, prodSchema matches devSchema
+	prodSchema := devSchema
+
 	diff := content.DataDiff{
 		Tables: []content.TableDataDiff{
 			{Table: "users"}, // No changes
 		},
 	}
 
-	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, devSchema, diff, nil, tmpDir)
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
 	if err != nil {
 		t.Fatalf("content.content.GeneratePack failed: %v", err)
 	}
@@ -192,6 +200,9 @@ func TestGeneratePack_WithIgnore(t *testing.T) {
 		},
 	}
 
+	// For unit tests, prodSchema matches devSchema
+	prodSchema := devSchema
+
 	diff := content.DataDiff{
 		Tables: []content.TableDataDiff{
 			{
@@ -202,7 +213,8 @@ func TestGeneratePack_WithIgnore(t *testing.T) {
 	}
 
 	ignoreFn := content.IgnoreMatcher([]string{"*.updated_at"})
-	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, devSchema, diff, ignoreFn, tmpDir)
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, prodSchema, devSchema, schemaDiff, diff, ignoreFn, tmpDir)
 	if err != nil {
 		t.Fatalf("content.content.GeneratePack failed: %v", err)
 	}
@@ -253,7 +265,9 @@ func TestGeneratePack_NoPrimaryKey(t *testing.T) {
 		},
 	}
 
-	_, err = content.GeneratePack(ctx, "sqlite", devDB, devSchema, diff, nil, tmpDir)
+	prodSchema := devSchema
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	_, err = content.GeneratePack(ctx, "sqlite", devDB, prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
 	if err == nil {
 		t.Error("expected error for table without primary key")
 	}
@@ -280,7 +294,9 @@ func TestGeneratePack_TableNotFound(t *testing.T) {
 	}
 
 	// content.content.GeneratePack skips tables not in schema, so it should succeed but produce empty pack
-	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, devSchema, diff, nil, tmpDir)
+	prodSchema := devSchema
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "sqlite", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
 	if err != nil {
 		t.Fatalf("content.content.GeneratePack should not error for nonexistent table (it skips it): %v", err)
 	}
