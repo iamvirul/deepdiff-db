@@ -1,11 +1,11 @@
-package main
+package schema_test
 
 import (
-	"github.com/iamvirul/deepdiff-db/internal/schema"
-
 	"context"
 	"database/sql"
 	"testing"
+
+	"github.com/iamvirul/deepdiff-db/internal/schema"
 
 	_ "modernc.org/sqlite"
 )

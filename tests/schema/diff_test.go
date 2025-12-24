@@ -1,9 +1,9 @@
-package main
+package schema_test
 
 import (
-	"github.com/iamvirul/deepdiff-db/internal/schema"
-
 	"testing"
+
+	"github.com/iamvirul/deepdiff-db/internal/schema"
 )
 
 func TestDiffSchemas(t *testing.T) {

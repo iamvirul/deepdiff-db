@@ -1,4 +1,4 @@
-package main
+package schema_test
 
 import (
 	"strings"

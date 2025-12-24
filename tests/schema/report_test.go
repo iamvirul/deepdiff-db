@@ -1,12 +1,12 @@
-package main
+package schema_test
 
 import (
-	"github.com/iamvirul/deepdiff-db/internal/schema"
-
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/iamvirul/deepdiff-db/internal/schema"
 )
 
 func TestWriteReports(t *testing.T) {
