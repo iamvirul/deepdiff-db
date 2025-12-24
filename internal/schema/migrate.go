@@ -200,16 +200,39 @@ func generateModifyColumn(tableName string, colDiff ColumnDiff, driver string) (
 	}
 }
 
-// quoteIdentifier quotes a database identifier (table or column name) according to the driver's syntax
+// quoteIdentifier quotes a database identifier (table or column name) according to the driver's syntax.
+// It handles schema-qualified names (e.g., "schema.table") and escapes embedded quote characters.
 func quoteIdentifier(identifier string, driver string) string {
+	var quoteChar string
+	var escapeQuote func(string) string
+
 	switch driver {
 	case "mysql":
-		return fmt.Sprintf("`%s`", identifier)
-	case "postgres", "postgresql":
-		return fmt.Sprintf("\"%s\"", identifier)
-	case "sqlite":
-		return fmt.Sprintf("\"%s\"", identifier)
+		quoteChar = "`"
+		escapeQuote = func(s string) string {
+			return strings.ReplaceAll(s, "`", "``")
+		}
+	case "postgres", "postgresql", "sqlite":
+		quoteChar = "\""
+		escapeQuote = func(s string) string {
+			return strings.ReplaceAll(s, "\"", "\"\"")
+		}
 	default:
+		// Unknown driver - return identifier as-is
 		return identifier
 	}
+
+	// Split on '.' to handle schema-qualified names (e.g., "schema.table")
+	parts := strings.Split(identifier, ".")
+	quotedParts := make([]string, len(parts))
+
+	for i, part := range parts {
+		// Escape embedded quote characters by doubling them
+		escaped := escapeQuote(part)
+		// Wrap in quotes
+		quotedParts[i] = quoteChar + escaped + quoteChar
+	}
+
+	// Rejoin with '.'
+	return strings.Join(quotedParts, ".")
 }

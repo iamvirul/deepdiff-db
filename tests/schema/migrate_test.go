@@ -234,3 +234,162 @@ func TestGenerateMigration_SQLiteLimitations(t *testing.T) {
 func boolPtr(b bool) *bool {
 	return &b
 }
+
+func TestQuoteIdentifier_MySQL(t *testing.T) {
+	tests := []struct {
+		name       string
+		identifier string
+		want       string
+	}{
+		{
+			name:       "simple identifier",
+			identifier: "users",
+			want:       "`users`",
+		},
+		{
+			name:       "identifier with backtick",
+			identifier: "user`table",
+			want:       "`user``table`",
+		},
+		{
+			name:       "schema-qualified name",
+			identifier: "myschema.users",
+			want:       "`myschema`.`users`",
+		},
+		{
+			name:       "schema-qualified with quotes",
+			identifier: "my`schema.user`table",
+			want:       "`my``schema`.`user``table`",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Access the internal quoteIdentifier by generating a migration
+			// and checking the output contains properly quoted identifiers
+			diff := schema.DiffResult{
+				Tables: []schema.TableDiff{
+					{
+						Name:           tt.identifier,
+						HasDifferences: true,
+						AddedColumns: []schema.Column{
+							{Name: "test_col", DataType: "VARCHAR(255)", IsNullable: true},
+						},
+					},
+				},
+			}
+
+			sql, err := schema.GenerateMigration(diff, "mysql")
+			if err != nil {
+				t.Fatalf("GenerateMigration failed: %v", err)
+			}
+
+			if !strings.Contains(sql, tt.want) {
+				t.Errorf("Expected SQL to contain %q, but got:\n%s", tt.want, sql)
+			}
+		})
+	}
+}
+
+func TestQuoteIdentifier_PostgreSQL(t *testing.T) {
+	tests := []struct {
+		name       string
+		identifier string
+		want       string
+	}{
+		{
+			name:       "simple identifier",
+			identifier: "users",
+			want:       "\"users\"",
+		},
+		{
+			name:       "identifier with double quote",
+			identifier: "user\"table",
+			want:       "\"user\"\"table\"",
+		},
+		{
+			name:       "schema-qualified name",
+			identifier: "myschema.users",
+			want:       "\"myschema\".\"users\"",
+		},
+		{
+			name:       "schema-qualified with quotes",
+			identifier: "my\"schema.user\"table",
+			want:       "\"my\"\"schema\".\"user\"\"table\"",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diff := schema.DiffResult{
+				Tables: []schema.TableDiff{
+					{
+						Name:           tt.identifier,
+						HasDifferences: true,
+						AddedColumns: []schema.Column{
+							{Name: "test_col", DataType: "VARCHAR(255)", IsNullable: true},
+						},
+					},
+				},
+			}
+
+			sql, err := schema.GenerateMigration(diff, "postgresql")
+			if err != nil {
+				t.Fatalf("GenerateMigration failed: %v", err)
+			}
+
+			if !strings.Contains(sql, tt.want) {
+				t.Errorf("Expected SQL to contain %q, but got:\n%s", tt.want, sql)
+			}
+		})
+	}
+}
+
+func TestQuoteIdentifier_SQLite(t *testing.T) {
+	tests := []struct {
+		name       string
+		identifier string
+		want       string
+	}{
+		{
+			name:       "simple identifier",
+			identifier: "users",
+			want:       "\"users\"",
+		},
+		{
+			name:       "identifier with double quote",
+			identifier: "user\"table",
+			want:       "\"user\"\"table\"",
+		},
+		{
+			name:       "schema-qualified name",
+			identifier: "main.users",
+			want:       "\"main\".\"users\"",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diff := schema.DiffResult{
+				Tables: []schema.TableDiff{
+					{
+						Name:           tt.identifier,
+						HasDifferences: true,
+						AddedColumns: []schema.Column{
+							{Name: "test_col", DataType: "TEXT", IsNullable: true},
+						},
+					},
+				},
+			}
+
+			sql, err := schema.GenerateMigration(diff, "sqlite")
+			if err != nil {
+				t.Fatalf("GenerateMigration failed: %v", err)
+			}
+
+			if !strings.Contains(sql, tt.want) {
+				t.Errorf("Expected SQL to contain %q, but got:\n%s", tt.want, sql)
+			}
+		})
+	}
+}
