@@ -156,19 +156,28 @@ func generateModifyColumn(tableName string, colDiff ColumnDiff, driver string) (
 	switch driver {
 	case "mysql":
 		// MySQL uses MODIFY COLUMN
-		// We need to specify the full column definition
+		// We need to specify the full column definition including NULL/NOT NULL
 		dataType := colDiff.DevType
 		if dataType == "" {
 			dataType = colDiff.ProdType
 		}
 
-		nullClause := ""
+		// Determine nullable constraint - prefer DevNullable, fall back to ProdNullable
+		var nullable *bool
 		if colDiff.DevNullable != nil {
-			if *colDiff.DevNullable {
-				nullClause = "NULL"
-			} else {
-				nullClause = "NOT NULL"
-			}
+			nullable = colDiff.DevNullable
+		} else if colDiff.ProdNullable != nil {
+			nullable = colDiff.ProdNullable
+		} else {
+			return "", fmt.Errorf("cannot determine NULL/NOT NULL constraint for column %s.%s: both DevNullable and ProdNullable are nil", tableName, colDiff.Column)
+		}
+
+		// Construct NULL/NOT NULL clause
+		var nullClause string
+		if *nullable {
+			nullClause = "NULL"
+		} else {
+			nullClause = "NOT NULL"
 		}
 
 		return fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s %s %s;", quotedTable, quotedCol, dataType, nullClause), nil

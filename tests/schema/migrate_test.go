@@ -29,6 +29,8 @@ func TestGenerateMigration_MySQL(t *testing.T) {
 						DevType:          "INT",
 						ProdType:         "SMALLINT",
 						NullableMismatch: false,
+						DevNullable:      boolPtr(false),
+						ProdNullable:     boolPtr(false),
 					},
 				},
 			},
@@ -62,7 +64,7 @@ func TestGenerateMigration_MySQL(t *testing.T) {
 	}
 
 	// Check modified columns
-	if !strings.Contains(sql, "ALTER TABLE `users` MODIFY COLUMN `age` INT") {
+	if !strings.Contains(sql, "ALTER TABLE `users` MODIFY COLUMN `age` INT NOT NULL") {
 		t.Error("Expected MODIFY COLUMN statement for age")
 	}
 
@@ -340,6 +342,112 @@ func TestQuoteIdentifier_PostgreSQL(t *testing.T) {
 
 			if !strings.Contains(sql, tt.want) {
 				t.Errorf("Expected SQL to contain %q, but got:\n%s", tt.want, sql)
+			}
+		})
+	}
+}
+
+func TestGenerateMigration_MySQL_NullableHandling(t *testing.T) {
+	tests := []struct {
+		name         string
+		colDiff      schema.ColumnDiff
+		wantContains string
+		wantError    bool
+	}{
+		{
+			name: "DevNullable is true",
+			colDiff: schema.ColumnDiff{
+				Column:       "test_col",
+				TypeMismatch: true,
+				DevType:      "VARCHAR(255)",
+				ProdType:     "TEXT",
+				DevNullable:  boolPtr(true),
+				ProdNullable: boolPtr(false),
+			},
+			wantContains: "MODIFY COLUMN `test_col` VARCHAR(255) NULL",
+			wantError:    false,
+		},
+		{
+			name: "DevNullable is false",
+			colDiff: schema.ColumnDiff{
+				Column:       "test_col",
+				TypeMismatch: true,
+				DevType:      "VARCHAR(255)",
+				ProdType:     "TEXT",
+				DevNullable:  boolPtr(false),
+				ProdNullable: boolPtr(true),
+			},
+			wantContains: "MODIFY COLUMN `test_col` VARCHAR(255) NOT NULL",
+			wantError:    false,
+		},
+		{
+			name: "DevNullable is nil, fallback to ProdNullable true",
+			colDiff: schema.ColumnDiff{
+				Column:       "test_col",
+				TypeMismatch: true,
+				DevType:      "VARCHAR(255)",
+				ProdType:     "TEXT",
+				DevNullable:  nil,
+				ProdNullable: boolPtr(true),
+			},
+			wantContains: "MODIFY COLUMN `test_col` VARCHAR(255) NULL",
+			wantError:    false,
+		},
+		{
+			name: "DevNullable is nil, fallback to ProdNullable false",
+			colDiff: schema.ColumnDiff{
+				Column:       "test_col",
+				TypeMismatch: true,
+				DevType:      "VARCHAR(255)",
+				ProdType:     "TEXT",
+				DevNullable:  nil,
+				ProdNullable: boolPtr(false),
+			},
+			wantContains: "MODIFY COLUMN `test_col` VARCHAR(255) NOT NULL",
+			wantError:    false,
+		},
+		{
+			name: "Both DevNullable and ProdNullable are nil - should error",
+			colDiff: schema.ColumnDiff{
+				Column:       "test_col",
+				TypeMismatch: true,
+				DevType:      "VARCHAR(255)",
+				ProdType:     "TEXT",
+				DevNullable:  nil,
+				ProdNullable: nil,
+			},
+			wantContains: "",
+			wantError:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diff := schema.DiffResult{
+				Tables: []schema.TableDiff{
+					{
+						Name:            "test_table",
+						HasDifferences:  true,
+						ModifiedColumns: []schema.ColumnDiff{tt.colDiff},
+					},
+				},
+			}
+
+			sql, err := schema.GenerateMigration(diff, "mysql")
+
+			if tt.wantError {
+				if err == nil {
+					t.Error("Expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if !strings.Contains(sql, tt.wantContains) {
+				t.Errorf("Expected SQL to contain %q, but got:\n%s", tt.wantContains, sql)
 			}
 		})
 	}
