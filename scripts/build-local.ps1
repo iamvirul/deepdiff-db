@@ -97,29 +97,80 @@ $BinaryPath = Join-Path $BuildDir $BinaryFile
 # Create build directory
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
 
-# Build flags
-$BuildFlags = @("-ldflags=-s -w")
+# Build flags - start with basic optimization flags
+$ldflags = "-s -w"
 
-# Add version information if git is available
+# Determine version information
 if (Get-Command git -ErrorAction SilentlyContinue) {
     try {
-        $gitCommit = (git rev-parse --short HEAD 2>$null)
-        $gitBranch = (git rev-parse --abbrev-ref HEAD 2>$null)
-        $buildTime = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
-        
-        $versionInfo = "dev-$gitCommit"
-        if (-not [string]::IsNullOrEmpty($VersionSuffix)) {
-            $versionInfo = "$versionInfo$VersionSuffix"
+        $gitCommit = (git rev-parse --short HEAD 2>$null).Trim()
+        $gitBranch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+        $buildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+        # Get the latest git tag
+        $latestTag = (git describe --tags --abbrev=0 2>$null)
+        if ([string]::IsNullOrEmpty($latestTag)) {
+            $latestTag = "v0.0.0"
         }
-        
-        $BuildFlags += "-X", "main.version=$versionInfo"
-        $BuildFlags += "-X", "main.commit=$gitCommit"
-        $BuildFlags += "-X", "main.branch=$gitBranch"
-        $BuildFlags += "-X", "main.buildTime=$buildTime"
+
+        # Parse version components (e.g., v0.2.0 -> 0.2.0)
+        $versionNum = $latestTag.TrimStart('v')
+        $versionParts = $versionNum.Split('.')
+        $major = [int]$versionParts[0]
+        $minor = [int]$versionParts[1]
+        $patch = if ($versionParts.Length -gt 2) { [int]$versionParts[2] } else { 0 }
+
+        # Determine next version based on branch
+        if ($gitBranch -eq "main" -or $gitBranch -eq "master") {
+            # On main branch, increment patch version
+            $nextPatch = $patch + 1
+            $nextVersion = "v$major.$minor.$nextPatch"
+        } else {
+            # On feature branch, increment minor version
+            $nextMinor = $minor + 1
+            $nextVersion = "v$major.$nextMinor.0"
+        }
+
+        # Check if we're on a tagged commit
+        $isTaggedCommit = $false
+        $null = git describe --exact-match --tags HEAD 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $isTaggedCommit = $true
+        }
+
+        if ($isTaggedCommit) {
+            # On a tagged commit - use the tag as version
+            $versionInfo = $latestTag
+        } else {
+            # Not on a tagged commit - use next version with pre-release info
+            # Format: v0.3.0-dev.20231224T120000Z.abc1234
+            $timestamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
+            $versionInfo = "$nextVersion-dev.$timestamp.$gitCommit"
+
+            # Add custom suffix if provided
+            if (-not [string]::IsNullOrEmpty($VersionSuffix)) {
+                $versionInfo = "$versionInfo$VersionSuffix"
+            }
+        }
+
+        Write-Info "Version: $versionInfo"
+        Write-Info "Commit:  $gitCommit"
+        Write-Info "Branch:  $gitBranch"
+
+        # Set ldflags with version information
+        $ldflags = "$ldflags -X main.version=$versionInfo -X main.commit=$gitCommit -X main.branch=$gitBranch -X main.buildTime=$buildTime"
     } catch {
-        Write-Warn "Could not get git information"
+        Write-Warn "Could not get git information: $_"
+        $versionInfo = "dev"
+        $ldflags = "$ldflags -X main.version=$versionInfo"
     }
+} else {
+    Write-Warn "Git not available - building without version information"
+    $versionInfo = "dev"
+    $ldflags = "$ldflags -X main.version=$versionInfo"
 }
+
+$BuildFlags = @("-ldflags=$ldflags")
 
 # Build the binary
 Write-Info "Building $BinaryName..."

@@ -1,0 +1,23 @@
+prod:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3320
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+dev:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3321
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+ignore:
+  tables: []
+  columns:
+    - "*.created_at"  # Ignore timestamp columns
+
+output:
+  dir: "./diff-output"

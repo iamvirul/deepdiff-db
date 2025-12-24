@@ -250,6 +250,30 @@ Stops if mismatch detected.
 
 ---
 
+## Schema Migration
+
+```bash
+deepdiffdb schema-migrate --config deepdiffdb.config.yaml
+```
+
+Generates standalone schema migration script based on detected schema differences:
+
+* schema_migration.sql
+
+Features:
+* Transaction-wrapped SQL
+* Driver-specific syntax (MySQL, PostgreSQL, SQLite)
+* Safe defaults (destructive operations commented out)
+* Dry-run mode for validation
+
+Dry run mode:
+
+```bash
+deepdiffdb schema-migrate --config deepdiffdb.config.yaml --dry-run
+```
+
+---
+
 ## Full Diff (Schema + Data)
 
 ```bash

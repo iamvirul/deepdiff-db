@@ -1,9 +1,9 @@
-package main
+package schema_test
 
 import (
-	"github.com/iamvirul/deepdiff-db/internal/schema"
-
 	"testing"
+
+	"github.com/iamvirul/deepdiff-db/internal/schema"
 )
 
 func TestDiffSchemas(t *testing.T) {
@@ -385,7 +385,7 @@ func TestHasDrift(t *testing.T) {
 			name: "no drift",
 			result: schema.DiffResult{
 				Tables: []schema.TableDiff{
-					{Table: "users", HasDifferences: false},
+					{Name: "users", Table: "users", HasDifferences: false},
 				},
 			},
 			expected: false,
@@ -394,7 +394,7 @@ func TestHasDrift(t *testing.T) {
 			name: "has drift",
 			result: schema.DiffResult{
 				Tables: []schema.TableDiff{
-					{Table: "users", HasDifferences: true},
+					{Name: "users", Table: "users", HasDifferences: true},
 				},
 			},
 			expected: true,
@@ -403,8 +403,8 @@ func TestHasDrift(t *testing.T) {
 			name: "mixed",
 			result: schema.DiffResult{
 				Tables: []schema.TableDiff{
-					{Table: "users", HasDifferences: false},
-					{Table: "posts", HasDifferences: true},
+					{Name: "users", Table: "users", HasDifferences: false},
+					{Name: "posts", Table: "posts", HasDifferences: true},
 				},
 			},
 			expected: true,

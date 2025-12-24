@@ -15,6 +15,14 @@ import (
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 )
 
+// Version information - set via ldflags during build
+var (
+	version   = "dev"      // Version number (e.g., "v0.3.0" or "dev-abc123")
+	commit    = "unknown"  // Git commit hash
+	branch    = "unknown"  // Git branch
+	buildTime = "unknown"  // Build timestamp
+)
+
 // main is the CLI entry point for DeepDiff DB; it dispatches the requested subcommand and exits with a fatal log on error.
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -38,6 +46,8 @@ func run(args []string) error {
 		return runCheck(args[1:])
 	case "schema-diff":
 		return runSchemaDiff(args[1:])
+	case "schema-migrate":
+		return runSchemaMigrate(args[1:])
 	case "diff":
 		return runFullDiff(args[1:])
 	case "gen-pack":
@@ -46,6 +56,9 @@ func run(args []string) error {
 		return runApply(args[1:])
 	case "-h", "--help", "help":
 		printUsage()
+		return nil
+	case "-v", "--version", "version":
+		printVersion()
 		return nil
 	default:
 		printUsage()
@@ -429,6 +442,111 @@ func runSchemaDiff(args []string) error {
 	return nil
 }
 
+// runSchemaMigrate generates a standalone schema migration script based on schema differences
+// between production and development databases.
+//
+// It parses flags (--config, --dry-run), loads configuration, opens both database connections,
+// loads schemas, computes schema diff, generates migration SQL, and writes to output directory.
+// Returns an error if any operation fails.
+func runSchemaMigrate(args []string) error {
+	fs := flag.NewFlagSet("schema-migrate", flag.ContinueOnError)
+	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	dryRun := fs.Bool("dry-run", false, "Generate and validate migration without writing file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	ctx := context.Background()
+
+	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	if err != nil {
+		return fmt.Errorf("prod connection failed: %w", err)
+	}
+	defer prodDB.Close()
+
+	devDB, err := drivers.Open(ctx, cfg.Dev)
+	if err != nil {
+		return fmt.Errorf("dev connection failed: %w", err)
+	}
+	defer devDB.Close()
+
+	if err := os.MkdirAll(cfg.Output.Dir, 0o755); err != nil {
+		return fmt.Errorf("ensure output dir: %w", err)
+	}
+
+	// Load schemas
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("load prod schema: %w", err)
+	}
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("load dev schema: %w", err)
+	}
+
+	// Compute schema diff
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+
+	// Generate migration script
+	migrationSQL, err := schema.GenerateMigration(schemaDiff, cfg.Prod.Driver)
+	if err != nil {
+		return fmt.Errorf("generate migration: %w", err)
+	}
+
+	if *dryRun {
+		fmt.Println("Dry-run mode: migration script generated (not written to file)")
+		if !schemaDiff.HasDrift() {
+			fmt.Println("No schema changes detected.")
+		} else {
+			fmt.Printf("Schema migration generated (%d bytes):\n", len(migrationSQL))
+			fmt.Println("---")
+			fmt.Println(migrationSQL)
+			fmt.Println("---")
+		}
+		return nil
+	}
+
+	if !schemaDiff.HasDrift() {
+		fmt.Println("No schema changes detected. No migration file generated.")
+		return nil
+	}
+
+	// Write migration file
+	migrationPath := filepath.Join(cfg.Output.Dir, "schema_migration.sql")
+	if err := os.WriteFile(migrationPath, []byte(migrationSQL), 0o644); err != nil {
+		return fmt.Errorf("write migration file: %w", err)
+	}
+
+	fmt.Printf("Schema migration generated: %s\n", migrationPath)
+	fmt.Printf("Changes detected:\n")
+	if len(schemaDiff.Tables) > 0 {
+		for _, td := range schemaDiff.Tables {
+			if len(td.AddedColumns) > 0 {
+				fmt.Printf("  - Table '%s': %d columns added\n", td.Name, len(td.AddedColumns))
+			}
+			if len(td.RemovedColumns) > 0 {
+				fmt.Printf("  - Table '%s': %d columns removed\n", td.Name, len(td.RemovedColumns))
+			}
+			if len(td.ModifiedColumns) > 0 {
+				fmt.Printf("  - Table '%s': %d columns modified\n", td.Name, len(td.ModifiedColumns))
+			}
+		}
+	}
+	if len(schemaDiff.AddedTables) > 0 {
+		fmt.Printf("  - %d tables added\n", len(schemaDiff.AddedTables))
+	}
+	if len(schemaDiff.RemovedTables) > 0 {
+		fmt.Printf("  - %d tables removed\n", len(schemaDiff.RemovedTables))
+	}
+
+	return nil
+}
+
 // printUsage prints the CLI usage text including available commands, brief descriptions, and how to display flags for a specific command.
 func printUsage() {
 	exe := filepath.Base(os.Args[0])
@@ -438,12 +556,31 @@ Usage:
   %[1]s <command> [flags]
 
 Commands:
-  check         Validate configuration and show quick summary
-  schema-diff   Detect schema drift
-  diff          Full diff: schema + data
-  gen-pack      Generate SQL migration pack
-  apply         Apply migration pack
+  check           Validate configuration and show quick summary
+  schema-diff     Detect schema drift
+  schema-migrate  Generate schema migration script
+  diff            Full diff: schema + data
+  gen-pack        Generate SQL migration pack
+  apply           Apply migration pack
+
+Global Flags:
+  -v, --version   Show version information
+  -h, --help      Show this help message
 
 Use "%[1]s <command> -h" for flags specific to that command.
 `, exe)
+}
+
+// printVersion prints the version information including build details.
+func printVersion() {
+	fmt.Printf("DeepDiff DB %s\n", version)
+	if commit != "unknown" {
+		fmt.Printf("  Commit:     %s\n", commit)
+	}
+	if branch != "unknown" {
+		fmt.Printf("  Branch:     %s\n", branch)
+	}
+	if buildTime != "unknown" {
+		fmt.Printf("  Build Time: %s\n", buildTime)
+	}
 }
