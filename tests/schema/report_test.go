@@ -15,12 +15,14 @@ func TestWriteReports(t *testing.T) {
 	result := schema.DiffResult{
 		Tables: []schema.TableDiff{
 			{
+				Name:           "users",
 				Table:          "users",
 				HasDifferences: true,
 				OnlyInProd:     true,
 				MissingInDev:   true,
 			},
 			{
+				Name:           "posts",
 				Table:          "posts",
 				HasDifferences: true,
 				ColumnDiffs: []schema.ColumnDiff{
@@ -33,6 +35,7 @@ func TestWriteReports(t *testing.T) {
 				},
 			},
 			{
+				Name:           "comments",
 				Table:          "comments",
 				HasDifferences: false,
 			},
@@ -91,6 +94,7 @@ func TestWriteReports_NoDifferences(t *testing.T) {
 	result := schema.DiffResult{
 		Tables: []schema.TableDiff{
 			{
+				Name:           "users",
 				Table:          "users",
 				HasDifferences: false,
 			},

@@ -7,15 +7,19 @@ import (
 
 // TableDiff describes differences for a single table.
 type TableDiff struct {
-	Table          string       `json:"table"`
-	MissingInProd  bool         `json:"missing_in_prod,omitempty"`
-	MissingInDev   bool         `json:"missing_in_dev,omitempty"`
-	ColumnDiffs    []ColumnDiff `json:"column_diffs,omitempty"`
-	ExtraInProd    []string     `json:"extra_in_prod,omitempty"`
-	ExtraInDev     []string     `json:"extra_in_dev,omitempty"`
-	OnlyInProd     bool         `json:"only_in_prod,omitempty"`
-	OnlyInDev      bool         `json:"only_in_dev,omitempty"`
-	HasDifferences bool         `json:"has_differences"`
+	Name             string       `json:"table"`
+	Table            string       `json:"-"` // Deprecated: use Name
+	MissingInProd    bool         `json:"missing_in_prod,omitempty"`
+	MissingInDev     bool         `json:"missing_in_dev,omitempty"`
+	ColumnDiffs      []ColumnDiff `json:"column_diffs,omitempty"`
+	AddedColumns     []Column     `json:"added_columns,omitempty"`
+	RemovedColumns   []Column     `json:"removed_columns,omitempty"`
+	ModifiedColumns  []ColumnDiff `json:"modified_columns,omitempty"`
+	ExtraInProd      []string     `json:"extra_in_prod,omitempty"`
+	ExtraInDev       []string     `json:"extra_in_dev,omitempty"`
+	OnlyInProd       bool         `json:"only_in_prod,omitempty"`
+	OnlyInDev        bool         `json:"only_in_dev,omitempty"`
+	HasDifferences   bool         `json:"has_differences"`
 }
 
 // ColumnDiff captures mismatches for a column across prod/dev.
@@ -33,7 +37,9 @@ type ColumnDiff struct {
 
 // DiffResult aggregates all table diffs.
 type DiffResult struct {
-	Tables []TableDiff `json:"tables"`
+	Tables        []TableDiff `json:"tables"`
+	AddedTables   []string    `json:"added_tables,omitempty"`
+	RemovedTables []string    `json:"removed_tables,omitempty"`
 }
 
 // DiffSchemas compares two Schema values and returns a DiffResult that describes table- and column-level differences between them.
@@ -65,12 +71,13 @@ func DiffSchemas(prod, dev *Schema) DiffResult {
 		p, prodOK := prod.Tables[tbl]
 		d, devOK := dev.Tables[tbl]
 
-		td := TableDiff{Table: tbl}
+		td := TableDiff{Name: tbl, Table: tbl}
 		if prodOK && !devOK {
 			td.MissingInDev = true
 			td.OnlyInProd = true
 			td.HasDifferences = true
 			result.Tables = append(result.Tables, td)
+			result.RemovedTables = append(result.RemovedTables, tbl)
 			continue
 		}
 		if !prodOK && devOK {
@@ -78,10 +85,13 @@ func DiffSchemas(prod, dev *Schema) DiffResult {
 			td.OnlyInDev = true
 			td.HasDifferences = true
 			result.Tables = append(result.Tables, td)
+			result.AddedTables = append(result.AddedTables, tbl)
 			continue
 		}
 
+		// Process column differences
 		td.ColumnDiffs = diffColumns(p.Columns, d.Columns)
+		td.AddedColumns, td.RemovedColumns, td.ModifiedColumns = categorizeColumnDiffs(td.ColumnDiffs, d.Columns, p.Columns)
 		td.HasDifferences = len(td.ColumnDiffs) > 0
 		result.Tables = append(result.Tables, td)
 	}
@@ -176,4 +186,26 @@ func normalizeType(t string) string {
 // NormalizeType returns a normalized form of the type string by trimming whitespace and converting it to lower case.
 func NormalizeType(t string) string {
 	return normalizeType(t)
+}
+
+// categorizeColumnDiffs separates column diffs into added, removed, and modified columns.
+// It returns three slices: added columns (from dev), removed columns (from prod), and modified column diffs.
+func categorizeColumnDiffs(diffs []ColumnDiff, devCols, prodCols map[string]Column) (added []Column, removed []Column, modified []ColumnDiff) {
+	for _, cd := range diffs {
+		if cd.MissingInProd {
+			// Column exists in dev but not in prod - it should be added
+			if col, ok := devCols[cd.Column]; ok {
+				added = append(added, col)
+			}
+		} else if cd.MissingInDev {
+			// Column exists in prod but not in dev - it should be removed
+			if col, ok := prodCols[cd.Column]; ok {
+				removed = append(removed, col)
+			}
+		} else if cd.TypeMismatch || cd.NullableMismatch {
+			// Column exists in both but differs - it should be modified
+			modified = append(modified, cd)
+		}
+	}
+	return
 }
