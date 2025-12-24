@@ -133,11 +133,9 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 
         # Check if we're on a tagged commit
         $isTaggedCommit = $false
-        try {
-            git describe --exact-match --tags HEAD 2>$null | Out-Null
+        $null = git describe --exact-match --tags HEAD 2>&1
+        if ($LASTEXITCODE -eq 0) {
             $isTaggedCommit = $true
-        } catch {
-            $isTaggedCommit = $false
         }
 
         if ($isTaggedCommit) {
