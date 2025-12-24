@@ -453,6 +453,219 @@ func TestGenerateMigration_MySQL_NullableHandling(t *testing.T) {
 	}
 }
 
+func TestGenerateMigration_PostgreSQL_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		colDiff      schema.ColumnDiff
+		wantContains []string
+		wantNotContain string
+	}{
+		{
+			name: "Only TypeMismatch, no nullable change",
+			colDiff: schema.ColumnDiff{
+				Column:           "description",
+				TypeMismatch:     true,
+				DevType:          "TEXT",
+				ProdType:         "VARCHAR(255)",
+				NullableMismatch: false,
+			},
+			wantContains: []string{
+				"ALTER TABLE \"test_table\" ALTER COLUMN \"description\" TYPE TEXT;",
+			},
+			wantNotContain: "NOT NULL",
+		},
+		{
+			name: "Only NullableMismatch, no type change",
+			colDiff: schema.ColumnDiff{
+				Column:           "status",
+				TypeMismatch:     false,
+				NullableMismatch: true,
+				DevNullable:      boolPtr(true),
+				ProdNullable:     boolPtr(false),
+			},
+			wantContains: []string{
+				"ALTER TABLE \"test_table\" ALTER COLUMN \"status\" DROP NOT NULL;",
+			},
+			wantNotContain: "TYPE",
+		},
+		{
+			name: "NullableMismatch but DevNullable is nil - should skip nullable change",
+			colDiff: schema.ColumnDiff{
+				Column:           "price",
+				TypeMismatch:     true,
+				DevType:          "DECIMAL(10,2)",
+				ProdType:         "NUMERIC",
+				NullableMismatch: true,
+				DevNullable:      nil,
+				ProdNullable:     boolPtr(false),
+			},
+			wantContains: []string{
+				"ALTER TABLE \"test_table\" ALTER COLUMN \"price\" TYPE DECIMAL(10,2);",
+			},
+			wantNotContain: "NOT NULL",
+		},
+		{
+			name: "Set NOT NULL (DevNullable false)",
+			colDiff: schema.ColumnDiff{
+				Column:           "email",
+				TypeMismatch:     false,
+				NullableMismatch: true,
+				DevNullable:      boolPtr(false),
+				ProdNullable:     boolPtr(true),
+			},
+			wantContains: []string{
+				"ALTER TABLE \"test_table\" ALTER COLUMN \"email\" SET NOT NULL;",
+			},
+			wantNotContain: "TYPE",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diff := schema.DiffResult{
+				Tables: []schema.TableDiff{
+					{
+						Name:            "test_table",
+						HasDifferences:  true,
+						ModifiedColumns: []schema.ColumnDiff{tt.colDiff},
+					},
+				},
+			}
+
+			sql, err := schema.GenerateMigration(diff, "postgresql")
+			if err != nil {
+				t.Fatalf("GenerateMigration failed: %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(sql, want) {
+					t.Errorf("Expected SQL to contain %q, but got:\n%s", want, sql)
+				}
+			}
+
+			if tt.wantNotContain != "" && strings.Contains(sql, tt.wantNotContain) {
+				t.Errorf("Expected SQL to NOT contain %q, but got:\n%s", tt.wantNotContain, sql)
+			}
+		})
+	}
+}
+
+func TestGenerateMigration_OnlyTableOperations(t *testing.T) {
+	tests := []struct {
+		name         string
+		diff         schema.DiffResult
+		wantContains []string
+	}{
+		{
+			name: "Only removed tables",
+			diff: schema.DiffResult{
+				RemovedTables: []string{"old_table1", "old_table2"},
+			},
+			wantContains: []string{
+				"-- DROP TABLE `old_table1`;",
+				"-- DROP TABLE `old_table2`;",
+				"-- DROP TABLES (present in prod but not in dev)",
+				"BEGIN;",
+				"COMMIT;",
+			},
+		},
+		{
+			name: "Only added tables",
+			diff: schema.DiffResult{
+				AddedTables: []string{"new_table1", "new_table2"},
+			},
+			wantContains: []string{
+				"-- CREATE TABLE `new_table1` (...);",
+				"-- CREATE TABLE `new_table2` (...);",
+				"-- CREATE TABLES (present in dev but not in prod)",
+				"BEGIN;",
+				"COMMIT;",
+			},
+		},
+		{
+			name: "Both added and removed tables",
+			diff: schema.DiffResult{
+				AddedTables:   []string{"new_table"},
+				RemovedTables: []string{"old_table"},
+			},
+			wantContains: []string{
+				"-- DROP TABLE `old_table`;",
+				"-- CREATE TABLE `new_table` (...);",
+				"BEGIN;",
+				"COMMIT;",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sql, err := schema.GenerateMigration(tt.diff, "mysql")
+			if err != nil {
+				t.Fatalf("GenerateMigration failed: %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(sql, want) {
+					t.Errorf("Expected SQL to contain %q, but got:\n%s", want, sql)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateMigration_SQLite_AddColumnEdgeCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		column       schema.Column
+		wantContains string
+		description  string
+	}{
+		{
+			name: "Nullable column - should work",
+			column: schema.Column{
+				Name:       "optional_field",
+				DataType:   "TEXT",
+				IsNullable: true,
+			},
+			wantContains: "ALTER TABLE \"test_table\" ADD COLUMN \"optional_field\" TEXT;",
+			description:  "SQLite supports adding nullable columns",
+		},
+		{
+			name: "NOT NULL column - should be commented",
+			column: schema.Column{
+				Name:       "required_field",
+				DataType:   "INTEGER",
+				IsNullable: false,
+			},
+			wantContains: "-- ALTER TABLE \"test_table\" ADD COLUMN \"required_field\" INTEGER NOT NULL; -- SQLite limitation",
+			description:  "SQLite cannot add NOT NULL columns without default",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diff := schema.DiffResult{
+				Tables: []schema.TableDiff{
+					{
+						Name:           "test_table",
+						HasDifferences: true,
+						AddedColumns:   []schema.Column{tt.column},
+					},
+				},
+			}
+
+			sql, err := schema.GenerateMigration(diff, "sqlite")
+			if err != nil {
+				t.Fatalf("GenerateMigration failed: %v", err)
+			}
+
+			if !strings.Contains(sql, tt.wantContains) {
+				t.Errorf("%s\nExpected SQL to contain:\n%q\n\nBut got:\n%s", tt.description, tt.wantContains, sql)
+			}
+		})
+	}
+}
+
 func TestQuoteIdentifier_SQLite(t *testing.T) {
 	tests := []struct {
 		name       string
