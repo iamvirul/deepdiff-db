@@ -151,18 +151,58 @@ mkdir -p "$BUILD_DIR"
 # Build flags - start with basic optimization flags
 LDFLAGS="-s -w"
 
-# Add version information if git is available
+# Determine version information
 if command -v git &> /dev/null && git rev-parse --git-dir > /dev/null 2>&1; then
     GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
     GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
     BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    
-    VERSION_INFO="dev-${GIT_COMMIT}"
-    if [ -n "$VERSION_SUFFIX" ]; then
-        VERSION_INFO="${VERSION_INFO}${VERSION_SUFFIX}"
+
+    # Get the latest git tag
+    LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+
+    # Parse version components (e.g., v0.2.0 -> 0.2.0)
+    VERSION_NUM="${LATEST_TAG#v}"
+
+    # Split version into major.minor.patch
+    IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUM"
+
+    # Determine next version based on branch
+    if [ "$GIT_BRANCH" = "main" ] || [ "$GIT_BRANCH" = "master" ]; then
+        # On main branch, increment patch version
+        NEXT_PATCH=$((PATCH + 1))
+        NEXT_VERSION="v${MAJOR}.${MINOR}.${NEXT_PATCH}"
+    else
+        # On feature branch, increment minor version
+        NEXT_MINOR=$((MINOR + 1))
+        NEXT_VERSION="v${MAJOR}.${NEXT_MINOR}.0"
     fi
-    
+
+    # Check if we're on a tagged commit
+    if git describe --exact-match --tags HEAD >/dev/null 2>&1; then
+        # On a tagged commit - use the tag as version
+        VERSION_INFO="$LATEST_TAG"
+    else
+        # Not on a tagged commit - use next version with pre-release info
+        # Format: v0.3.0-dev.20231224T120000Z.abc1234
+        TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+        VERSION_INFO="${NEXT_VERSION}-dev.${TIMESTAMP}.${GIT_COMMIT}"
+
+        # Add custom suffix if provided
+        if [ -n "$VERSION_SUFFIX" ]; then
+            VERSION_INFO="${VERSION_INFO}${VERSION_SUFFIX}"
+        fi
+    fi
+
+    print_info "Version: $VERSION_INFO"
+    print_info "Commit:  $GIT_COMMIT"
+    print_info "Branch:  $GIT_BRANCH"
+
+    # Set ldflags with version information
     LDFLAGS="${LDFLAGS} -X main.version=${VERSION_INFO} -X main.commit=${GIT_COMMIT} -X main.branch=${GIT_BRANCH} -X main.buildTime=${BUILD_TIME}"
+else
+    print_warn "Git not available - building without version information"
+    VERSION_INFO="dev"
+    LDFLAGS="${LDFLAGS} -X main.version=${VERSION_INFO}"
 fi
 
 # Build the binary

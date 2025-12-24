@@ -15,6 +15,14 @@ import (
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 )
 
+// Version information - set via ldflags during build
+var (
+	version   = "dev"      // Version number (e.g., "v0.3.0" or "dev-abc123")
+	commit    = "unknown"  // Git commit hash
+	branch    = "unknown"  // Git branch
+	buildTime = "unknown"  // Build timestamp
+)
+
 // main is the CLI entry point for DeepDiff DB; it dispatches the requested subcommand and exits with a fatal log on error.
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -48,6 +56,9 @@ func run(args []string) error {
 		return runApply(args[1:])
 	case "-h", "--help", "help":
 		printUsage()
+		return nil
+	case "-v", "--version", "version":
+		printVersion()
 		return nil
 	default:
 		printUsage()
@@ -552,6 +563,24 @@ Commands:
   gen-pack        Generate SQL migration pack
   apply           Apply migration pack
 
+Global Flags:
+  -v, --version   Show version information
+  -h, --help      Show this help message
+
 Use "%[1]s <command> -h" for flags specific to that command.
 `, exe)
+}
+
+// printVersion prints the version information including build details.
+func printVersion() {
+	fmt.Printf("DeepDiff DB %s\n", version)
+	if commit != "unknown" {
+		fmt.Printf("  Commit:     %s\n", commit)
+	}
+	if branch != "unknown" {
+		fmt.Printf("  Branch:     %s\n", branch)
+	}
+	if buildTime != "unknown" {
+		fmt.Printf("  Build Time: %s\n", buildTime)
+	}
 }
