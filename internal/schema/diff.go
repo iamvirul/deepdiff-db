@@ -154,25 +154,35 @@ func diffColumns(prodCols, devCols map[string]Column) []ColumnDiff {
 			continue
 		}
 
+		// Check for type mismatch
 		if stringsDiffer(p.DataType, d.DataType) {
 			cd.TypeMismatch = true
 			cd.ProdType = p.DataType
 			cd.DevType = d.DataType
 		}
+
+		// Check for nullable mismatch
 		if p.IsNullable != d.IsNullable {
 			cd.NullableMismatch = true
-			cd.ProdNullable = &p.IsNullable
-			cd.DevNullable = &d.IsNullable
 		}
 
-		// Check for default value differences
+		// Check for default value mismatch
 		if defaultsDiffer(p.DefaultValue, d.DefaultValue) {
 			cd.DefaultMismatch = true
-			cd.ProdDefault = p.DefaultValue
-			cd.DevDefault = d.DefaultValue
 		}
 
+		// If there's any mismatch, populate all fields needed for migration generation
 		if cd.TypeMismatch || cd.NullableMismatch || cd.DefaultMismatch {
+			cd.ProdNullable = &p.IsNullable
+			cd.DevNullable = &d.IsNullable
+			cd.ProdDefault = p.DefaultValue
+			cd.DevDefault = d.DefaultValue
+			if cd.ProdType == "" {
+				cd.ProdType = p.DataType
+			}
+			if cd.DevType == "" {
+				cd.DevType = d.DataType
+			}
 			diffs = append(diffs, cd)
 		}
 	}
