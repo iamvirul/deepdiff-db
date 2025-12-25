@@ -159,15 +159,24 @@ func generateAddColumn(tableName string, col Column, driver string) (string, err
 		nullClause = "NULL"
 	}
 
+	// Build default clause if present
+	var defaultClause string
+	if col.DefaultValue != nil {
+		defaultClause = fmt.Sprintf(" DEFAULT %s", *col.DefaultValue)
+	}
+
 	switch driver {
 	case "mysql":
-		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s %s;", quotedTable, quotedCol, col.DataType, nullClause), nil
+		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s %s%s;", quotedTable, quotedCol, col.DataType, nullClause, defaultClause), nil
 	case "postgres", "postgresql":
-		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s %s;", quotedTable, quotedCol, col.DataType, nullClause), nil
+		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s %s%s;", quotedTable, quotedCol, col.DataType, nullClause, defaultClause), nil
 	case "sqlite":
 		// SQLite doesn't support NOT NULL in ADD COLUMN without a default value
 		if col.IsNullable {
-			return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", quotedTable, quotedCol, col.DataType), nil
+			return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s%s;", quotedTable, quotedCol, col.DataType, defaultClause), nil
+		}
+		if col.DefaultValue != nil {
+			return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s NOT NULL%s;", quotedTable, quotedCol, col.DataType, defaultClause), nil
 		}
 		return fmt.Sprintf("-- ALTER TABLE %s ADD COLUMN %s %s NOT NULL; -- SQLite limitation: cannot add NOT NULL without default", quotedTable, quotedCol, col.DataType), nil
 	default:
@@ -200,7 +209,7 @@ func generateModifyColumn(tableName string, colDiff ColumnDiff, driver string) (
 	switch driver {
 	case "mysql":
 		// MySQL uses MODIFY COLUMN
-		// We need to specify the full column definition including NULL/NOT NULL
+		// We need to specify the full column definition including NULL/NOT NULL and DEFAULT
 		dataType := colDiff.DevType
 		if dataType == "" {
 			dataType = colDiff.ProdType
@@ -224,10 +233,26 @@ func generateModifyColumn(tableName string, colDiff ColumnDiff, driver string) (
 			nullClause = "NOT NULL"
 		}
 
-		return fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s %s %s;", quotedTable, quotedCol, dataType, nullClause), nil
+		// Determine default value
+		var defaultClause string
+		if colDiff.DefaultMismatch {
+			// If there's a default mismatch, use DevDefault (could be nil, meaning remove default)
+			if colDiff.DevDefault != nil {
+				defaultClause = fmt.Sprintf(" DEFAULT %s", *colDiff.DevDefault)
+			}
+		} else {
+			// No default mismatch - use whichever is available
+			if colDiff.DevDefault != nil {
+				defaultClause = fmt.Sprintf(" DEFAULT %s", *colDiff.DevDefault)
+			} else if colDiff.ProdDefault != nil {
+				defaultClause = fmt.Sprintf(" DEFAULT %s", *colDiff.ProdDefault)
+			}
+		}
+
+		return fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s %s %s%s;", quotedTable, quotedCol, dataType, nullClause, defaultClause), nil
 
 	case "postgres", "postgresql":
-		// PostgreSQL requires separate statements for type and nullable changes
+		// PostgreSQL requires separate statements for type, nullable, and default changes
 		var stmts []string
 
 		if colDiff.TypeMismatch {
@@ -240,6 +265,14 @@ func generateModifyColumn(tableName string, colDiff ColumnDiff, driver string) (
 				stmts = append(stmts, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL;", quotedTable, quotedCol))
 			} else {
 				stmts = append(stmts, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL;", quotedTable, quotedCol))
+			}
+		}
+
+		if colDiff.DefaultMismatch {
+			if colDiff.DevDefault != nil {
+				stmts = append(stmts, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s;", quotedTable, quotedCol, *colDiff.DevDefault))
+			} else {
+				stmts = append(stmts, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP DEFAULT;", quotedTable, quotedCol))
 			}
 		}
 
