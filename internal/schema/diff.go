@@ -24,15 +24,18 @@ type TableDiff struct {
 
 // ColumnDiff captures mismatches for a column across prod/dev.
 type ColumnDiff struct {
-	Column          string `json:"column"`
-	MissingInProd   bool   `json:"missing_in_prod,omitempty"`
-	MissingInDev    bool   `json:"missing_in_dev,omitempty"`
-	TypeMismatch    bool   `json:"type_mismatch,omitempty"`
-	ProdType        string `json:"prod_type,omitempty"`
-	DevType         string `json:"dev_type,omitempty"`
-	NullableMismatch bool  `json:"nullable_mismatch,omitempty"`
-	ProdNullable     *bool `json:"prod_nullable,omitempty"`
-	DevNullable      *bool `json:"dev_nullable,omitempty"`
+	Column           string  `json:"column"`
+	MissingInProd    bool    `json:"missing_in_prod,omitempty"`
+	MissingInDev     bool    `json:"missing_in_dev,omitempty"`
+	TypeMismatch     bool    `json:"type_mismatch,omitempty"`
+	ProdType         string  `json:"prod_type,omitempty"`
+	DevType          string  `json:"dev_type,omitempty"`
+	NullableMismatch bool    `json:"nullable_mismatch,omitempty"`
+	ProdNullable     *bool   `json:"prod_nullable,omitempty"`
+	DevNullable      *bool   `json:"dev_nullable,omitempty"`
+	DefaultMismatch  bool    `json:"default_mismatch,omitempty"`
+	ProdDefault      *string `json:"prod_default,omitempty"`
+	DevDefault       *string `json:"dev_default,omitempty"`
 }
 
 // DiffResult aggregates all table diffs.
@@ -151,18 +154,35 @@ func diffColumns(prodCols, devCols map[string]Column) []ColumnDiff {
 			continue
 		}
 
+		// Check for type mismatch
 		if stringsDiffer(p.DataType, d.DataType) {
 			cd.TypeMismatch = true
 			cd.ProdType = p.DataType
 			cd.DevType = d.DataType
 		}
+
+		// Check for nullable mismatch
 		if p.IsNullable != d.IsNullable {
 			cd.NullableMismatch = true
-			cd.ProdNullable = &p.IsNullable
-			cd.DevNullable = &d.IsNullable
 		}
 
-		if cd.TypeMismatch || cd.NullableMismatch {
+		// Check for default value mismatch
+		if defaultsDiffer(p.DefaultValue, d.DefaultValue) {
+			cd.DefaultMismatch = true
+		}
+
+		// If there's any mismatch, populate all fields needed for migration generation
+		if cd.TypeMismatch || cd.NullableMismatch || cd.DefaultMismatch {
+			cd.ProdNullable = &p.IsNullable
+			cd.DevNullable = &d.IsNullable
+			cd.ProdDefault = p.DefaultValue
+			cd.DevDefault = d.DefaultValue
+			if cd.ProdType == "" {
+				cd.ProdType = p.DataType
+			}
+			if cd.DevType == "" {
+				cd.DevType = d.DataType
+			}
 			diffs = append(diffs, cd)
 		}
 	}
@@ -174,6 +194,34 @@ func diffColumns(prodCols, devCols map[string]Column) []ColumnDiff {
 // The comparison ignores surrounding whitespace and letter case.
 func stringsDiffer(a, b string) bool {
 	return normalizeType(a) != normalizeType(b)
+}
+
+// defaultsDiffer reports whether two default values differ.
+// It handles nil pointers (no default) and string values, with normalization.
+func defaultsDiffer(a, b *string) bool {
+	// Both nil - no difference
+	if a == nil && b == nil {
+		return false
+	}
+	// One nil, one not - difference
+	if a == nil || b == nil {
+		return true
+	}
+	// Both have values - compare normalized versions
+	return normalizeDefault(*a) != normalizeDefault(*b)
+}
+
+// normalizeDefault normalizes a default value string for comparison.
+// It trims whitespace and handles common variations in default value representation.
+func normalizeDefault(val string) string {
+	normalized := strings.TrimSpace(val)
+	// Remove surrounding quotes if present (handle both single and double quotes)
+	if len(normalized) >= 2 &&
+		((strings.HasPrefix(normalized, "'") && strings.HasSuffix(normalized, "'")) ||
+			(strings.HasPrefix(normalized, "\"") && strings.HasSuffix(normalized, "\""))) {
+		normalized = normalized[1 : len(normalized)-1]
+	}
+	return normalized
 }
 
 // normalizeType trims leading and trailing whitespace from t and converts it to lower-case.
@@ -202,7 +250,7 @@ func categorizeColumnDiffs(diffs []ColumnDiff, devCols, prodCols map[string]Colu
 			if col, ok := prodCols[cd.Column]; ok {
 				removed = append(removed, col)
 			}
-		} else if cd.TypeMismatch || cd.NullableMismatch {
+		} else if cd.TypeMismatch || cd.NullableMismatch || cd.DefaultMismatch {
 			// Column exists in both but differs - it should be modified
 			modified = append(modified, cd)
 		}

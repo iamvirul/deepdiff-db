@@ -25,8 +25,9 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 		rows, err := db.QueryContext(ctx, `
 			SELECT c.table_name,
 			       c.column_name,
-			       c.data_type,
+			       c.column_type,
 			       c.is_nullable,
+			       c.column_default,
 			       kcu.ordinal_position AS pk_ordinal
 			FROM information_schema.columns c
 			LEFT JOIN information_schema.key_column_usage kcu
@@ -54,6 +55,7 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 			       c.column_name,
 			       COALESCE(c.udt_name, c.data_type) AS data_type,
 			       c.is_nullable,
+			       c.column_default,
 			       pk.ordinal_position AS pk_ordinal
 			FROM information_schema.columns c
 			LEFT JOIN (
@@ -115,8 +117,9 @@ func scanColumns(rows *sql.Rows, s *Schema, ignore map[string]struct{}) error {
 
 	for rows.Next() {
 		var tableName, columnName, dataType, isNullable string
+		var columnDefault sql.NullString
 		var pkOrdinal sql.NullInt64
-		if err := rows.Scan(&tableName, &columnName, &dataType, &isNullable, &pkOrdinal); err != nil {
+		if err := rows.Scan(&tableName, &columnName, &dataType, &isNullable, &columnDefault, &pkOrdinal); err != nil {
 			return fmt.Errorf("scan columns: %w", err)
 		}
 
@@ -131,10 +134,18 @@ func scanColumns(rows *sql.Rows, s *Schema, ignore map[string]struct{}) error {
 				Columns: make(map[string]Column),
 			}
 		}
+
+		// Handle default value - convert sql.NullString to *string
+		var defaultVal *string
+		if columnDefault.Valid {
+			defaultVal = &columnDefault.String
+		}
+
 		tbl.Columns[columnName] = Column{
-			Name:       columnName,
-			DataType:   strings.ToLower(dataType),
-			IsNullable: strings.EqualFold(isNullable, "YES") || isNullable == "1" || strings.EqualFold(isNullable, "true"),
+			Name:         columnName,
+			DataType:     strings.ToLower(dataType),
+			IsNullable:   strings.EqualFold(isNullable, "YES") || isNullable == "1" || strings.EqualFold(isNullable, "true"),
+			DefaultValue: defaultVal,
 		}
 		if pkOrdinal.Valid {
 			pks = append(pks, pkEntry{table: tableName, col: columnName, pos: int(pkOrdinal.Int64)})
@@ -223,10 +234,23 @@ func listSqliteColumns(ctx context.Context, db *sql.DB, table string) (map[strin
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
 			return nil, nil, fmt.Errorf("scan sqlite column: %w", err)
 		}
+
+		// Handle default value - convert any to *string
+		var defaultVal *string
+		if dfltValue != nil {
+			if s, ok := dfltValue.(string); ok && s != "" {
+				defaultVal = &s
+			} else if b, ok := dfltValue.([]byte); ok && len(b) > 0 {
+				str := string(b)
+				defaultVal = &str
+			}
+		}
+
 		cols[name] = Column{
-			Name:       name,
-			DataType:   strings.ToLower(ctype),
-			IsNullable: notnull == 0,
+			Name:         name,
+			DataType:     strings.ToLower(ctype),
+			IsNullable:   notnull == 0,
+			DefaultValue: defaultVal,
 		}
 		if pk > 0 {
 			pkOrdered = append(pkOrdered, struct {

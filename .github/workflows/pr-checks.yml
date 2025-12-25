@@ -1,0 +1,203 @@
+name: PR Required Checks
+
+# This workflow ensures all critical checks pass before allowing merge
+# Configure this as a required check in GitHub branch protection rules
+
+on:
+  pull_request:
+    branches: [ main, development ]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: read
+  statuses: read
+  issues: write
+
+jobs:
+  # Validate PR title follows conventional commits
+  validate-pr-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    permissions:
+      pull-requests: write
+      statuses: write
+
+    steps:
+      - name: Check PR title format
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+          requireScope: false
+          subjectPattern: ^[A-Z].+$
+          subjectPatternError: |
+            The subject "{subject}" found in the pull request title "{title}"
+            must start with an uppercase letter.
+
+  # Ensure no merge conflicts
+  check-merge-conflicts:
+    name: Check for Merge Conflicts
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for merge conflicts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Fetch base branch
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+
+          # Try to merge base into current branch
+          if git merge --no-commit --no-ff origin/${{ github.event.pull_request.base.ref }}; then
+            echo "✅ No merge conflicts detected"
+            # Abort the merge since we only wanted to test
+            git merge --abort 2>/dev/null || true
+          else
+            echo "❌ Merge conflicts detected!"
+            echo "Please resolve conflicts before merging."
+            # Try to abort in case merge started but failed
+            git merge --abort 2>/dev/null || true
+            exit 1
+          fi
+
+  # Check if tests were added for new features
+  check-test-coverage:
+    name: Ensure Tests Added
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for test files
+        run: |
+          echo "Checking if tests were added..."
+
+          # Get list of changed files
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD)
+
+          # Check if any Go files were changed
+          GO_FILES=$(echo "$CHANGED_FILES" | grep '\.go$' | grep -v '_test\.go$' || true)
+          TEST_FILES=$(echo "$CHANGED_FILES" | grep '_test\.go$' || true)
+
+          if [ -n "$GO_FILES" ] && [ -z "$TEST_FILES" ]; then
+            echo "⚠️ Warning: Go files were modified but no test files were added."
+            echo "Consider adding tests for your changes."
+            # Don't fail, just warn
+          else
+            echo "✅ Tests present or no Go files modified"
+          fi
+
+  # Wait for CI jobs to complete - using dependency instead of wait-on-check
+  # This approach doesn't require additional API permissions
+  wait-for-ci:
+    name: Wait for CI Completion
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    # This job will wait for the ci.yml workflow jobs
+    # We can't use needs here for external workflows, so we just succeed
+    # The actual enforcement happens via branch protection requiring specific jobs
+
+    steps:
+      - name: CI Status Check
+        run: |
+          echo "✅ This job serves as a placeholder for branch protection."
+          echo "Configure branch protection to require the following checks:"
+          echo "  - Unit Tests (1.23)"
+          echo "  - Unit Tests (1.24)"
+          echo "  - Integration Tests"
+          echo "  - Lint"
+          echo "  - Build"
+          echo ""
+          echo "These checks are defined in ci.yml workflow."
+
+  # Final summary job that all checks depend on
+  required-checks-summary:
+    name: Required Checks Summary
+    runs-on: ubuntu-latest
+    needs:
+      - validate-pr-title
+      - check-merge-conflicts
+      - check-test-coverage
+      - wait-for-ci
+    if: always() && github.event.pull_request.draft == false
+
+    steps:
+      - name: Check all required jobs
+        run: |
+          echo "Checking status of all required jobs..."
+
+          # Check if any required job failed
+          if [[ "${{ needs.validate-pr-title.result }}" != "success" ]]; then
+            echo "❌ PR title validation failed"
+            echo "Please ensure your PR title follows conventional commits format."
+            exit 1
+          fi
+
+          if [[ "${{ needs.check-merge-conflicts.result }}" != "success" ]]; then
+            echo "❌ Merge conflicts detected"
+            echo "Please rebase your branch on the latest ${{ github.event.pull_request.base.ref }} branch."
+            exit 1
+          fi
+
+          if [[ "${{ needs.wait-for-ci.result }}" != "success" ]]; then
+            echo "❌ CI workflow check failed"
+            exit 1
+          fi
+
+          # Test coverage check is informational only (doesn't block)
+
+          echo "✅ All PR-level checks passed!"
+          echo ""
+          echo "📋 Additional required checks (enforced by branch protection):"
+          echo "  - Unit Tests (1.23) - from ci.yml"
+          echo "  - Unit Tests (1.24) - from ci.yml"
+          echo "  - Integration Tests - from ci.yml"
+          echo "  - Lint - from ci.yml"
+          echo "  - Build - from ci.yml"
+          echo ""
+          echo "🎉 Once all checks pass, this PR is ready to be merged!"
+
+  # Auto-label PR based on files changed
+  auto-label:
+    name: Auto Label PR
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Label PR
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+          sync-labels: true

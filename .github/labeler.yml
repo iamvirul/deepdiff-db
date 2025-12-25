@@ -1,0 +1,45 @@
+# Automatically label PRs based on changed files
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file: ['**/*.md', 'docs/**/*']
+
+tests:
+  - changed-files:
+    - any-glob-to-any-file: ['tests/**/*', '**/*_test.go']
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file: ['go.mod', 'go.sum', '**/package.json', '**/package-lock.json']
+
+github-actions:
+  - changed-files:
+    - any-glob-to-any-file: ['.github/**/*']
+
+samples:
+  - changed-files:
+    - any-glob-to-any-file: ['samples/**/*']
+
+core:
+  - changed-files:
+    - any-glob-to-any-file: ['internal/**/*', 'pkg/**/*']
+
+cli:
+  - changed-files:
+    - any-glob-to-any-file: ['cmd/**/*']
+
+schema:
+  - changed-files:
+    - any-glob-to-any-file: ['internal/schema/**/*', 'tests/schema/**/*']
+
+content:
+  - changed-files:
+    - any-glob-to-any-file: ['internal/content/**/*', 'tests/content/**/*']
+
+config:
+  - changed-files:
+    - any-glob-to-any-file: ['internal/config/**/*', 'tests/config/**/*']
+
+drivers:
+  - changed-files:
+    - any-glob-to-any-file: ['internal/drivers/**/*', 'tests/drivers/**/*']

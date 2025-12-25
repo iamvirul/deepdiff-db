@@ -2,9 +2,10 @@ package schema
 
 // Column represents column metadata relevant for diffing.
 type Column struct {
-	Name       string `json:"name"`
-	DataType   string `json:"data_type"`
-	IsNullable bool   `json:"is_nullable"`
+	Name         string  `json:"name"`
+	DataType     string  `json:"data_type"`
+	IsNullable   bool    `json:"is_nullable"`
+	DefaultValue *string `json:"default_value,omitempty"` // Pointer to distinguish between NULL and no default
 }
 
 // Table represents a database table with its columns.
