@@ -13,6 +13,7 @@ permissions:
   pull-requests: write
   checks: read
   statuses: read
+  issues: write
 
 jobs:
   # Validate PR title follows conventional commits
@@ -20,6 +21,9 @@ jobs:
     name: Validate PR Title
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
+    permissions:
+      pull-requests: write
+      statuses: write
 
     steps:
       - name: Check PR title format
@@ -65,15 +69,17 @@ jobs:
           git fetch origin ${{ github.event.pull_request.base.ref }}
 
           # Try to merge base into current branch
-          if ! git merge --no-commit --no-ff origin/${{ github.event.pull_request.base.ref }}; then
+          if git merge --no-commit --no-ff origin/${{ github.event.pull_request.base.ref }}; then
+            echo "✅ No merge conflicts detected"
+            # Abort the merge since we only wanted to test
+            git merge --abort 2>/dev/null || true
+          else
             echo "❌ Merge conflicts detected!"
             echo "Please resolve conflicts before merging."
-            git merge --abort
+            # Try to abort in case merge started but failed
+            git merge --abort 2>/dev/null || true
             exit 1
           fi
-
-          echo "✅ No merge conflicts detected"
-          git merge --abort
 
   # Check if tests were added for new features
   check-test-coverage:
