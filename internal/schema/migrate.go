@@ -22,7 +22,15 @@ type MigrationOptions struct {
 // GenerateMigration generates a SQL migration script from a schema diff.
 // It supports MySQL, PostgreSQL, and SQLite drivers and returns the complete
 // migration script as a string wrapped in a transaction.
-// If opts is nil, safe defaults are used (all destructive operations commented out).
+// GenerateMigration generates a SQL migration script that reconciles the provided schema diff for the specified database driver.
+// 
+// The returned script is a single string wrapped in a transaction (BEGIN/COMMIT) and includes sectioned statements and warnings
+// for removed tables, added tables, added/removed/modified columns. If opts is nil, safe defaults are applied: AllowDropColumn=false,
+// AllowDropTable=false and ConfirmDestructive=true; these options control whether DROP statements are emitted or commented out and
+// whether extra destructive-confirmation warnings are included.
+// 
+// Supported drivers are "mysql", "postgres", "postgresql", and "sqlite". An error is returned if the driver is unsupported or if
+// generating any individual statement fails.
 func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (string, error) {
 	// Use safe defaults if opts is nil
 	if opts == nil {
