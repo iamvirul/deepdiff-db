@@ -447,7 +447,8 @@ func runSchemaDiff(args []string) error {
 //
 // It parses flags (--config, --dry-run), loads configuration, opens both database connections,
 // loads schemas, computes schema diff, generates migration SQL, and writes to output directory.
-// Returns an error if any operation fails.
+// runSchemaMigrate generates a standalone schema migration SQL file by comparing the production and development schemas.
+// It accepts CLI flags (parsed from args) including --config and --dry-run; in dry-run mode the generated migration is printed instead of written to disk. It constructs migration options from the loaded config, connects to both databases, computes the schema diff, generates the migration using those options, writes the migration to output/schema_migration.sql when changes exist, and returns an error if any step fails.
 func runSchemaMigrate(args []string) error {
 	fs := flag.NewFlagSet("schema-migrate", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
@@ -492,8 +493,15 @@ func runSchemaMigrate(args []string) error {
 	// Compute schema diff
 	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 
+	// Prepare migration options from config
+	opts := &schema.MigrationOptions{
+		AllowDropColumn:    cfg.Migration.AllowDropColumn,
+		AllowDropTable:     cfg.Migration.AllowDropTable,
+		ConfirmDestructive: cfg.Migration.ConfirmDestructive,
+	}
+
 	// Generate migration script
-	migrationSQL, err := schema.GenerateMigration(schemaDiff, cfg.Prod.Driver)
+	migrationSQL, err := schema.GenerateMigration(schemaDiff, cfg.Prod.Driver, opts)
 	if err != nil {
 		return fmt.Errorf("generate migration: %w", err)
 	}

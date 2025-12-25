@@ -37,7 +37,7 @@ func TestGenerateMigration_MySQL(t *testing.T) {
 		},
 	}
 
-	sql, err := schema.GenerateMigration(diff, "mysql")
+	sql, err := schema.GenerateMigration(diff, "mysql", nil)
 	if err != nil {
 		t.Fatalf("GenerateMigration failed: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestGenerateMigration_PostgreSQL(t *testing.T) {
 		},
 	}
 
-	sql, err := schema.GenerateMigration(diff, "postgresql")
+	sql, err := schema.GenerateMigration(diff, "postgresql", nil)
 	if err != nil {
 		t.Fatalf("GenerateMigration failed: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestGenerateMigration_SQLite(t *testing.T) {
 		},
 	}
 
-	sql, err := schema.GenerateMigration(diff, "sqlite")
+	sql, err := schema.GenerateMigration(diff, "sqlite", nil)
 	if err != nil {
 		t.Fatalf("GenerateMigration failed: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestGenerateMigration_NoDifferences(t *testing.T) {
 		},
 	}
 
-	sql, err := schema.GenerateMigration(diff, "mysql")
+	sql, err := schema.GenerateMigration(diff, "mysql", nil)
 	if err != nil {
 		t.Fatalf("GenerateMigration failed: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestGenerateMigration_NoDifferences(t *testing.T) {
 func TestGenerateMigration_UnsupportedDriver(t *testing.T) {
 	diff := schema.DiffResult{}
 
-	_, err := schema.GenerateMigration(diff, "oracle")
+	_, err := schema.GenerateMigration(diff, "oracle", nil)
 	if err == nil {
 		t.Error("Expected error for unsupported driver")
 	}
@@ -211,7 +211,7 @@ func TestGenerateMigration_SQLiteLimitations(t *testing.T) {
 		},
 	}
 
-	sql, err := schema.GenerateMigration(diff, "sqlite")
+	sql, err := schema.GenerateMigration(diff, "sqlite", nil)
 	if err != nil {
 		t.Fatalf("GenerateMigration failed: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestQuoteIdentifier_MySQL(t *testing.T) {
 				},
 			}
 
-			sql, err := schema.GenerateMigration(diff, "mysql")
+			sql, err := schema.GenerateMigration(diff, "mysql", nil)
 			if err != nil {
 				t.Fatalf("GenerateMigration failed: %v", err)
 			}
@@ -335,7 +335,7 @@ func TestQuoteIdentifier_PostgreSQL(t *testing.T) {
 				},
 			}
 
-			sql, err := schema.GenerateMigration(diff, "postgresql")
+			sql, err := schema.GenerateMigration(diff, "postgresql", nil)
 			if err != nil {
 				t.Fatalf("GenerateMigration failed: %v", err)
 			}
@@ -433,7 +433,7 @@ func TestGenerateMigration_MySQL_NullableHandling(t *testing.T) {
 				},
 			}
 
-			sql, err := schema.GenerateMigration(diff, "mysql")
+			sql, err := schema.GenerateMigration(diff, "mysql", nil)
 
 			if tt.wantError {
 				if err == nil {
@@ -532,7 +532,7 @@ func TestGenerateMigration_PostgreSQL_EdgeCases(t *testing.T) {
 				},
 			}
 
-			sql, err := schema.GenerateMigration(diff, "postgresql")
+			sql, err := schema.GenerateMigration(diff, "postgresql", nil)
 			if err != nil {
 				t.Fatalf("GenerateMigration failed: %v", err)
 			}
@@ -599,7 +599,7 @@ func TestGenerateMigration_OnlyTableOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sql, err := schema.GenerateMigration(tt.diff, "mysql")
+			sql, err := schema.GenerateMigration(tt.diff, "mysql", nil)
 			if err != nil {
 				t.Fatalf("GenerateMigration failed: %v", err)
 			}
@@ -654,7 +654,7 @@ func TestGenerateMigration_SQLite_AddColumnEdgeCases(t *testing.T) {
 				},
 			}
 
-			sql, err := schema.GenerateMigration(diff, "sqlite")
+			sql, err := schema.GenerateMigration(diff, "sqlite", nil)
 			if err != nil {
 				t.Fatalf("GenerateMigration failed: %v", err)
 			}
@@ -703,13 +703,181 @@ func TestQuoteIdentifier_SQLite(t *testing.T) {
 				},
 			}
 
-			sql, err := schema.GenerateMigration(diff, "sqlite")
+			sql, err := schema.GenerateMigration(diff, "sqlite", nil)
 			if err != nil {
 				t.Fatalf("GenerateMigration failed: %v", err)
 			}
 
 			if !strings.Contains(sql, tt.want) {
 				t.Errorf("Expected SQL to contain %q, but got:\n%s", tt.want, sql)
+			}
+		})
+	}
+}
+
+func TestGenerateMigration_DropColumnWithConfig(t *testing.T) {
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "users",
+				HasDifferences: true,
+				RemovedColumns: []schema.Column{
+					{Name: "deprecated_field", DataType: "VARCHAR(255)", IsNullable: true},
+					{Name: "old_column", DataType: "INT", IsNullable: false},
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name           string
+		driver         string
+		opts           *schema.MigrationOptions
+		wantContains   []string
+		wantNotContain []string
+	}{
+		{
+			name:   "MySQL - AllowDropColumn=false (default, commented)",
+			driver: "mysql",
+			opts:   nil, // Uses safe defaults
+			wantContains: []string{
+				"-- DROP COLUMNS (present in prod but not in dev)",
+				"-- WARNING: These operations will delete data!",
+				"-- IMPORTANT: Review carefully before executing!",
+				"-- ALTER TABLE `users` DROP COLUMN `deprecated_field`;",
+				"-- ALTER TABLE `users` DROP COLUMN `old_column`;",
+			},
+			wantNotContain: nil, // The wantContains checks are sufficient
+		},
+		{
+			name:   "MySQL - AllowDropColumn=true (uncommented)",
+			driver: "mysql",
+			opts: &schema.MigrationOptions{
+				AllowDropColumn:    true,
+				AllowDropTable:     false,
+				ConfirmDestructive: true,
+			},
+			wantContains: []string{
+				"-- DROP COLUMNS (present in prod but not in dev)",
+				"-- WARNING: These operations will delete data!",
+				"-- IMPORTANT: Review carefully before executing!",
+				"ALTER TABLE `users` DROP COLUMN `deprecated_field`;",
+				"ALTER TABLE `users` DROP COLUMN `old_column`;",
+			},
+			wantNotContain: []string{
+				"-- ALTER TABLE `users` DROP COLUMN `deprecated_field`;",
+			},
+		},
+		{
+			name:   "PostgreSQL - AllowDropColumn=true",
+			driver: "postgresql",
+			opts: &schema.MigrationOptions{
+				AllowDropColumn:    true,
+				ConfirmDestructive: false, // No extra warnings
+			},
+			wantContains: []string{
+				"ALTER TABLE \"users\" DROP COLUMN \"deprecated_field\";",
+				"ALTER TABLE \"users\" DROP COLUMN \"old_column\";",
+			},
+			wantNotContain: []string{
+				"-- IMPORTANT: Review carefully before executing!",
+			},
+		},
+		{
+			name:   "SQLite - AllowDropColumn=true (but still has limitation)",
+			driver: "sqlite",
+			opts: &schema.MigrationOptions{
+				AllowDropColumn: true,
+			},
+			wantContains: []string{
+				"-- SQLite does not support DROP COLUMN directly",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sql, err := schema.GenerateMigration(diff, tt.driver, tt.opts)
+			if err != nil {
+				t.Fatalf("GenerateMigration failed: %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(sql, want) {
+					t.Errorf("Expected SQL to contain %q, but got:\n%s", want, sql)
+				}
+			}
+
+			for _, notWant := range tt.wantNotContain {
+				if strings.Contains(sql, notWant) {
+					t.Errorf("Expected SQL to NOT contain %q, but got:\n%s", notWant, sql)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateMigration_DropTableWithConfig(t *testing.T) {
+	diff := schema.DiffResult{
+		RemovedTables: []string{"old_table", "deprecated_table"},
+	}
+
+	tests := []struct {
+		name           string
+		driver         string
+		opts           *schema.MigrationOptions
+		wantContains   []string
+		wantNotContain []string
+	}{
+		{
+			name:   "AllowDropTable=false (default, commented)",
+			driver: "mysql",
+			opts:   nil,
+			wantContains: []string{
+				"-- DROP TABLES (present in prod but not in dev)",
+				"-- WARNING: These operations will delete data!",
+				"-- DROP TABLE `old_table`;",
+				"-- DROP TABLE `deprecated_table`;",
+			},
+			wantNotContain: nil, // The wantContains checks are sufficient
+		},
+		{
+			name:   "AllowDropTable=true (uncommented)",
+			driver: "postgresql",
+			opts: &schema.MigrationOptions{
+				AllowDropTable:     true,
+				ConfirmDestructive: true,
+			},
+			wantContains: []string{
+				"-- DROP TABLES (present in prod but not in dev)",
+				"-- WARNING: These operations will delete data!",
+				"-- IMPORTANT: Review carefully before executing!",
+				"DROP TABLE \"old_table\";",
+				"DROP TABLE \"deprecated_table\";",
+			},
+			wantNotContain: []string{
+				"-- DROP TABLE \"old_table\";",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sql, err := schema.GenerateMigration(diff, tt.driver, tt.opts)
+			if err != nil {
+				t.Fatalf("GenerateMigration failed: %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(sql, want) {
+					t.Errorf("Expected SQL to contain %q, but got:\n%s", want, sql)
+				}
+			}
+
+			for _, notWant := range tt.wantNotContain {
+				if strings.Contains(sql, notWant) {
+					t.Errorf("Expected SQL to NOT contain %q, but got:\n%s", notWant, sql)
+				}
 			}
 		})
 	}
