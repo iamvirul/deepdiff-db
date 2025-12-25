@@ -1,0 +1,41 @@
+# DeepDiff DB Configuration - Active Mode
+# DROP COLUMN statements are ENABLED (use with caution!)
+
+prod:
+  driver: mysql
+  host: localhost
+  port: 3307
+  user: root
+  password: rootpass
+  database: testdb
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3308
+  user: root
+  password: rootpass
+  database: testdb
+
+output:
+  dir: ./diff-output-active
+
+# Migration safety settings - ACTIVE MODE
+migration:
+  # ⚠️  WARNING: DROP COLUMN statements will be UNCOMMENTED
+  # This will generate executable DROP COLUMN statements
+  # Use only in development/staging or when you're ready to apply changes
+  allow_drop_column: true
+
+  # Keep DROP TABLE commented for extra safety
+  allow_drop_table: false
+
+  # Show additional warnings
+  confirm_destructive: true
+
+# IMPORTANT NOTES:
+# 1. Always test migrations on non-production databases first
+# 2. Backup your data before running destructive migrations
+# 3. Review the generated SQL carefully before applying
+# 4. Consider the impact on foreign key constraints
+# 5. Document why columns are being removed
