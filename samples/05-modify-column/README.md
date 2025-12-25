@@ -145,19 +145,21 @@ deepdiffdb schema-migrate -config deepdiffdb.config.yaml
 cat diff-output/schema_migration.sql
 
 # 3. Check for NULL values before adding NOT NULL constraint
-docker exec -it deepdiff-prod-modify mysql -uroot -prootpass -e \
+docker exec deepdiff-prod-modify mysql -uroot -prootpass -e \
   "SELECT COUNT(*) FROM testdb.users WHERE email IS NULL"
 
 # 4. If there are NULLs, update them first
-docker exec -it deepdiff-prod-modify mysql -uroot -prootpass -e \
+docker exec deepdiff-prod-modify mysql -uroot -prootpass -e \
   "UPDATE testdb.users SET email = 'unknown@example.com' WHERE email IS NULL"
 
-# 5. Apply the migration
-docker exec -i deepdiff-prod-modify mysql -uroot -prootpass testdb \
-  < diff-output/schema_migration.sql
+# 5. Dry-run to validate the migration (recommended)
+deepdiffdb apply -config deepdiffdb.config.yaml -pack diff-output/schema_migration.sql -dry-run
 
-# 6. Verify the result
-docker exec -it deepdiff-prod-modify mysql -uroot -prootpass -e \
+# 6. Apply the migration to production database
+deepdiffdb apply -config deepdiffdb.config.yaml -pack diff-output/schema_migration.sql
+
+# 7. Verify the result
+docker exec deepdiff-prod-modify mysql -uroot -prootpass -e \
   "DESCRIBE testdb.users"
 ```
 
