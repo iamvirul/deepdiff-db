@@ -492,8 +492,15 @@ func runSchemaMigrate(args []string) error {
 	// Compute schema diff
 	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 
+	// Prepare migration options from config
+	opts := &schema.MigrationOptions{
+		AllowDropColumn:    cfg.Migration.AllowDropColumn,
+		AllowDropTable:     cfg.Migration.AllowDropTable,
+		ConfirmDestructive: cfg.Migration.ConfirmDestructive,
+	}
+
 	// Generate migration script
-	migrationSQL, err := schema.GenerateMigration(schemaDiff, cfg.Prod.Driver)
+	migrationSQL, err := schema.GenerateMigration(schemaDiff, cfg.Prod.Driver, opts)
 	if err != nil {
 		return fmt.Errorf("generate migration: %w", err)
 	}
