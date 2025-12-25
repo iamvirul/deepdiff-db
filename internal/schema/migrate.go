@@ -5,10 +5,33 @@ import (
 	"strings"
 )
 
+// MigrationOptions controls the behavior and safety settings for migration generation.
+type MigrationOptions struct {
+	// AllowDropColumn controls whether DROP COLUMN statements are uncommented.
+	// When false (default), DROP COLUMN statements are commented out for safety.
+	AllowDropColumn bool
+
+	// AllowDropTable controls whether DROP TABLE statements are uncommented.
+	// When false (default), DROP TABLE statements are commented out for safety.
+	AllowDropTable bool
+
+	// ConfirmDestructive adds additional warnings for destructive operations.
+	ConfirmDestructive bool
+}
+
 // GenerateMigration generates a SQL migration script from a schema diff.
 // It supports MySQL, PostgreSQL, and SQLite drivers and returns the complete
 // migration script as a string wrapped in a transaction.
-func GenerateMigration(diff DiffResult, driver string) (string, error) {
+// If opts is nil, safe defaults are used (all destructive operations commented out).
+func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (string, error) {
+	// Use safe defaults if opts is nil
+	if opts == nil {
+		opts = &MigrationOptions{
+			AllowDropColumn: false,
+			AllowDropTable:  false,
+			ConfirmDestructive: true,
+		}
+	}
 	driver = strings.ToLower(driver)
 
 	// Validate driver
@@ -34,8 +57,15 @@ func GenerateMigration(diff DiffResult, driver string) (string, error) {
 	if len(diff.RemovedTables) > 0 {
 		stmts = append(stmts, "-- DROP TABLES (present in prod but not in dev)")
 		stmts = append(stmts, "-- WARNING: These operations will delete data!")
+		if opts.ConfirmDestructive {
+			stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
+		}
 		for _, tableName := range diff.RemovedTables {
-			stmts = append(stmts, fmt.Sprintf("-- DROP TABLE %s;", quoteIdentifier(tableName, driver)))
+			dropStmt := fmt.Sprintf("DROP TABLE %s;", quoteIdentifier(tableName, driver))
+			if !opts.AllowDropTable {
+				dropStmt = "-- " + dropStmt
+			}
+			stmts = append(stmts, dropStmt)
 		}
 		stmts = append(stmts, "")
 	}
@@ -74,16 +104,22 @@ func GenerateMigration(diff DiffResult, driver string) (string, error) {
 			stmts = append(stmts, stmt)
 		}
 
-		// Drop columns (commented out by default for safety)
+		// Drop columns
 		if len(td.RemovedColumns) > 0 {
 			stmts = append(stmts, "-- DROP COLUMNS (present in prod but not in dev)")
 			stmts = append(stmts, "-- WARNING: These operations will delete data!")
+			if opts.ConfirmDestructive {
+				stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
+			}
 			for _, col := range td.RemovedColumns {
 				stmt, err := generateDropColumn(td.Name, col, driver)
 				if err != nil {
 					return "", fmt.Errorf("generate drop column %s.%s: %w", td.Name, col.Name, err)
 				}
-				stmts = append(stmts, "-- "+stmt)
+				if !opts.AllowDropColumn {
+					stmt = "-- " + stmt
+				}
+				stmts = append(stmts, stmt)
 			}
 		}
 

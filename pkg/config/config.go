@@ -10,10 +10,11 @@ import (
 
 // Config holds the full DeepDiff DB configuration.
 type Config struct {
-	Prod   DBConfig     `yaml:"prod"`
-	Dev    DBConfig     `yaml:"dev"`
-	Ignore IgnoreConfig `yaml:"ignore"`
-	Output OutputConfig `yaml:"output"`
+	Prod      DBConfig        `yaml:"prod"`
+	Dev       DBConfig        `yaml:"dev"`
+	Ignore    IgnoreConfig    `yaml:"ignore"`
+	Output    OutputConfig    `yaml:"output"`
+	Migration MigrationConfig `yaml:"migration"`
 }
 
 // DBConfig represents connection details for a single database.
@@ -35,6 +36,21 @@ type IgnoreConfig struct {
 // OutputConfig defines the output directory for reports and packs.
 type OutputConfig struct {
 	Dir string `yaml:"dir"`
+}
+
+// MigrationConfig defines safety and behavior settings for schema migrations.
+type MigrationConfig struct {
+	// AllowDropColumn controls whether DROP COLUMN statements are uncommented.
+	// When false (default), DROP COLUMN statements are commented out for safety.
+	AllowDropColumn bool `yaml:"allow_drop_column"`
+
+	// AllowDropTable controls whether DROP TABLE statements are uncommented.
+	// When false (default), DROP TABLE statements are commented out for safety.
+	AllowDropTable bool `yaml:"allow_drop_table"`
+
+	// ConfirmDestructive requires manual confirmation for destructive operations.
+	// When true, destructive operations include additional warnings.
+	ConfirmDestructive bool `yaml:"confirm_destructive"`
 }
 
 // Load reads configuration from the YAML file at path, unmarshals it into a Config,
