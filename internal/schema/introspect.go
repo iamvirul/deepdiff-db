@@ -25,7 +25,7 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 		rows, err := db.QueryContext(ctx, `
 			SELECT c.table_name,
 			       c.column_name,
-			       c.data_type,
+			       c.column_type,
 			       c.is_nullable,
 			       c.column_default,
 			       kcu.ordinal_position AS pk_ordinal
