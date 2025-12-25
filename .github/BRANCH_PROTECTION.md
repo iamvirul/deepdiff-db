@@ -29,15 +29,12 @@ main
 - [x] Require branches to be up to date before merging
 
 **Required Status Checks:**
-- `Required Checks Summary` ← **Primary required check**
-- `All Required Checks`
-- `Validate PR Title`
-- `Check for Merge Conflicts`
-- `Unit Tests (1.23)`
-- `Unit Tests (1.24)`
-- `Integration Tests`
-- `Lint`
-- `Build`
+- `Required Checks Summary` ← **Primary PR workflow check**
+- `Unit Tests (1.23)` ← From ci.yml
+- `Unit Tests (1.24)` ← From ci.yml
+- `Integration Tests` ← From ci.yml
+- `Lint` ← From ci.yml
+- `Build` ← From ci.yml
 
 **✅ Require conversation resolution before merging**
 - [x] Enabled
@@ -59,13 +56,6 @@ main
 - **Build**: Ensures binary builds successfully
 
 ### 2. PR Checks (`pr-checks.yml`)
-
-#### All Required Checks
-Waits for all CI jobs to complete successfully:
-- Unit Tests (both Go versions)
-- Integration Tests
-- Lint
-- Build
 
 #### Validate PR Title
 Ensures PR titles follow conventional commits format:
