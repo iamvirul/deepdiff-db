@@ -216,8 +216,9 @@ func defaultsDiffer(a, b *string) bool {
 func normalizeDefault(val string) string {
 	normalized := strings.TrimSpace(val)
 	// Remove surrounding quotes if present (handle both single and double quotes)
-	if (strings.HasPrefix(normalized, "'") && strings.HasSuffix(normalized, "'")) ||
-		(strings.HasPrefix(normalized, "\"") && strings.HasSuffix(normalized, "\"")) {
+	if len(normalized) >= 2 &&
+		((strings.HasPrefix(normalized, "'") && strings.HasSuffix(normalized, "'")) ||
+			(strings.HasPrefix(normalized, "\"") && strings.HasSuffix(normalized, "\""))) {
 		normalized = normalized[1 : len(normalized)-1]
 	}
 	return normalized
