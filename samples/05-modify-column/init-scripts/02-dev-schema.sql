@@ -16,7 +16,7 @@ CREATE TABLE users (
 
     -- Modified nullable constraints
     email VARCHAR(100) NOT NULL,            -- Changed from NULL to NOT NULL
-    status VARCHAR(20) NULL,                -- Changed from NOT NULL to NULL (also expanded to VARCHAR(20) from VARCHAR(20))
+    status VARCHAR(20) NULL,                -- Changed from NOT NULL to NULL
 
     -- Modified DEFAULT values
     is_active TINYINT(1) DEFAULT 1,         -- Changed DEFAULT from 0 to 1
