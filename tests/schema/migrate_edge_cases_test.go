@@ -280,7 +280,7 @@ func TestGenerateMigration_PostgreSQL_MultipleChanges(t *testing.T) {
 		NullableMismatch: true,
 		DevType:          "varchar(100)",
 		ProdType:         "varchar(20)",
-		DevNullable:      boolPtr(true),  // Change to nullable
+		DevNullable:      boolPtr(true), // Change to nullable
 		ProdNullable:     boolPtr(false),
 		DevDefault:       stringPtr("'pending'"),
 		ProdDefault:      stringPtr("'active'"),

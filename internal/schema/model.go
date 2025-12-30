@@ -11,7 +11,7 @@ type Column struct {
 // Index represents a database index on a table.
 type Index struct {
 	Name     string   `json:"name"`
-	Columns  []string `json:"columns"`   // Ordered list of columns in the index
+	Columns  []string `json:"columns"` // Ordered list of columns in the index
 	IsUnique bool     `json:"is_unique"`
 }
 

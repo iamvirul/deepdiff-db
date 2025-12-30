@@ -7,22 +7,22 @@ import (
 
 // TableDiff describes differences for a single table.
 type TableDiff struct {
-	Name             string       `json:"table"`
-	Table            string       `json:"-"` // Deprecated: use Name
-	MissingInProd    bool         `json:"missing_in_prod,omitempty"`
-	MissingInDev     bool         `json:"missing_in_dev,omitempty"`
-	ColumnDiffs      []ColumnDiff `json:"column_diffs,omitempty"`
-	AddedColumns     []Column     `json:"added_columns,omitempty"`
-	RemovedColumns   []Column     `json:"removed_columns,omitempty"`
-	ModifiedColumns  []ColumnDiff `json:"modified_columns,omitempty"`
-	AddedIndexes     []Index      `json:"added_indexes,omitempty"`
-	RemovedIndexes   []Index      `json:"removed_indexes,omitempty"`
-	ModifiedIndexes  []IndexDiff  `json:"modified_indexes,omitempty"`
-	ExtraInProd      []string     `json:"extra_in_prod,omitempty"`
-	ExtraInDev       []string     `json:"extra_in_dev,omitempty"`
-	OnlyInProd       bool         `json:"only_in_prod,omitempty"`
-	OnlyInDev        bool         `json:"only_in_dev,omitempty"`
-	HasDifferences   bool         `json:"has_differences"`
+	Name            string       `json:"table"`
+	Table           string       `json:"-"` // Deprecated: use Name
+	MissingInProd   bool         `json:"missing_in_prod,omitempty"`
+	MissingInDev    bool         `json:"missing_in_dev,omitempty"`
+	ColumnDiffs     []ColumnDiff `json:"column_diffs,omitempty"`
+	AddedColumns    []Column     `json:"added_columns,omitempty"`
+	RemovedColumns  []Column     `json:"removed_columns,omitempty"`
+	ModifiedColumns []ColumnDiff `json:"modified_columns,omitempty"`
+	AddedIndexes    []Index      `json:"added_indexes,omitempty"`
+	RemovedIndexes  []Index      `json:"removed_indexes,omitempty"`
+	ModifiedIndexes []IndexDiff  `json:"modified_indexes,omitempty"`
+	ExtraInProd     []string     `json:"extra_in_prod,omitempty"`
+	ExtraInDev      []string     `json:"extra_in_dev,omitempty"`
+	OnlyInProd      bool         `json:"only_in_prod,omitempty"`
+	OnlyInDev       bool         `json:"only_in_dev,omitempty"`
+	HasDifferences  bool         `json:"has_differences"`
 }
 
 // ColumnDiff captures mismatches for a column across prod/dev.
@@ -57,8 +57,8 @@ type IndexDiff struct {
 // DiffResult aggregates all table diffs.
 type DiffResult struct {
 	Tables        []TableDiff `json:"tables"`
-	AddedTables   []string    `json:"added_tables,omitempty"`
-	RemovedTables []string    `json:"removed_tables,omitempty"`
+	AddedTables   []Table     `json:"added_tables,omitempty"`   // Full table definitions for CREATE TABLE
+	RemovedTables []string    `json:"removed_tables,omitempty"` // Table names for DROP TABLE
 }
 
 // DiffSchemas compares two Schema values and returns a DiffResult that describes table- and column-level differences between them.
@@ -104,7 +104,7 @@ func DiffSchemas(prod, dev *Schema) DiffResult {
 			td.OnlyInDev = true
 			td.HasDifferences = true
 			result.Tables = append(result.Tables, td)
-			result.AddedTables = append(result.AddedTables, tbl)
+			result.AddedTables = append(result.AddedTables, d) // Store full table definition
 			continue
 		}
 

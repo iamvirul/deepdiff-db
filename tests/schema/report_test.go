@@ -27,10 +27,10 @@ func TestWriteReports(t *testing.T) {
 				HasDifferences: true,
 				ColumnDiffs: []schema.ColumnDiff{
 					{
-						Column:        "title",
-						TypeMismatch:   true,
-						ProdType:       "varchar",
-						DevType:        "text",
+						Column:       "title",
+						TypeMismatch: true,
+						ProdType:     "varchar",
+						DevType:      "text",
 					},
 				},
 			},
@@ -565,4 +565,3 @@ func TestWriteReports_CompositeIndexes(t *testing.T) {
 		t.Error("Text should contain all composite index columns")
 	}
 }
-

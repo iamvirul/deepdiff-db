@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // TestIntrospect_MySQL_DefaultValues tests DEFAULT value introspection for MySQL
@@ -100,9 +100,9 @@ func TestIntrospect_MySQL_DefaultValues(t *testing.T) {
 	// Test cases for each column
 	// Note: MySQL returns DEFAULT values from INFORMATION_SCHEMA without quotes for strings
 	tests := []struct {
-		columnName      string
-		expectDefault   bool
-		expectedDefault string
+		columnName       string
+		expectDefault    bool
+		expectedDefault  string
 		dataTypeContains string
 	}{
 		{"status", true, "active", "varchar"},
@@ -231,8 +231,8 @@ func TestIntrospect_PostgreSQL_DefaultValues(t *testing.T) {
 
 	// Test cases for each column
 	tests := []struct {
-		columnName      string
-		expectDefault   bool
+		columnName    string
+		expectDefault bool
 		// PostgreSQL may return defaults with ::type casts
 	}{
 		{"status", true},

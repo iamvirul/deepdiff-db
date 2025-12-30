@@ -741,9 +741,9 @@ func TestDiffIndexes_MixedChanges(t *testing.T) {
 				Name:    "users",
 				Columns: map[string]schema.Column{"id": {Name: "id", DataType: "int"}},
 				Indexes: map[string]schema.Index{
-					"idx_to_remove":  {Name: "idx_to_remove", Columns: []string{"old_col"}, IsUnique: false},
-					"idx_to_modify":  {Name: "idx_to_modify", Columns: []string{"col_a", "col_b"}, IsUnique: false},
-					"idx_unchanged":  {Name: "idx_unchanged", Columns: []string{"status"}, IsUnique: false},
+					"idx_to_remove": {Name: "idx_to_remove", Columns: []string{"old_col"}, IsUnique: false},
+					"idx_to_modify": {Name: "idx_to_modify", Columns: []string{"col_a", "col_b"}, IsUnique: false},
+					"idx_unchanged": {Name: "idx_unchanged", Columns: []string{"status"}, IsUnique: false},
 				},
 			},
 		},
@@ -754,9 +754,9 @@ func TestDiffIndexes_MixedChanges(t *testing.T) {
 				Name:    "users",
 				Columns: map[string]schema.Column{"id": {Name: "id", DataType: "int"}},
 				Indexes: map[string]schema.Index{
-					"idx_to_add":     {Name: "idx_to_add", Columns: []string{"new_col"}, IsUnique: true},
-					"idx_to_modify":  {Name: "idx_to_modify", Columns: []string{"col_b", "col_a"}, IsUnique: false}, // Changed order
-					"idx_unchanged":  {Name: "idx_unchanged", Columns: []string{"status"}, IsUnique: false},
+					"idx_to_add":    {Name: "idx_to_add", Columns: []string{"new_col"}, IsUnique: true},
+					"idx_to_modify": {Name: "idx_to_modify", Columns: []string{"col_b", "col_a"}, IsUnique: false}, // Changed order
+					"idx_unchanged": {Name: "idx_unchanged", Columns: []string{"status"}, IsUnique: false},
 				},
 			},
 		},

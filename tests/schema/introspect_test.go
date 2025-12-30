@@ -303,4 +303,3 @@ func TestCheckPrimaryKeys_UnsupportedDriver(t *testing.T) {
 		t.Error("expected error for unsupported driver")
 	}
 }
-

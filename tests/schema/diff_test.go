@@ -113,8 +113,8 @@ func TestDiffSchemas(t *testing.T) {
 					"users": {
 						Name: "users",
 						Columns: map[string]schema.Column{
-							"id":   {Name: "id", DataType: "int", IsNullable: false},
-							"name": {Name: "name", DataType: "varchar", IsNullable: false},
+							"id":    {Name: "id", DataType: "int", IsNullable: false},
+							"name":  {Name: "name", DataType: "varchar", IsNullable: false},
 							"email": {Name: "email", DataType: "varchar", IsNullable: true},
 						},
 						PrimaryKey: []string{"id"},
@@ -207,8 +207,8 @@ func TestDiffSchemas(t *testing.T) {
 					"users": {
 						Name: "users",
 						Columns: map[string]schema.Column{
-							"id":   {Name: "id", DataType: "int", IsNullable: false},
-							"age":  {Name: "age", DataType: "int", IsNullable: false},
+							"id":  {Name: "id", DataType: "int", IsNullable: false},
+							"age": {Name: "age", DataType: "int", IsNullable: false},
 						},
 						PrimaryKey: []string{"id"},
 					},
@@ -219,8 +219,8 @@ func TestDiffSchemas(t *testing.T) {
 					"users": {
 						Name: "users",
 						Columns: map[string]schema.Column{
-							"id":   {Name: "id", DataType: "int", IsNullable: false},
-							"age":  {Name: "age", DataType: "varchar", IsNullable: false},
+							"id":  {Name: "id", DataType: "int", IsNullable: false},
+							"age": {Name: "age", DataType: "varchar", IsNullable: false},
 						},
 						PrimaryKey: []string{"id"},
 					},
@@ -441,4 +441,3 @@ func TestNormalizeType(t *testing.T) {
 		})
 	}
 }
-
