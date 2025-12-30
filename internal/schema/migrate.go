@@ -21,6 +21,14 @@ type MigrationOptions struct {
 	// When false (default), DROP INDEX statements are commented out for safety.
 	AllowDropIndex bool
 
+	// AllowDropForeignKey controls whether DROP FOREIGN KEY statements are uncommented.
+	// When false (default), DROP FOREIGN KEY statements are commented out for safety.
+	AllowDropForeignKey bool
+
+	// AllowModifyPrimaryKey controls whether primary key modification statements are uncommented.
+	// When false (default), PRIMARY KEY modification statements are commented out for safety.
+	AllowModifyPrimaryKey bool
+
 	// ConfirmDestructive adds additional warnings for destructive operations.
 	ConfirmDestructive bool
 }
@@ -41,10 +49,12 @@ func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (
 	// Use safe defaults if opts is nil
 	if opts == nil {
 		opts = &MigrationOptions{
-			AllowDropColumn:    false,
-			AllowDropTable:     false,
-			AllowDropIndex:     false,
-			ConfirmDestructive: true,
+			AllowDropColumn:       false,
+			AllowDropTable:        false,
+			AllowDropIndex:        false,
+			AllowDropForeignKey:   false,
+			AllowModifyPrimaryKey: false,
+			ConfirmDestructive:    true,
 		}
 	}
 	driver = strings.ToLower(driver)
@@ -97,6 +107,14 @@ func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (
 				for _, idx := range table.Indexes {
 					idxStmt := generateCreateIndex(table.Name, idx, driver)
 					stmts = append(stmts, idxStmt)
+				}
+			}
+
+			// Generate ADD FOREIGN KEY statements for the new table's foreign keys
+			if len(table.ForeignKeys) > 0 {
+				for _, fk := range table.ForeignKeys {
+					fkStmt := generateAddForeignKey(table.Name, fk, driver)
+					stmts = append(stmts, fkStmt)
 				}
 			}
 		}
@@ -191,6 +209,66 @@ func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (
 					stmts = append(stmts, fmt.Sprintf("--   Unique: prod=%v dev=%v", *idxDiff.ProdUnique, *idxDiff.DevUnique))
 				}
 			}
+		}
+
+		// Drop foreign keys (present in prod but not in dev) - must be dropped before columns
+		if len(td.RemovedForeignKeys) > 0 {
+			stmts = append(stmts, "-- DROP FOREIGN KEYS (present in prod but not in dev)")
+			stmts = append(stmts, "-- WARNING: Dropping foreign keys removes referential integrity constraints")
+			if opts.ConfirmDestructive {
+				stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
+			}
+			for _, fk := range td.RemovedForeignKeys {
+				stmt := generateDropForeignKey(td.Name, fk, driver)
+				if !opts.AllowDropForeignKey {
+					stmt = "-- " + stmt
+				}
+				stmts = append(stmts, stmt)
+			}
+		}
+
+		// Add foreign keys (present in dev but not in prod)
+		if len(td.AddedForeignKeys) > 0 {
+			stmts = append(stmts, "-- ADD FOREIGN KEYS (present in dev but not in prod)")
+			for _, fk := range td.AddedForeignKeys {
+				stmt := generateAddForeignKey(td.Name, fk, driver)
+				stmts = append(stmts, stmt)
+			}
+		}
+
+		// Modified foreign keys (differ between prod and dev)
+		if len(td.ModifiedForeignKeys) > 0 {
+			stmts = append(stmts, "-- MODIFIED FOREIGN KEYS (differ between prod and dev)")
+			stmts = append(stmts, "-- NOTE: To modify a foreign key, drop and recreate it. Manual review required.")
+			for _, fkDiff := range td.ModifiedForeignKeys {
+				stmts = append(stmts, fmt.Sprintf("-- Foreign key %s differs between prod and dev", fkDiff.Name))
+				if fkDiff.ColumnsDiffer {
+					stmts = append(stmts, fmt.Sprintf("--   Columns: prod=%v dev=%v", fkDiff.ProdColumns, fkDiff.DevColumns))
+				}
+				if fkDiff.ReferencedTableDiffers {
+					stmts = append(stmts, fmt.Sprintf("--   Referenced table: prod=%s dev=%s", fkDiff.ProdReferencedTable, fkDiff.DevReferencedTable))
+				}
+				if fkDiff.ReferencedColumnsDiffer {
+					stmts = append(stmts, fmt.Sprintf("--   Referenced columns: prod=%v dev=%v", fkDiff.ProdReferencedColumns, fkDiff.DevReferencedColumns))
+				}
+				if fkDiff.OnDeleteDiffers {
+					stmts = append(stmts, fmt.Sprintf("--   ON DELETE: prod=%s dev=%s", fkDiff.ProdOnDelete, fkDiff.DevOnDelete))
+				}
+				if fkDiff.OnUpdateDiffers {
+					stmts = append(stmts, fmt.Sprintf("--   ON UPDATE: prod=%s dev=%s", fkDiff.ProdOnUpdate, fkDiff.DevOnUpdate))
+				}
+			}
+		}
+
+		// Primary key modifications
+		if td.PrimaryKeyDiff != nil {
+			stmts = append(stmts, "-- PRIMARY KEY MODIFICATION")
+			stmts = append(stmts, "-- WARNING: Modifying primary keys is a complex operation that may require data migration")
+			if opts.ConfirmDestructive {
+				stmts = append(stmts, "-- IMPORTANT: Review carefully and test in non-production environment first!")
+			}
+			pkStmts := generateModifyPrimaryKey(td.Name, td.PrimaryKeyDiff, driver, opts.AllowModifyPrimaryKey)
+			stmts = append(stmts, pkStmts...)
 		}
 
 		stmts = append(stmts, "")
@@ -504,4 +582,134 @@ func needsQuoting(val string) bool {
 		return false
 	}
 	return true
+}
+
+// generateAddForeignKey generates an ALTER TABLE ADD CONSTRAINT FOREIGN KEY statement.
+func generateAddForeignKey(tableName string, fk ForeignKey, driver string) string {
+	quotedTable := quoteIdentifier(tableName, driver)
+	quotedFK := quoteIdentifier(fk.Name, driver)
+	quotedRefTable := quoteIdentifier(fk.ReferencedTable, driver)
+
+	// Quote column names
+	quotedCols := make([]string, len(fk.Columns))
+	for i, col := range fk.Columns {
+		quotedCols[i] = quoteIdentifier(col, driver)
+	}
+	colList := strings.Join(quotedCols, ", ")
+
+	// Quote referenced column names
+	quotedRefCols := make([]string, len(fk.ReferencedColumns))
+	for i, col := range fk.ReferencedColumns {
+		quotedRefCols[i] = quoteIdentifier(col, driver)
+	}
+	refColList := strings.Join(quotedRefCols, ", ")
+
+	// Build ON DELETE and ON UPDATE clauses
+	var actions []string
+	if fk.OnDelete != "" && strings.ToUpper(fk.OnDelete) != "NO ACTION" {
+		actions = append(actions, fmt.Sprintf("ON DELETE %s", strings.ToUpper(fk.OnDelete)))
+	}
+	if fk.OnUpdate != "" && strings.ToUpper(fk.OnUpdate) != "NO ACTION" {
+		actions = append(actions, fmt.Sprintf("ON UPDATE %s", strings.ToUpper(fk.OnUpdate)))
+	}
+
+	actionClause := ""
+	if len(actions) > 0 {
+		actionClause = " " + strings.Join(actions, " ")
+	}
+
+	switch driver {
+	case "sqlite":
+		// SQLite doesn't support ADD CONSTRAINT for foreign keys after table creation
+		return fmt.Sprintf("-- SQLite limitation: Cannot add foreign key %s after table creation. Table recreation required.", fk.Name)
+	default:
+		return fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s (%s)%s;",
+			quotedTable, quotedFK, colList, quotedRefTable, refColList, actionClause)
+	}
+}
+
+// generateDropForeignKey generates an ALTER TABLE DROP FOREIGN KEY/CONSTRAINT statement.
+func generateDropForeignKey(tableName string, fk ForeignKey, driver string) string {
+	quotedTable := quoteIdentifier(tableName, driver)
+	quotedFK := quoteIdentifier(fk.Name, driver)
+
+	switch driver {
+	case "mysql":
+		return fmt.Sprintf("ALTER TABLE %s DROP FOREIGN KEY %s;", quotedTable, quotedFK)
+	case "postgres", "postgresql":
+		return fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT %s;", quotedTable, quotedFK)
+	case "sqlite":
+		return fmt.Sprintf("-- SQLite limitation: Cannot drop foreign key %s. Table recreation required.", fk.Name)
+	default:
+		return fmt.Sprintf("-- DROP FOREIGN KEY %s; -- unsupported driver", fk.Name)
+	}
+}
+
+// generateModifyPrimaryKey generates statements to modify primary key.
+// Returns a slice of SQL statements as primary key modification may require multiple steps.
+func generateModifyPrimaryKey(tableName string, pkDiff *PrimaryKeyDiff, driver string, allowModify bool) []string {
+	var stmts []string
+	quotedTable := quoteIdentifier(tableName, driver)
+
+	// Quote new primary key columns
+	quotedNewCols := make([]string, len(pkDiff.DevColumns))
+	for i, col := range pkDiff.DevColumns {
+		quotedNewCols[i] = quoteIdentifier(col, driver)
+	}
+	newColList := strings.Join(quotedNewCols, ", ")
+
+	switch driver {
+	case "mysql":
+		// MySQL: DROP PRIMARY KEY, then ADD PRIMARY KEY
+		dropStmt := fmt.Sprintf("ALTER TABLE %s DROP PRIMARY KEY;", quotedTable)
+		addStmt := fmt.Sprintf("ALTER TABLE %s ADD PRIMARY KEY (%s);", quotedTable, newColList)
+
+		if !allowModify {
+			dropStmt = "-- " + dropStmt
+			addStmt = "-- " + addStmt
+		}
+
+		if len(pkDiff.ProdColumns) > 0 {
+			stmts = append(stmts, fmt.Sprintf("-- Current primary key: (%s)", strings.Join(pkDiff.ProdColumns, ", ")))
+			stmts = append(stmts, fmt.Sprintf("-- New primary key: (%s)", strings.Join(pkDiff.DevColumns, ", ")))
+			stmts = append(stmts, dropStmt)
+		}
+		if len(pkDiff.DevColumns) > 0 {
+			stmts = append(stmts, addStmt)
+		}
+
+	case "postgres", "postgresql":
+		// PostgreSQL: DROP CONSTRAINT pk_name, then ADD PRIMARY KEY
+		// Note: We don't know the constraint name, so we use a placeholder
+		dropStmt := fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT %s_pkey;", quotedTable, tableName)
+		addStmt := fmt.Sprintf("ALTER TABLE %s ADD PRIMARY KEY (%s);", quotedTable, newColList)
+
+		if !allowModify {
+			dropStmt = "-- " + dropStmt
+			addStmt = "-- " + addStmt
+		}
+
+		if len(pkDiff.ProdColumns) > 0 {
+			stmts = append(stmts, fmt.Sprintf("-- Current primary key: (%s)", strings.Join(pkDiff.ProdColumns, ", ")))
+			stmts = append(stmts, fmt.Sprintf("-- New primary key: (%s)", strings.Join(pkDiff.DevColumns, ", ")))
+			stmts = append(stmts, "-- NOTE: Replace 'tablename_pkey' with actual constraint name if different")
+			stmts = append(stmts, dropStmt)
+		}
+		if len(pkDiff.DevColumns) > 0 {
+			stmts = append(stmts, addStmt)
+		}
+
+	case "sqlite":
+		// SQLite doesn't support modifying primary keys directly
+		stmts = append(stmts, fmt.Sprintf("-- SQLite limitation: Cannot modify primary key for table %s", tableName))
+		stmts = append(stmts, fmt.Sprintf("-- Current primary key: (%s)", strings.Join(pkDiff.ProdColumns, ", ")))
+		stmts = append(stmts, fmt.Sprintf("-- New primary key: (%s)", strings.Join(pkDiff.DevColumns, ", ")))
+		stmts = append(stmts, "-- Manual table recreation required:")
+		stmts = append(stmts, "-- 1. Create new table with correct primary key")
+		stmts = append(stmts, fmt.Sprintf("-- 2. Copy data from %s to new table", tableName))
+		stmts = append(stmts, fmt.Sprintf("-- 3. Drop old table %s", tableName))
+		stmts = append(stmts, fmt.Sprintf("-- 4. Rename new table to %s", tableName))
+	}
+
+	return stmts
 }

@@ -7,22 +7,26 @@ import (
 
 // TableDiff describes differences for a single table.
 type TableDiff struct {
-	Name            string       `json:"table"`
-	Table           string       `json:"-"` // Deprecated: use Name
-	MissingInProd   bool         `json:"missing_in_prod,omitempty"`
-	MissingInDev    bool         `json:"missing_in_dev,omitempty"`
-	ColumnDiffs     []ColumnDiff `json:"column_diffs,omitempty"`
-	AddedColumns    []Column     `json:"added_columns,omitempty"`
-	RemovedColumns  []Column     `json:"removed_columns,omitempty"`
-	ModifiedColumns []ColumnDiff `json:"modified_columns,omitempty"`
-	AddedIndexes    []Index      `json:"added_indexes,omitempty"`
-	RemovedIndexes  []Index      `json:"removed_indexes,omitempty"`
-	ModifiedIndexes []IndexDiff  `json:"modified_indexes,omitempty"`
-	ExtraInProd     []string     `json:"extra_in_prod,omitempty"`
-	ExtraInDev      []string     `json:"extra_in_dev,omitempty"`
-	OnlyInProd      bool         `json:"only_in_prod,omitempty"`
-	OnlyInDev       bool         `json:"only_in_dev,omitempty"`
-	HasDifferences  bool         `json:"has_differences"`
+	Name                string           `json:"table"`
+	Table               string           `json:"-"` // Deprecated: use Name
+	MissingInProd       bool             `json:"missing_in_prod,omitempty"`
+	MissingInDev        bool             `json:"missing_in_dev,omitempty"`
+	ColumnDiffs         []ColumnDiff     `json:"column_diffs,omitempty"`
+	AddedColumns        []Column         `json:"added_columns,omitempty"`
+	RemovedColumns      []Column         `json:"removed_columns,omitempty"`
+	ModifiedColumns     []ColumnDiff     `json:"modified_columns,omitempty"`
+	AddedIndexes        []Index          `json:"added_indexes,omitempty"`
+	RemovedIndexes      []Index          `json:"removed_indexes,omitempty"`
+	ModifiedIndexes     []IndexDiff      `json:"modified_indexes,omitempty"`
+	AddedForeignKeys    []ForeignKey     `json:"added_foreign_keys,omitempty"`
+	RemovedForeignKeys  []ForeignKey     `json:"removed_foreign_keys,omitempty"`
+	ModifiedForeignKeys []ForeignKeyDiff `json:"modified_foreign_keys,omitempty"`
+	PrimaryKeyDiff      *PrimaryKeyDiff  `json:"primary_key_diff,omitempty"`
+	ExtraInProd         []string         `json:"extra_in_prod,omitempty"`
+	ExtraInDev          []string         `json:"extra_in_dev,omitempty"`
+	OnlyInProd          bool             `json:"only_in_prod,omitempty"`
+	OnlyInDev           bool             `json:"only_in_dev,omitempty"`
+	HasDifferences      bool             `json:"has_differences"`
 }
 
 // ColumnDiff captures mismatches for a column across prod/dev.
@@ -52,6 +56,34 @@ type IndexDiff struct {
 	UniqueDiffers bool     `json:"unique_differs,omitempty"`
 	ProdUnique    *bool    `json:"prod_unique,omitempty"`
 	DevUnique     *bool    `json:"dev_unique,omitempty"`
+}
+
+// ForeignKeyDiff captures mismatches for a foreign key across prod/dev.
+type ForeignKeyDiff struct {
+	Name                    string   `json:"fk_name"`
+	MissingInProd           bool     `json:"missing_in_prod,omitempty"`
+	MissingInDev            bool     `json:"missing_in_dev,omitempty"`
+	ColumnsDiffer           bool     `json:"columns_differ,omitempty"`
+	ProdColumns             []string `json:"prod_columns,omitempty"`
+	DevColumns              []string `json:"dev_columns,omitempty"`
+	ReferencedTableDiffers  bool     `json:"referenced_table_differs,omitempty"`
+	ProdReferencedTable     string   `json:"prod_referenced_table,omitempty"`
+	DevReferencedTable      string   `json:"dev_referenced_table,omitempty"`
+	ReferencedColumnsDiffer bool     `json:"referenced_columns_differ,omitempty"`
+	ProdReferencedColumns   []string `json:"prod_referenced_columns,omitempty"`
+	DevReferencedColumns    []string `json:"dev_referenced_columns,omitempty"`
+	OnDeleteDiffers         bool     `json:"on_delete_differs,omitempty"`
+	ProdOnDelete            string   `json:"prod_on_delete,omitempty"`
+	DevOnDelete             string   `json:"dev_on_delete,omitempty"`
+	OnUpdateDiffers         bool     `json:"on_update_differs,omitempty"`
+	ProdOnUpdate            string   `json:"prod_on_update,omitempty"`
+	DevOnUpdate             string   `json:"dev_on_update,omitempty"`
+}
+
+// PrimaryKeyDiff captures mismatches for primary keys across prod/dev.
+type PrimaryKeyDiff struct {
+	ProdColumns []string `json:"prod_columns,omitempty"`
+	DevColumns  []string `json:"dev_columns,omitempty"`
 }
 
 // DiffResult aggregates all table diffs.
@@ -115,7 +147,16 @@ func DiffSchemas(prod, dev *Schema) DiffResult {
 		// Process index differences
 		td.AddedIndexes, td.RemovedIndexes, td.ModifiedIndexes = diffIndexes(p.Indexes, d.Indexes)
 
-		td.HasDifferences = len(td.ColumnDiffs) > 0 || len(td.AddedIndexes) > 0 || len(td.RemovedIndexes) > 0 || len(td.ModifiedIndexes) > 0
+		// Process foreign key differences
+		td.AddedForeignKeys, td.RemovedForeignKeys, td.ModifiedForeignKeys = diffForeignKeys(p.ForeignKeys, d.ForeignKeys)
+
+		// Process primary key differences
+		td.PrimaryKeyDiff = diffPrimaryKey(p.PrimaryKey, d.PrimaryKey)
+
+		td.HasDifferences = len(td.ColumnDiffs) > 0 ||
+			len(td.AddedIndexes) > 0 || len(td.RemovedIndexes) > 0 || len(td.ModifiedIndexes) > 0 ||
+			len(td.AddedForeignKeys) > 0 || len(td.RemovedForeignKeys) > 0 || len(td.ModifiedForeignKeys) > 0 ||
+			td.PrimaryKeyDiff != nil
 		result.Tables = append(result.Tables, td)
 	}
 
@@ -359,4 +400,121 @@ func slicesEqual(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// diffForeignKeys compares foreign keys between prod and dev tables.
+// It returns three slices: added foreign keys (in dev but not prod), removed foreign keys (in prod but not dev),
+// and modified foreign keys (exist in both but differ in definition).
+func diffForeignKeys(prodFKs, devFKs map[string]ForeignKey) (added []ForeignKey, removed []ForeignKey, modified []ForeignKeyDiff) {
+	if prodFKs == nil {
+		prodFKs = make(map[string]ForeignKey)
+	}
+	if devFKs == nil {
+		devFKs = make(map[string]ForeignKey)
+	}
+
+	// Collect all foreign key names
+	seen := make(map[string]struct{})
+	for name := range prodFKs {
+		seen[name] = struct{}{}
+	}
+	for name := range devFKs {
+		seen[name] = struct{}{}
+	}
+
+	var names []string
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		prodFK, prodOK := prodFKs[name]
+		devFK, devOK := devFKs[name]
+
+		if prodOK && !devOK {
+			// Foreign key exists in prod but not in dev - should be removed
+			removed = append(removed, prodFK)
+			continue
+		}
+
+		if !prodOK && devOK {
+			// Foreign key exists in dev but not in prod - should be added
+			added = append(added, devFK)
+			continue
+		}
+
+		// Foreign key exists in both - check for differences
+		diff := ForeignKeyDiff{Name: name}
+		hasDiff := false
+
+		// Compare source columns
+		if !slicesEqual(prodFK.Columns, devFK.Columns) {
+			diff.ColumnsDiffer = true
+			diff.ProdColumns = prodFK.Columns
+			diff.DevColumns = devFK.Columns
+			hasDiff = true
+		}
+
+		// Compare referenced table
+		if prodFK.ReferencedTable != devFK.ReferencedTable {
+			diff.ReferencedTableDiffers = true
+			diff.ProdReferencedTable = prodFK.ReferencedTable
+			diff.DevReferencedTable = devFK.ReferencedTable
+			hasDiff = true
+		}
+
+		// Compare referenced columns
+		if !slicesEqual(prodFK.ReferencedColumns, devFK.ReferencedColumns) {
+			diff.ReferencedColumnsDiffer = true
+			diff.ProdReferencedColumns = prodFK.ReferencedColumns
+			diff.DevReferencedColumns = devFK.ReferencedColumns
+			hasDiff = true
+		}
+
+		// Compare ON DELETE action
+		if normalizeAction(prodFK.OnDelete) != normalizeAction(devFK.OnDelete) {
+			diff.OnDeleteDiffers = true
+			diff.ProdOnDelete = prodFK.OnDelete
+			diff.DevOnDelete = devFK.OnDelete
+			hasDiff = true
+		}
+
+		// Compare ON UPDATE action
+		if normalizeAction(prodFK.OnUpdate) != normalizeAction(devFK.OnUpdate) {
+			diff.OnUpdateDiffers = true
+			diff.ProdOnUpdate = prodFK.OnUpdate
+			diff.DevOnUpdate = devFK.OnUpdate
+			hasDiff = true
+		}
+
+		if hasDiff {
+			modified = append(modified, diff)
+		}
+	}
+
+	return
+}
+
+// normalizeAction normalizes FK action strings for comparison.
+// Handles variations like "NO ACTION" vs "RESTRICT" (which are equivalent in some databases).
+func normalizeAction(action string) string {
+	action = strings.TrimSpace(strings.ToUpper(action))
+	// Treat empty string and "NO ACTION" as equivalent
+	if action == "" || action == "NO ACTION" {
+		return "NO ACTION"
+	}
+	return action
+}
+
+// diffPrimaryKey compares primary key columns between prod and dev.
+// Returns a PrimaryKeyDiff if columns differ, nil otherwise.
+func diffPrimaryKey(prodPK, devPK []string) *PrimaryKeyDiff {
+	if slicesEqual(prodPK, devPK) {
+		return nil
+	}
+	return &PrimaryKeyDiff{
+		ProdColumns: prodPK,
+		DevColumns:  devPK,
+	}
 }
