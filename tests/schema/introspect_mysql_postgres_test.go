@@ -285,7 +285,11 @@ func TestIntrospect_MySQL_ColumnTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start MySQL container: %v", err)
 	}
-	defer container.Terminate(ctx)
+	defer func() {
+		if err := container.Terminate(ctx); err != nil {
+			t.Logf("failed to terminate container: %v", err)
+		}
+	}()
 
 	port, err := container.MappedPort(ctx, "3306")
 	if err != nil {
