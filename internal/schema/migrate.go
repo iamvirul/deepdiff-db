@@ -45,7 +45,19 @@ type MigrationOptions struct {
 //
 // Supported drivers are "mysql", "postgres", "postgresql", and "sqlite". An error is returned if the driver is unsupported or if
 // generating any individual statement fails.
+//
+// The function automatically orders operations to respect foreign key dependencies:
+// - CREATE TABLE operations are ordered so referenced tables are created first
+// - DROP TABLE operations are ordered so tables with FKs are dropped first
+// - Foreign key operations are placed after their referenced tables exist
 func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (string, error) {
+	return GenerateMigrationWithSchemas(diff, driver, opts, nil)
+}
+
+// GenerateMigrationWithSchemas generates a SQL migration script with full schema context.
+// The prodSchema parameter enables proper ordering of DROP TABLE operations based on
+// foreign key dependencies in the production schema.
+func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *MigrationOptions, prodSchema *Schema) (string, error) {
 	// Use safe defaults if opts is nil
 	if opts == nil {
 		opts = &MigrationOptions{
@@ -79,13 +91,16 @@ func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (
 	stmts = append(stmts, "")
 
 	// Process removed tables (DROP TABLE)
+	// Order tables so that tables with FKs pointing to other removed tables are dropped first
 	if len(diff.RemovedTables) > 0 {
 		stmts = append(stmts, "-- DROP TABLES (present in prod but not in dev)")
 		stmts = append(stmts, "-- WARNING: These operations will delete data!")
 		if opts.ConfirmDestructive {
 			stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
 		}
-		for _, tableName := range diff.RemovedTables {
+		// Order removed tables by FK dependencies
+		orderedRemovedTables := GetOrderedRemovedTables(diff.RemovedTables, prodSchema)
+		for _, tableName := range orderedRemovedTables {
 			dropStmt := fmt.Sprintf("DROP TABLE %s;", quoteIdentifier(tableName, driver))
 			if !opts.AllowDropTable {
 				dropStmt = "-- " + dropStmt
@@ -96,9 +111,12 @@ func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (
 	}
 
 	// Process added tables (CREATE TABLE)
+	// Order tables so that referenced tables (via FK) are created first
 	if len(diff.AddedTables) > 0 {
 		stmts = append(stmts, "-- CREATE TABLES (present in dev but not in prod)")
-		for _, table := range diff.AddedTables {
+		// Order added tables by FK dependencies - referenced tables first
+		orderedAddedTables := GetOrderedAddedTables(diff.AddedTables)
+		for _, table := range orderedAddedTables {
 			createStmt := generateCreateTable(table, driver)
 			stmts = append(stmts, createStmt)
 
