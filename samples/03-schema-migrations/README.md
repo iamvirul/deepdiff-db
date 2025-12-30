@@ -153,7 +153,7 @@ COMMIT;
 
 ## 7. Apply the Migration (Optional)
 
-**⚠️ Warning:** This will modify the production database!
+**WARNING:** This will modify the production database!
 
 If you want to test applying the migration, you can run it against the prod database:
 

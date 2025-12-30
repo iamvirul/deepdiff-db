@@ -80,10 +80,10 @@ COMMIT;
 ```
 
 **Benefits:**
-- ✅ Safe by default - no accidental data loss
-- ✅ Clear visibility of what would be dropped
-- ✅ Manual review and approval required
-- ✅ Can selectively uncomment specific statements
+- Safe by default - no accidental data loss
+- Clear visibility of what would be dropped
+- Manual review and approval required
+- Can selectively uncomment specific statements
 
 ### Example 2: Active Mode - DROP Statements Enabled
 
@@ -186,7 +186,7 @@ migration:
 
 ## Safety Best Practices
 
-### ✅ DO
+### DO
 
 1. **Always review generated migrations** before applying to production
 2. **Test in non-production environments** first
@@ -195,7 +195,7 @@ migration:
 5. **Version control** your migration scripts
 6. **Document** why columns are being removed
 
-### ❌ DON'T
+### DON'T
 
 1. **Don't enable DROP operations** without understanding the impact
 2. **Don't skip testing** on non-production databases

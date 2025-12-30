@@ -29,12 +29,12 @@ This directory contains scripts to build and install the latest version of `deep
 
 ## Features
 
-- ✅ Builds optimized binaries with version information
-- ✅ Automatically includes git commit hash in version
-- ✅ Cross-platform support (macOS, Linux, Windows)
-- ✅ Handles installation permissions automatically
-- ✅ Validates binary after build
-- ✅ Customizable installation directory
+- Builds optimized binaries with version information
+- Automatically includes git commit hash in version
+- Cross-platform support (macOS, Linux, Windows)
+- Handles installation permissions automatically
+- Validates binary after build
+- Customizable installation directory
 
 ## Options
 

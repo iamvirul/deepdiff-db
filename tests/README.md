@@ -78,13 +78,13 @@ go test ./tests -run TestIntegration_AllReportsGenerated -v
 ## Test Output
 
 All tests verify:
-- ✅ Schema diff reports are generated
-- ✅ Content diff reports are generated
-- ✅ Conflicts are detected and reported
-- ✅ Migration packs are generated correctly
-- ✅ Migration packs can be applied successfully
-- ✅ Data matches after migration application
-- ✅ All report files have valid structure and content
+- Schema diff reports are generated
+- Content diff reports are generated
+- Conflicts are detected and reported
+- Migration packs are generated correctly
+- Migration packs can be applied successfully
+- Data matches after migration application
+- All report files have valid structure and content
 
 ## Skipping Docker Tests
 

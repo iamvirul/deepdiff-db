@@ -103,35 +103,35 @@ Each MODIFY COLUMN statement updates the complete column definition:
 -- VARCHAR(50) → VARCHAR(255)
 ALTER TABLE `users` MODIFY COLUMN `username` VARCHAR(255) NOT NULL;
 ```
-✅ Safe - no data loss, existing data fits in larger field
+Safe - no data loss, existing data fits in larger field
 
 **Type Conversion (Safe)**:
 ```sql
 -- VARCHAR(500) → TEXT
 ALTER TABLE `users` MODIFY COLUMN `description` TEXT NOT NULL;
 ```
-✅ Safe - TEXT can hold all VARCHAR data
+Safe - TEXT can hold all VARCHAR data
 
 **Integer Expansion (Safe)**:
 ```sql
 -- INT → BIGINT
 ALTER TABLE `users` MODIFY COLUMN `age` BIGINT NULL;
 ```
-✅ Safe - BIGINT can hold all INT values
+Safe - BIGINT can hold all INT values
 
 **Nullable Relaxation (Safe)**:
 ```sql
 -- NOT NULL → NULL
 ALTER TABLE `users` MODIFY COLUMN `status` VARCHAR(50) NULL;
 ```
-✅ Safe - making column nullable doesn't affect existing data
+Safe - making column nullable doesn't affect existing data
 
 **Nullable Restriction (Requires Validation)**:
 ```sql
 -- NULL → NOT NULL
 ALTER TABLE `users` MODIFY COLUMN `email` VARCHAR(100) NOT NULL;
 ```
-⚠️  Requires validation - ensure no NULL values exist first!
+WARNING: Requires validation - ensure no NULL values exist first!
 
 ### Example 3: Testing Before Applying
 
@@ -205,17 +205,17 @@ ALTER TABLE "users" ALTER COLUMN "email" SET NOT NULL;
 
 ## Type Compatibility Matrix
 
-### ✅ Safe Type Changes (No Data Loss)
+### Safe Type Changes (No Data Loss)
 
 | From          | To            | MySQL | PostgreSQL | SQLite | Notes |
 |---------------|---------------|-------|------------|--------|-------|
-| VARCHAR(n)    | VARCHAR(m>n)  | ✅    | ✅         | ❌     | Expansion only |
-| VARCHAR       | TEXT          | ✅    | ✅         | ❌     | Safe conversion |
-| INT           | BIGINT        | ✅    | ✅         | ❌     | Size expansion |
-| DECIMAL(m,n)  | DECIMAL(p>m,q≥n) | ✅ | ✅         | ❌     | Precision expansion |
-| NOT NULL      | NULL          | ✅    | ✅         | ❌     | Relaxing constraint |
+| VARCHAR(n)    | VARCHAR(m>n)  | Yes   | Yes        | No     | Expansion only |
+| VARCHAR       | TEXT          | Yes   | Yes        | No     | Safe conversion |
+| INT           | BIGINT        | Yes   | Yes        | No     | Size expansion |
+| DECIMAL(m,n)  | DECIMAL(p>m,q≥n) | Yes | Yes        | No     | Precision expansion |
+| NOT NULL      | NULL          | Yes   | Yes        | No     | Relaxing constraint |
 
-### ⚠️ Potentially Unsafe Changes (May Cause Data Loss)
+### Potentially Unsafe Changes (May Cause Data Loss)
 
 | From          | To            | Risk | Solution |
 |---------------|---------------|------|----------|
@@ -227,7 +227,7 @@ ALTER TABLE "users" ALTER COLUMN "email" SET NOT NULL;
 
 ## Best Practices
 
-### ✅ DO
+### DO
 
 1. **Test in non-production first**
    ```bash
@@ -241,9 +241,9 @@ ALTER TABLE "users" ALTER COLUMN "email" SET NOT NULL;
    ```
 
 3. **Use safe type expansions**
-   - VARCHAR(50) → VARCHAR(100) ✅
-   - INT → BIGINT ✅
-   - DECIMAL(5,2) → DECIMAL(10,2) ✅
+   - VARCHAR(50) → VARCHAR(100) (Safe)
+   - INT → BIGINT (Safe)
+   - DECIMAL(5,2) → DECIMAL(10,2) (Safe)
 
 4. **Review generated SQL carefully**
    ```bash
@@ -255,16 +255,16 @@ ALTER TABLE "users" ALTER COLUMN "email" SET NOT NULL;
    mysqldump -u root -p testdb > backup.sql
    ```
 
-### ❌ DON'T
+### DON'T
 
 1. **Don't shrink column sizes without validation**
-   - VARCHAR(100) → VARCHAR(50) ❌ (may truncate)
+   - VARCHAR(100) → VARCHAR(50) (may truncate)
 
 2. **Don't add NOT NULL without checking for NULLs**
    - Will fail if NULL values exist
 
 3. **Don't convert incompatible types**
-   - TEXT → INT ❌ (will fail if non-numeric data)
+   - TEXT → INT (will fail if non-numeric data)
 
 4. **Don't skip testing**
    - Always test migrations before production
@@ -286,7 +286,7 @@ username VARCHAR(255) -- Needed
 ```sql
 ALTER TABLE `users` MODIFY COLUMN `username` VARCHAR(255) NOT NULL;
 ```
-✅ Safe - no data loss
+Safe - no data loss
 
 ### Scenario 2: Making Column Nullable
 
@@ -300,7 +300,7 @@ status VARCHAR(20) NULL       -- Needed
 ```sql
 ALTER TABLE `users` MODIFY COLUMN `status` VARCHAR(20) NULL;
 ```
-✅ Safe - relaxing constraint
+Safe - relaxing constraint
 
 ### Scenario 3: Adding NOT NULL Constraint
 
@@ -321,7 +321,7 @@ UPDATE users SET email = 'unknown@example.com' WHERE email IS NULL;
 # 3. Apply constraint
 ALTER TABLE `users` MODIFY COLUMN `email` VARCHAR(100) NOT NULL;
 ```
-⚠️ Requires data cleanup first
+WARNING: Requires data cleanup first
 
 ### Scenario 4: Integer Size Expansion
 
@@ -335,7 +335,7 @@ user_id BIGINT       -- Needed (max ~9 quintillion)
 ```sql
 ALTER TABLE `users` MODIFY COLUMN `user_id` BIGINT NOT NULL;
 ```
-✅ Safe - size expansion
+Safe - size expansion
 
 ## Troubleshooting
 
