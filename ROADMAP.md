@@ -8,9 +8,9 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v0.2
+## Current Status: v0.3
 
-**Last Release:** 2025-12-20
+**Last Release:** 2025-12-30
 
 **Current Features:**
 - Schema drift detection
@@ -20,34 +20,21 @@ We release a new version every **Saturday**. Each release includes one or more f
 - MySQL, PostgreSQL, SQLite support
 - Conflict detection
 - JSON and text reports
+- Standalone schema migration command (`schema-migrate`)
+- DROP COLUMN support with safety controls
+- MODIFY COLUMN support (type changes, nullable changes)
+- CREATE TABLE and DROP TABLE support
+- Index support (CREATE INDEX, DROP INDEX)
+- Foreign key constraint handling (ADD/DROP FOREIGN KEY)
+- Primary key modification support
+- Dependency-aware migration ordering
 
 ---
 
 ## Upcoming Releases
 
-### Week 1 - v0.3: Enhanced Schema Migration Generator
-**Target Date:** Next Saturday**
-
-**Current State (v0.2):**
-- ADD COLUMN already implemented (as part of data migration packs)
-
-**New Features:**
-- Dedicated standalone schema migration command (`schema-migrate`)
-- Support for DROP COLUMN (with safety checks)
-- Support for MODIFY COLUMN (type changes, nullable changes)
-- Support for ADD INDEX, DROP INDEX
-- Support for table creation/deletion (CREATE TABLE, DROP TABLE)
-- Foreign key constraint handling (ADD/DROP FOREIGN KEY)
-- Primary key modifications
-- Safe migration ordering (dependency analysis)
-- Separate schema migrations from data migrations
-
-**Impact:** Enables comprehensive automatic schema synchronization between environments with a dedicated schema-only migration workflow
-
----
-
-### Week 2 - v0.4: Conflict Resolution Strategies
-**Target Date:** Week 2 Saturday
+### Week 1 - v0.4: Conflict Resolution Strategies
+**Target Date:** Next Saturday
 
 **Features:**
 - Merge strategies: ours (prod), theirs (dev), manual
@@ -61,8 +48,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 3 - v0.5: HTML Report Viewer
-**Target Date:** Week 3 Saturday
+### Week 2 - v0.5: HTML Report Viewer
+**Target Date:** Week 2 Saturday
 
 **Features:**
 - Interactive HTML report generation
@@ -76,8 +63,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 4 - v0.6: Enhanced Error Handling & Logging
-**Target Date:** Week 4 Saturday
+### Week 3 - v0.6: Enhanced Error Handling & Logging
+**Target Date:** Week 3 Saturday
 
 **Features:**
 - Structured logging with levels (DEBUG, INFO, WARN, ERROR)
@@ -91,8 +78,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 5 - v0.7: Streaming Support for Large Datasets
-**Target Date:** Week 5 Saturday
+### Week 4 - v0.7: Streaming Support for Large Datasets
+**Target Date:** Week 4 Saturday
 
 **Features:**
 - Streaming diff for tables > 1M rows
@@ -106,8 +93,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 6 - v0.8: MSSQL Support
-**Target Date:** Week 6 Saturday
+### Week 5 - v0.8: MSSQL Support
+**Target Date:** Week 5 Saturday
 
 **Features:**
 - Microsoft SQL Server driver support
@@ -120,8 +107,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 7 - v0.9: Oracle Support
-**Target Date:** Week 7 Saturday
+### Week 6 - v0.9: Oracle Support
+**Target Date:** Week 6 Saturday
 
 **Features:**
 - Oracle Database driver support
@@ -134,8 +121,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 8 - v1.0: Production Ready Release
-**Target Date:** Week 8 Saturday
+### Week 7 - v1.0: Production Ready Release
+**Target Date:** Week 7 Saturday
 
 **Features:**
 - Comprehensive documentation
@@ -196,7 +183,6 @@ We release a new version every **Saturday**. Each release includes one or more f
 ## Priority Matrix
 
 ### High Priority (Must Have for v1.0)
-- Schema Migration Generator
 - Conflict Resolution Strategies
 - Enhanced Error Handling & Logging
 - Documentation & Production Readiness
@@ -243,5 +229,5 @@ If you'd like to contribute to any of these features, please:
 
 ---
 
-**Last Updated:** 2025-12-20
+**Last Updated:** 2025-12-30
 
