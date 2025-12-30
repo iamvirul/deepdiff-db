@@ -354,3 +354,247 @@ func TestLoad_FileNotFound(t *testing.T) {
 	}
 }
 
+// ============================================================================
+// Migration Config Tests (AllowDropIndex, AllowDropColumn, AllowDropTable)
+// ============================================================================
+
+func TestLoad_MigrationConfig_AllowDropIndex(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         string
+		wantDropIndex  bool
+	}{
+		{
+			name: "allow_drop_index true",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+migration:
+  allow_drop_index: true
+`,
+			wantDropIndex: true,
+		},
+		{
+			name: "allow_drop_index false",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+migration:
+  allow_drop_index: false
+`,
+			wantDropIndex: false,
+		},
+		{
+			name: "allow_drop_index not specified (default false)",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+`,
+			wantDropIndex: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath := filepath.Join(tmpDir, "test.yaml")
+			if err := os.WriteFile(configPath, []byte(tt.config), 0o644); err != nil {
+				t.Fatalf("failed to write test config: %v", err)
+			}
+
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if cfg.Migration.AllowDropIndex != tt.wantDropIndex {
+				t.Errorf("expected AllowDropIndex=%v, got %v", tt.wantDropIndex, cfg.Migration.AllowDropIndex)
+			}
+		})
+	}
+}
+
+func TestLoad_MigrationConfig_AllSettings(t *testing.T) {
+	configYAML := `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+migration:
+  allow_drop_column: true
+  allow_drop_table: true
+  allow_drop_index: true
+  confirm_destructive: true
+`
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test.yaml")
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.Migration.AllowDropColumn {
+		t.Error("expected AllowDropColumn to be true")
+	}
+	if !cfg.Migration.AllowDropTable {
+		t.Error("expected AllowDropTable to be true")
+	}
+	if !cfg.Migration.AllowDropIndex {
+		t.Error("expected AllowDropIndex to be true")
+	}
+	if !cfg.Migration.ConfirmDestructive {
+		t.Error("expected ConfirmDestructive to be true")
+	}
+}
+
+func TestLoad_MigrationConfig_DefaultValues(t *testing.T) {
+	configYAML := `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+`
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test.yaml")
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// All migration settings should default to false
+	if cfg.Migration.AllowDropColumn {
+		t.Error("expected AllowDropColumn to default to false")
+	}
+	if cfg.Migration.AllowDropTable {
+		t.Error("expected AllowDropTable to default to false")
+	}
+	if cfg.Migration.AllowDropIndex {
+		t.Error("expected AllowDropIndex to default to false")
+	}
+	if cfg.Migration.ConfirmDestructive {
+		t.Error("expected ConfirmDestructive to default to false")
+	}
+}
+
+func TestLoad_MigrationConfig_PartialSettings(t *testing.T) {
+	// Test that specifying some migration settings doesn't affect others
+	configYAML := `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+migration:
+  allow_drop_index: true
+`
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test.yaml")
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Only AllowDropIndex should be true
+	if cfg.Migration.AllowDropColumn {
+		t.Error("expected AllowDropColumn to be false")
+	}
+	if cfg.Migration.AllowDropTable {
+		t.Error("expected AllowDropTable to be false")
+	}
+	if !cfg.Migration.AllowDropIndex {
+		t.Error("expected AllowDropIndex to be true")
+	}
+	if cfg.Migration.ConfirmDestructive {
+		t.Error("expected ConfirmDestructive to be false")
+	}
+}
+
+func TestMigrationConfig_Struct(t *testing.T) {
+	// Test direct struct creation
+	migConfig := config.MigrationConfig{
+		AllowDropColumn:    true,
+		AllowDropTable:     true,
+		AllowDropIndex:     true,
+		ConfirmDestructive: true,
+	}
+
+	if !migConfig.AllowDropColumn {
+		t.Error("expected AllowDropColumn to be true")
+	}
+	if !migConfig.AllowDropTable {
+		t.Error("expected AllowDropTable to be true")
+	}
+	if !migConfig.AllowDropIndex {
+		t.Error("expected AllowDropIndex to be true")
+	}
+	if !migConfig.ConfirmDestructive {
+		t.Error("expected ConfirmDestructive to be true")
+	}
+}
+
