@@ -14,8 +14,6 @@ We release patches for security vulnerabilities. Which versions are eligible for
 **Please do not report security vulnerabilities through public GitHub issues.**
 
 Instead, please report them via one of the following methods:
-
-- **Email**: [Your security email or create a security policy]
 - **Private Security Advisory**: Use GitHub's private vulnerability reporting feature
 
 Please include the following information in your report:
