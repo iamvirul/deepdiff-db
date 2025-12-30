@@ -503,8 +503,8 @@ func runSchemaMigrate(args []string) error {
 		ConfirmDestructive:    cfg.Migration.ConfirmDestructive,
 	}
 
-	// Generate migration script
-	migrationSQL, err := schema.GenerateMigration(schemaDiff, cfg.Prod.Driver, opts)
+	// Generate migration script with proper dependency ordering
+	migrationSQL, err := schema.GenerateMigrationWithSchemas(schemaDiff, cfg.Prod.Driver, opts, prodSchema)
 	if err != nil {
 		return fmt.Errorf("generate migration: %w", err)
 	}
