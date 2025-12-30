@@ -1,0 +1,32 @@
+# DeepDiff DB Configuration - Active Mode
+# DROP FOREIGN KEY statements are ENABLED - use with caution!
+# This will generate executable DROP FOREIGN KEY statements.
+
+prod:
+  driver: mysql
+  host: localhost
+  port: 3313
+  user: root
+  password: rootpass
+  database: testdb
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3314
+  user: root
+  password: rootpass
+  database: testdb
+
+output:
+  dir: ./diff-output
+
+# Migration settings (active - destructive operations enabled)
+# WARNING: DROP FOREIGN KEY removes referential integrity constraints!
+migration:
+  allow_drop_column: true
+  allow_drop_table: true
+  allow_drop_index: true
+  allow_drop_foreign_key: true     # DROP FOREIGN KEY statements will be executable
+  allow_modify_primary_key: true   # PRIMARY KEY modifications will be executable
+  confirm_destructive: true        # Show extra warnings for destructive operations

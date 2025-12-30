@@ -495,10 +495,12 @@ func runSchemaMigrate(args []string) error {
 
 	// Prepare migration options from config
 	opts := &schema.MigrationOptions{
-		AllowDropColumn:    cfg.Migration.AllowDropColumn,
-		AllowDropTable:     cfg.Migration.AllowDropTable,
-		AllowDropIndex:     cfg.Migration.AllowDropIndex,
-		ConfirmDestructive: cfg.Migration.ConfirmDestructive,
+		AllowDropColumn:       cfg.Migration.AllowDropColumn,
+		AllowDropTable:        cfg.Migration.AllowDropTable,
+		AllowDropIndex:        cfg.Migration.AllowDropIndex,
+		AllowDropForeignKey:   cfg.Migration.AllowDropForeignKey,
+		AllowModifyPrimaryKey: cfg.Migration.AllowModifyPrimaryKey,
+		ConfirmDestructive:    cfg.Migration.ConfirmDestructive,
 	}
 
 	// Generate migration script

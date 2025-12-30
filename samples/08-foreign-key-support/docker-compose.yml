@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # Production database with existing foreign keys
+  prod-db:
+    image: mysql:8.0
+    container_name: deepdiff-fk-prod-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: testdb
+    ports:
+      - "3313:3306"
+    volumes:
+      - ./init-scripts/01-prod-schema.sql:/docker-entrypoint-initdb.d/01-prod-schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
+      timeout: 5s
+      retries: 10
+      interval: 3s
+    networks:
+      - deepdiff-fk-network
+
+  # Development database with new/modified foreign keys
+  dev-db:
+    image: mysql:8.0
+    container_name: deepdiff-fk-dev-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: testdb
+    ports:
+      - "3314:3306"
+    volumes:
+      - ./init-scripts/02-dev-schema.sql:/docker-entrypoint-initdb.d/02-dev-schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
+      timeout: 5s
+      retries: 10
+      interval: 3s
+    networks:
+      - deepdiff-fk-network
+
+networks:
+  deepdiff-fk-network:
+    driver: bridge

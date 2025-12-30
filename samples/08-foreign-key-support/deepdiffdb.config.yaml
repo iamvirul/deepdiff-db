@@ -1,0 +1,31 @@
+# DeepDiff DB Configuration - Safe Mode (Default)
+# DROP FOREIGN KEY statements are commented out for safety
+
+prod:
+  driver: mysql
+  host: localhost
+  port: 3313
+  user: root
+  password: rootpass
+  database: testdb
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3314
+  user: root
+  password: rootpass
+  database: testdb
+
+output:
+  dir: ./diff-output
+
+# Migration settings (safe defaults)
+# Drop operations are commented out by default
+migration:
+  allow_drop_column: false
+  allow_drop_table: false
+  allow_drop_index: false
+  allow_drop_foreign_key: false    # DROP FOREIGN KEY statements will be commented
+  allow_modify_primary_key: false  # PRIMARY KEY modifications will be commented
+  confirm_destructive: true        # Show extra warnings for destructive operations

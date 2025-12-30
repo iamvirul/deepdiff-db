@@ -52,6 +52,14 @@ type MigrationConfig struct {
 	// When false (default), DROP INDEX statements are commented out for safety.
 	AllowDropIndex bool `yaml:"allow_drop_index"`
 
+	// AllowDropForeignKey controls whether DROP FOREIGN KEY statements are uncommented.
+	// When false (default), DROP FOREIGN KEY statements are commented out for safety.
+	AllowDropForeignKey bool `yaml:"allow_drop_foreign_key"`
+
+	// AllowModifyPrimaryKey controls whether primary key modification statements are uncommented.
+	// When false (default), PRIMARY KEY modification statements are commented out for safety.
+	AllowModifyPrimaryKey bool `yaml:"allow_modify_primary_key"`
+
 	// ConfirmDestructive requires manual confirmation for destructive operations.
 	// When true, destructive operations include additional warnings.
 	ConfirmDestructive bool `yaml:"confirm_destructive"`
@@ -60,7 +68,7 @@ type MigrationConfig struct {
 // Load reads configuration from the YAML file at path, unmarshals it into a Config,
 // validates the resulting configuration, and ensures Output.Dir defaults to "./diff-output"
 // when not specified.
-// 
+//
 // If the file cannot be read the returned error is wrapped with the prefix "read config",
 // and if the YAML cannot be parsed the error is wrapped with the prefix "parse config".
 // Validation errors from Config.Validate are returned as-is.

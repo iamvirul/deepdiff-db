@@ -105,6 +105,11 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 		return nil, fmt.Errorf("load indexes: %w", err)
 	}
 
+	// Load foreign keys for all tables
+	if err := loadForeignKeys(ctx, db, driver, database, s); err != nil {
+		return nil, fmt.Errorf("load foreign keys: %w", err)
+	}
+
 	return s, nil
 }
 
@@ -517,4 +522,292 @@ func loadSQLiteIndexes(ctx context.Context, db *sql.DB, s *Schema) error {
 		s.Tables[tableName] = table
 	}
 	return nil
+}
+
+// loadForeignKeys queries the database for foreign key metadata and populates the ForeignKeys map for each table in the schema.
+// It dispatches to driver-specific foreign key loading functions based on the driver parameter.
+func loadForeignKeys(ctx context.Context, db *sql.DB, driver string, database string, s *Schema) error {
+	driver = strings.ToLower(driver)
+
+	switch driver {
+	case "mysql":
+		return loadMySQLForeignKeys(ctx, db, database, s)
+	case "postgres", "postgresql":
+		return loadPostgreSQLForeignKeys(ctx, db, s)
+	case "sqlite":
+		return loadSQLiteForeignKeys(ctx, db, s)
+	default:
+		return fmt.Errorf("foreign key introspection unsupported for driver: %s", driver)
+	}
+}
+
+// loadMySQLForeignKeys queries MySQL's information_schema to load foreign key metadata.
+// It populates the ForeignKeys map for each table in the schema.
+func loadMySQLForeignKeys(ctx context.Context, db *sql.DB, database string, s *Schema) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT
+			kcu.table_name,
+			kcu.constraint_name,
+			kcu.column_name,
+			kcu.ordinal_position,
+			kcu.referenced_table_name,
+			kcu.referenced_column_name,
+			rc.delete_rule,
+			rc.update_rule
+		FROM information_schema.key_column_usage kcu
+		JOIN information_schema.referential_constraints rc
+			ON rc.constraint_schema = kcu.constraint_schema
+			AND rc.constraint_name = kcu.constraint_name
+		WHERE kcu.table_schema = ?
+			AND kcu.referenced_table_name IS NOT NULL
+		ORDER BY kcu.table_name, kcu.constraint_name, kcu.ordinal_position
+	`, database)
+	if err != nil {
+		return fmt.Errorf("mysql foreign keys: %w", err)
+	}
+	defer rows.Close()
+
+	// Temporary structure to accumulate columns per foreign key
+	type fkEntry struct {
+		tableName        string
+		constraintName   string
+		columnName       string
+		ordinalPosition  int
+		referencedTable  string
+		referencedColumn string
+		deleteRule       string
+		updateRule       string
+	}
+
+	var entries []fkEntry
+	for rows.Next() {
+		var e fkEntry
+		if err := rows.Scan(&e.tableName, &e.constraintName, &e.columnName, &e.ordinalPosition,
+			&e.referencedTable, &e.referencedColumn, &e.deleteRule, &e.updateRule); err != nil {
+			return fmt.Errorf("scan mysql foreign key: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Group entries by table and constraint, then populate schema
+	fkMap := make(map[string]map[string]*ForeignKey) // table -> constraintName -> ForeignKey
+	for _, e := range entries {
+		if _, ok := s.Tables[e.tableName]; !ok {
+			continue // Skip foreign keys for tables not in schema (e.g., ignored tables)
+		}
+		if fkMap[e.tableName] == nil {
+			fkMap[e.tableName] = make(map[string]*ForeignKey)
+		}
+		if fkMap[e.tableName][e.constraintName] == nil {
+			fkMap[e.tableName][e.constraintName] = &ForeignKey{
+				Name:              e.constraintName,
+				Columns:           []string{},
+				ReferencedTable:   e.referencedTable,
+				ReferencedColumns: []string{},
+				OnDelete:          e.deleteRule,
+				OnUpdate:          e.updateRule,
+			}
+		}
+		fkMap[e.tableName][e.constraintName].Columns = append(fkMap[e.tableName][e.constraintName].Columns, e.columnName)
+		fkMap[e.tableName][e.constraintName].ReferencedColumns = append(fkMap[e.tableName][e.constraintName].ReferencedColumns, e.referencedColumn)
+	}
+
+	// Assign foreign keys to tables
+	for tableName, fks := range fkMap {
+		t := s.Tables[tableName]
+		if t.ForeignKeys == nil {
+			t.ForeignKeys = make(map[string]ForeignKey)
+		}
+		for fkName, fk := range fks {
+			t.ForeignKeys[fkName] = *fk
+		}
+		s.Tables[tableName] = t
+	}
+
+	return nil
+}
+
+// loadPostgreSQLForeignKeys queries PostgreSQL's system catalogs to load foreign key metadata.
+// It populates the ForeignKeys map for each table in the schema.
+func loadPostgreSQLForeignKeys(ctx context.Context, db *sql.DB, s *Schema) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT
+			tc.table_name,
+			tc.constraint_name,
+			kcu.column_name,
+			kcu.ordinal_position,
+			ccu.table_name AS referenced_table_name,
+			ccu.column_name AS referenced_column_name,
+			rc.delete_rule,
+			rc.update_rule
+		FROM information_schema.table_constraints tc
+		JOIN information_schema.key_column_usage kcu
+			ON tc.constraint_name = kcu.constraint_name
+			AND tc.table_schema = kcu.table_schema
+		JOIN information_schema.constraint_column_usage ccu
+			ON ccu.constraint_name = tc.constraint_name
+			AND ccu.table_schema = tc.table_schema
+		JOIN information_schema.referential_constraints rc
+			ON rc.constraint_name = tc.constraint_name
+			AND rc.constraint_schema = tc.table_schema
+		WHERE tc.constraint_type = 'FOREIGN KEY'
+			AND tc.table_schema = current_schema()
+		ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position
+	`)
+	if err != nil {
+		return fmt.Errorf("postgres foreign keys: %w", err)
+	}
+	defer rows.Close()
+
+	// Temporary structure to accumulate columns per foreign key
+	type fkEntry struct {
+		tableName        string
+		constraintName   string
+		columnName       string
+		ordinalPosition  int
+		referencedTable  string
+		referencedColumn string
+		deleteRule       string
+		updateRule       string
+	}
+
+	var entries []fkEntry
+	for rows.Next() {
+		var e fkEntry
+		if err := rows.Scan(&e.tableName, &e.constraintName, &e.columnName, &e.ordinalPosition,
+			&e.referencedTable, &e.referencedColumn, &e.deleteRule, &e.updateRule); err != nil {
+			return fmt.Errorf("scan postgres foreign key: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Group entries by table and constraint, then populate schema
+	fkMap := make(map[string]map[string]*ForeignKey) // table -> constraintName -> ForeignKey
+	for _, e := range entries {
+		if _, ok := s.Tables[e.tableName]; !ok {
+			continue // Skip foreign keys for tables not in schema (e.g., ignored tables)
+		}
+		if fkMap[e.tableName] == nil {
+			fkMap[e.tableName] = make(map[string]*ForeignKey)
+		}
+		if fkMap[e.tableName][e.constraintName] == nil {
+			fkMap[e.tableName][e.constraintName] = &ForeignKey{
+				Name:              e.constraintName,
+				Columns:           []string{},
+				ReferencedTable:   e.referencedTable,
+				ReferencedColumns: []string{},
+				OnDelete:          e.deleteRule,
+				OnUpdate:          e.updateRule,
+			}
+		}
+		// Avoid duplicate columns (PostgreSQL query may return duplicates for composite keys)
+		if !containsString(fkMap[e.tableName][e.constraintName].Columns, e.columnName) {
+			fkMap[e.tableName][e.constraintName].Columns = append(fkMap[e.tableName][e.constraintName].Columns, e.columnName)
+		}
+		if !containsString(fkMap[e.tableName][e.constraintName].ReferencedColumns, e.referencedColumn) {
+			fkMap[e.tableName][e.constraintName].ReferencedColumns = append(fkMap[e.tableName][e.constraintName].ReferencedColumns, e.referencedColumn)
+		}
+	}
+
+	// Assign foreign keys to tables
+	for tableName, fks := range fkMap {
+		t := s.Tables[tableName]
+		if t.ForeignKeys == nil {
+			t.ForeignKeys = make(map[string]ForeignKey)
+		}
+		for fkName, fk := range fks {
+			t.ForeignKeys[fkName] = *fk
+		}
+		s.Tables[tableName] = t
+	}
+
+	return nil
+}
+
+// loadSQLiteForeignKeys uses PRAGMA statements to load foreign key metadata for SQLite.
+// It populates the ForeignKeys map for each table in the schema.
+func loadSQLiteForeignKeys(ctx context.Context, db *sql.DB, s *Schema) error {
+	for tableName, table := range s.Tables {
+		if table.ForeignKeys == nil {
+			table.ForeignKeys = make(map[string]ForeignKey)
+		}
+
+		// Get foreign key list for this table
+		fkRows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA foreign_key_list(%s);", tableName))
+		if err != nil {
+			return fmt.Errorf("sqlite foreign_key_list: %w", err)
+		}
+
+		// Group by id (foreign key id) - SQLite assigns same id to columns of composite FK
+		type fkMeta struct {
+			id       int
+			seq      int
+			table    string
+			from     string
+			to       string
+			onUpdate string
+			onDelete string
+			match    string
+		}
+		fkByID := make(map[int][]fkMeta)
+
+		for fkRows.Next() {
+			var fk fkMeta
+			if err := fkRows.Scan(&fk.id, &fk.seq, &fk.table, &fk.from, &fk.to, &fk.onUpdate, &fk.onDelete, &fk.match); err != nil {
+				fkRows.Close()
+				return fmt.Errorf("scan sqlite foreign_key_list: %w", err)
+			}
+			fkByID[fk.id] = append(fkByID[fk.id], fk)
+		}
+		fkRows.Close()
+		if err := fkRows.Err(); err != nil {
+			return err
+		}
+
+		// Build ForeignKey entries
+		for id, fkMetas := range fkByID {
+			// Sort by seq to get correct column order
+			sort.Slice(fkMetas, func(i, j int) bool { return fkMetas[i].seq < fkMetas[j].seq })
+
+			var columns, refColumns []string
+			var refTable, onUpdate, onDelete string
+			for _, m := range fkMetas {
+				columns = append(columns, m.from)
+				refColumns = append(refColumns, m.to)
+				refTable = m.table
+				onUpdate = m.onUpdate
+				onDelete = m.onDelete
+			}
+
+			// SQLite doesn't name FK constraints, so generate a name
+			fkName := fmt.Sprintf("fk_%s_%d", tableName, id)
+			table.ForeignKeys[fkName] = ForeignKey{
+				Name:              fkName,
+				Columns:           columns,
+				ReferencedTable:   refTable,
+				ReferencedColumns: refColumns,
+				OnDelete:          onDelete,
+				OnUpdate:          onUpdate,
+			}
+		}
+
+		s.Tables[tableName] = table
+	}
+	return nil
+}
+
+// containsString checks if a slice contains a string
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
