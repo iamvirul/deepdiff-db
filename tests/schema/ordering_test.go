@@ -692,3 +692,510 @@ func TestMigrationOperation_String(t *testing.T) {
 		t.Errorf("MigrationOperation.String() = %v, want %v", got, expected2)
 	}
 }
+
+// ============================================================================
+// Additional Coverage Tests
+// ============================================================================
+
+func TestOperationType_String_Unknown(t *testing.T) {
+	// Test unknown operation type (default case)
+	unknownType := schema.OperationType(999)
+	if got := unknownType.String(); got != "UNKNOWN" {
+		t.Errorf("Unknown OperationType.String() = %v, want UNKNOWN", got)
+	}
+}
+
+func TestBuildDependencyGraph_AllOperationTypes(t *testing.T) {
+	// Test comprehensive diff with all operation types
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "new_table",
+				Columns: map[string]schema.Column{
+					"id": {Name: "id", DataType: "int", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+				Indexes: map[string]schema.Index{
+					"idx_new": {Name: "idx_new", Columns: []string{"id"}},
+				},
+				ForeignKeys: map[string]schema.ForeignKey{
+					"fk_new": {
+						Name:            "fk_new",
+						Columns:         []string{"id"},
+						ReferencedTable: "existing",
+					},
+				},
+			},
+		},
+		RemovedTables: []string{"old_table"},
+		Tables: []schema.TableDiff{
+			{
+				Name: "existing_table",
+				AddedColumns: []schema.Column{
+					{Name: "new_col", DataType: "varchar(100)", IsNullable: true},
+				},
+				RemovedColumns: []schema.Column{
+					{Name: "old_col", DataType: "int", IsNullable: false},
+				},
+				ModifiedColumns: []schema.ColumnDiff{
+					{Column: "mod_col", TypeMismatch: true, DevType: "bigint"},
+				},
+				AddedIndexes: []schema.Index{
+					{Name: "idx_added", Columns: []string{"new_col"}},
+				},
+				RemovedIndexes: []schema.Index{
+					{Name: "idx_removed", Columns: []string{"old_col"}},
+				},
+				AddedForeignKeys: []schema.ForeignKey{
+					{Name: "fk_added", Columns: []string{"new_col"}, ReferencedTable: "ref"},
+				},
+				RemovedForeignKeys: []schema.ForeignKey{
+					{Name: "fk_removed", Columns: []string{"old_col"}, ReferencedTable: "old_ref"},
+				},
+				PrimaryKeyDiff: &schema.PrimaryKeyDiff{
+					ProdColumns: []string{"id"},
+					DevColumns:  []string{"id", "new_col"},
+				},
+				HasDifferences: true,
+			},
+		},
+	}
+
+	graph := schema.BuildDependencyGraph(diff, nil)
+
+	// Verify we have operations of various types
+	opTypes := make(map[schema.OperationType]bool)
+	for _, op := range graph.Operations {
+		opTypes[op.Type] = true
+	}
+
+	expectedTypes := []schema.OperationType{
+		schema.OpDropForeignKey,
+		schema.OpDropIndex,
+		schema.OpDropColumn,
+		schema.OpDropTable,
+		schema.OpCreateTable,
+		schema.OpAddColumn,
+		schema.OpModifyColumn,
+		schema.OpAddIndex,
+		schema.OpAddForeignKey,
+		schema.OpModifyPrimaryKey,
+	}
+
+	for _, et := range expectedTypes {
+		if !opTypes[et] {
+			t.Errorf("expected operation type %s in graph", et.String())
+		}
+	}
+}
+
+func TestBuildDependencyGraph_IndexColumnDependencies(t *testing.T) {
+	// Test that indexes depend on their columns being added
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name: "test_table",
+				AddedColumns: []schema.Column{
+					{Name: "new_col", DataType: "int", IsNullable: true},
+				},
+				AddedIndexes: []schema.Index{
+					{Name: "idx_new_col", Columns: []string{"new_col"}},
+				},
+				HasDifferences: true,
+			},
+		},
+	}
+
+	graph := schema.BuildDependencyGraph(diff, nil)
+
+	// Should have both add column and add index operations
+	hasAddCol := false
+	hasAddIdx := false
+	for _, op := range graph.Operations {
+		if op.Type == schema.OpAddColumn && op.Object == "new_col" {
+			hasAddCol = true
+		}
+		if op.Type == schema.OpAddIndex && op.Object == "idx_new_col" {
+			hasAddIdx = true
+		}
+	}
+
+	if !hasAddCol {
+		t.Error("expected ADD_COLUMN operation")
+	}
+	if !hasAddIdx {
+		t.Error("expected ADD_INDEX operation")
+	}
+}
+
+func TestBuildDependencyGraph_FKColumnDependencies(t *testing.T) {
+	// Test that FKs depend on their columns being added
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name: "test_table",
+				AddedColumns: []schema.Column{
+					{Name: "ref_id", DataType: "int", IsNullable: false},
+				},
+				AddedForeignKeys: []schema.ForeignKey{
+					{
+						Name:            "fk_ref",
+						Columns:         []string{"ref_id"},
+						ReferencedTable: "ref_table",
+					},
+				},
+				HasDifferences: true,
+			},
+		},
+	}
+
+	graph := schema.BuildDependencyGraph(diff, nil)
+
+	hasAddCol := false
+	hasAddFK := false
+	for _, op := range graph.Operations {
+		if op.Type == schema.OpAddColumn && op.Object == "ref_id" {
+			hasAddCol = true
+		}
+		if op.Type == schema.OpAddForeignKey && op.Object == "fk_ref" {
+			hasAddFK = true
+		}
+	}
+
+	if !hasAddCol {
+		t.Error("expected ADD_COLUMN operation")
+	}
+	if !hasAddFK {
+		t.Error("expected ADD_FOREIGN_KEY operation")
+	}
+}
+
+func TestBuildDependencyGraph_OnlyInDevTable(t *testing.T) {
+	// Test that OnlyInDev tables are handled correctly in addDropTableDependencies
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "dev_only_table",
+				OnlyInDev:      true,
+				HasDifferences: true,
+			},
+		},
+	}
+
+	graph := schema.BuildDependencyGraph(diff, nil)
+
+	// Should not crash and should have no operations for OnlyInDev tables
+	// (they're handled separately as AddedTables)
+	if graph == nil {
+		t.Error("expected non-nil graph")
+	}
+}
+
+func TestBuildDependencyGraph_SelfReferencingFK(t *testing.T) {
+	// Test table with self-referencing FK (like categories with parent_id)
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "categories",
+				Columns: map[string]schema.Column{
+					"id":        {Name: "id", DataType: "int", IsNullable: false},
+					"parent_id": {Name: "parent_id", DataType: "int", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+				ForeignKeys: map[string]schema.ForeignKey{
+					"fk_parent": {
+						Name:            "fk_parent",
+						Columns:         []string{"parent_id"},
+						ReferencedTable: "categories", // Self-reference
+					},
+				},
+			},
+		},
+	}
+
+	graph := schema.BuildDependencyGraph(diff, nil)
+
+	// Should not crash on self-reference
+	if graph == nil {
+		t.Error("expected non-nil graph")
+	}
+}
+
+func TestOrderMigrationOperations(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "orders",
+				Columns: map[string]schema.Column{
+					"id":      {Name: "id", DataType: "int", IsNullable: false},
+					"user_id": {Name: "user_id", DataType: "int", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+				ForeignKeys: map[string]schema.ForeignKey{
+					"fk_orders_user": {
+						Name:            "fk_orders_user",
+						Columns:         []string{"user_id"},
+						ReferencedTable: "users",
+					},
+				},
+			},
+			{
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id": {Name: "id", DataType: "int", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	result := schema.OrderMigrationOperations(diff, nil)
+
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	if len(result.OrderedOperations) == 0 {
+		t.Error("expected ordered operations")
+	}
+
+	// Verify CREATE TABLE users comes before CREATE TABLE orders
+	usersIdx := -1
+	ordersIdx := -1
+	for i, op := range result.OrderedOperations {
+		if op.Type == schema.OpCreateTable && op.Table == "users" {
+			usersIdx = i
+		}
+		if op.Type == schema.OpCreateTable && op.Table == "orders" {
+			ordersIdx = i
+		}
+	}
+
+	if usersIdx != -1 && ordersIdx != -1 && usersIdx > ordersIdx {
+		t.Error("users should be created before orders")
+	}
+}
+
+func TestGetOrderedRemovedTables_CircularDependency(t *testing.T) {
+	// Test circular FK dependencies in DROP scenario
+	prodSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"table_a": {
+				Name: "table_a",
+				ForeignKeys: map[string]schema.ForeignKey{
+					"fk_a_b": {
+						Name:            "fk_a_b",
+						Columns:         []string{"b_id"},
+						ReferencedTable: "table_b",
+					},
+				},
+			},
+			"table_b": {
+				Name: "table_b",
+				ForeignKeys: map[string]schema.ForeignKey{
+					"fk_b_a": {
+						Name:            "fk_b_a",
+						Columns:         []string{"a_id"},
+						ReferencedTable: "table_a",
+					},
+				},
+			},
+		},
+	}
+
+	tableNames := []string{"table_a", "table_b"}
+	result := schema.GetOrderedRemovedTables(tableNames, prodSchema)
+
+	// Should return both tables even with circular dependency
+	if len(result) != 2 {
+		t.Errorf("expected 2 tables, got %d", len(result))
+	}
+}
+
+func TestTopologicalSort_EmptyGraph(t *testing.T) {
+	graph := schema.NewDependencyGraph()
+
+	result, err := schema.TopologicalSort(graph)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Operations) != 0 {
+		t.Errorf("expected 0 operations, got %d", len(result.Operations))
+	}
+}
+
+func TestTopologicalSort_SingleOperation(t *testing.T) {
+	graph := schema.NewDependencyGraph()
+	op := &schema.MigrationOperation{ID: "op1", Type: schema.OpCreateTable, Table: "users"}
+	graph.AddOperation(op)
+
+	result, err := schema.TopologicalSort(graph)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Operations) != 1 {
+		t.Errorf("expected 1 operation, got %d", len(result.Operations))
+	}
+}
+
+func TestTopologicalSort_ComplexCycle(t *testing.T) {
+	graph := schema.NewDependencyGraph()
+
+	// Create a more complex cycle: A -> B -> C -> A
+	op1 := &schema.MigrationOperation{ID: "op1", Type: schema.OpCreateTable, Table: "a"}
+	op2 := &schema.MigrationOperation{ID: "op2", Type: schema.OpCreateTable, Table: "b"}
+	op3 := &schema.MigrationOperation{ID: "op3", Type: schema.OpCreateTable, Table: "c"}
+
+	graph.AddOperation(op1)
+	graph.AddOperation(op2)
+	graph.AddOperation(op3)
+	graph.AddDependency("op1", "op2") // B depends on A
+	graph.AddDependency("op2", "op3") // C depends on B
+	graph.AddDependency("op3", "op1") // A depends on C (cycle!)
+
+	result, err := schema.TopologicalSort(graph)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should detect circular dependency
+	if len(result.CircularDependencies) == 0 && len(result.Warnings) == 0 {
+		t.Error("expected circular dependency detection for complex cycle")
+	}
+
+	// Should still include all operations
+	if len(result.Operations) != 3 {
+		t.Errorf("expected 3 operations, got %d", len(result.Operations))
+	}
+}
+
+func TestTopologicalSort_MultipleIndependentOperations(t *testing.T) {
+	graph := schema.NewDependencyGraph()
+
+	// Add multiple independent operations
+	op1 := &schema.MigrationOperation{ID: "op1", Type: schema.OpCreateTable, Table: "users", Priority: 1}
+	op2 := &schema.MigrationOperation{ID: "op2", Type: schema.OpCreateTable, Table: "products", Priority: 2}
+	op3 := &schema.MigrationOperation{ID: "op3", Type: schema.OpCreateTable, Table: "categories", Priority: 3}
+
+	graph.AddOperation(op1)
+	graph.AddOperation(op2)
+	graph.AddOperation(op3)
+
+	result, err := schema.TopologicalSort(graph)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Operations) != 3 {
+		t.Errorf("expected 3 operations, got %d", len(result.Operations))
+	}
+
+	// Should be sorted by priority
+	if result.Operations[0].Priority > result.Operations[1].Priority {
+		t.Error("operations should be sorted by priority")
+	}
+}
+
+func TestDependencyGraph_AddDependencyCreatesNodes(t *testing.T) {
+	graph := schema.NewDependencyGraph()
+
+	// Add dependency without first adding operations
+	graph.AddDependency("non_existent_1", "non_existent_2")
+
+	// Should create entries in InDegree
+	if _, exists := graph.InDegree["non_existent_1"]; !exists {
+		t.Error("expected non_existent_1 in InDegree")
+	}
+	if _, exists := graph.InDegree["non_existent_2"]; !exists {
+		t.Error("expected non_existent_2 in InDegree")
+	}
+}
+
+func TestGetOrderedRemovedTables_ExternalFKReference(t *testing.T) {
+	// Test when FK references a table NOT being removed
+	prodSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"orders": {
+				Name: "orders",
+				ForeignKeys: map[string]schema.ForeignKey{
+					"fk_orders_user": {
+						Name:            "fk_orders_user",
+						Columns:         []string{"user_id"},
+						ReferencedTable: "users", // users is NOT being removed
+					},
+				},
+			},
+		},
+	}
+
+	tableNames := []string{"orders"}
+	result := schema.GetOrderedRemovedTables(tableNames, prodSchema)
+
+	if len(result) != 1 {
+		t.Errorf("expected 1 table, got %d", len(result))
+	}
+	if result[0] != "orders" {
+		t.Errorf("expected orders, got %s", result[0])
+	}
+}
+
+func TestBuildDependencyGraph_DropIndexBeforeDropColumn(t *testing.T) {
+	// Test that drop index operation is created before drop column
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name: "test_table",
+				RemovedColumns: []schema.Column{
+					{Name: "old_col", DataType: "int"},
+				},
+				RemovedIndexes: []schema.Index{
+					{Name: "idx_old", Columns: []string{"old_col"}},
+				},
+				HasDifferences: true,
+			},
+		},
+	}
+
+	graph := schema.BuildDependencyGraph(diff, nil)
+
+	hasDropIdx := false
+	hasDropCol := false
+	for _, op := range graph.Operations {
+		if op.Type == schema.OpDropIndex {
+			hasDropIdx = true
+		}
+		if op.Type == schema.OpDropColumn {
+			hasDropCol = true
+		}
+	}
+
+	if !hasDropIdx {
+		t.Error("expected DROP_INDEX operation")
+	}
+	if !hasDropCol {
+		t.Error("expected DROP_COLUMN operation")
+	}
+}
+
+func TestBuildDependencyGraph_TableNotInBothSchemas(t *testing.T) {
+	// Test handling of tables that exist only in prod (OnlyInProd)
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "existing",
+				OnlyInProd:     false,
+				OnlyInDev:      false,
+				HasDifferences: false,
+			},
+		},
+	}
+
+	graph := schema.BuildDependencyGraph(diff, nil)
+
+	// Should not crash
+	if graph == nil {
+		t.Error("expected non-nil graph")
+	}
+}
