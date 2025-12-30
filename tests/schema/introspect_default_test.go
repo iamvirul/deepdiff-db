@@ -58,9 +58,9 @@ func TestIntrospect_SQLite_DefaultValues(t *testing.T) {
 
 	// Test cases for each column
 	tests := []struct {
-		columnName       string
-		expectDefault    bool
-		expectedDefault  string
+		columnName      string
+		expectDefault   bool
+		expectedDefault string
 	}{
 		{"status", true, "'active'"},
 		{"count", true, "0"},

@@ -1,0 +1,30 @@
+# DeepDiff DB Configuration - Active Mode
+# DROP TABLE statements are ENABLED - use with caution!
+# This will generate executable DROP TABLE statements that can permanently delete data.
+
+prod:
+  driver: mysql
+  host: localhost
+  port: 3311
+  user: root
+  password: rootpass
+  database: testdb
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3312
+  user: root
+  password: rootpass
+  database: testdb
+
+output:
+  dir: ./diff-output
+
+# Migration settings (active - destructive operations enabled)
+# WARNING: DROP TABLE will permanently delete tables and their data!
+migration:
+  allow_drop_column: true
+  allow_drop_table: true     # DROP TABLE statements will be executable
+  allow_drop_index: true
+  confirm_destructive: true  # Show extra warnings for destructive operations

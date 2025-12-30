@@ -9,7 +9,16 @@ import (
 
 func TestGenerateMigration_MySQL(t *testing.T) {
 	diff := schema.DiffResult{
-		AddedTables:   []string{"new_table"},
+		AddedTables: []schema.Table{
+			{
+				Name: "new_table",
+				Columns: map[string]schema.Column{
+					"id":   {Name: "id", DataType: "INT", IsNullable: false},
+					"name": {Name: "name", DataType: "VARCHAR(100)", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
 		RemovedTables: []string{"old_table"},
 		Tables: []schema.TableDiff{
 			{
@@ -72,8 +81,22 @@ func TestGenerateMigration_MySQL(t *testing.T) {
 	if !strings.Contains(sql, "-- DROP TABLE `old_table`;") {
 		t.Error("Expected commented DROP TABLE statement")
 	}
-	if !strings.Contains(sql, "-- CREATE TABLE `new_table`") {
-		t.Error("Expected commented CREATE TABLE statement")
+
+	// Check CREATE TABLE statement is generated (not commented)
+	if !strings.Contains(sql, "CREATE TABLE `new_table`") {
+		t.Error("Expected CREATE TABLE statement")
+	}
+	if !strings.Contains(sql, "`id` INT NOT NULL") {
+		t.Error("Expected id column in CREATE TABLE")
+	}
+	if !strings.Contains(sql, "`name` VARCHAR(100)") {
+		t.Error("Expected name column in CREATE TABLE")
+	}
+	if !strings.Contains(sql, "PRIMARY KEY (`id`)") {
+		t.Error("Expected PRIMARY KEY in CREATE TABLE")
+	}
+	if !strings.Contains(sql, "ENGINE=InnoDB") {
+		t.Error("Expected MySQL ENGINE option")
 	}
 }
 
@@ -455,9 +478,9 @@ func TestGenerateMigration_MySQL_NullableHandling(t *testing.T) {
 
 func TestGenerateMigration_PostgreSQL_EdgeCases(t *testing.T) {
 	tests := []struct {
-		name         string
-		colDiff      schema.ColumnDiff
-		wantContains []string
+		name           string
+		colDiff        schema.ColumnDiff
+		wantContains   []string
 		wantNotContain string
 	}{
 		{
@@ -572,11 +595,26 @@ func TestGenerateMigration_OnlyTableOperations(t *testing.T) {
 		{
 			name: "Only added tables",
 			diff: schema.DiffResult{
-				AddedTables: []string{"new_table1", "new_table2"},
+				AddedTables: []schema.Table{
+					{
+						Name: "new_table1",
+						Columns: map[string]schema.Column{
+							"id": {Name: "id", DataType: "INT", IsNullable: false},
+						},
+						PrimaryKey: []string{"id"},
+					},
+					{
+						Name: "new_table2",
+						Columns: map[string]schema.Column{
+							"id": {Name: "id", DataType: "INT", IsNullable: false},
+						},
+						PrimaryKey: []string{"id"},
+					},
+				},
 			},
 			wantContains: []string{
-				"-- CREATE TABLE `new_table1` (...);",
-				"-- CREATE TABLE `new_table2` (...);",
+				"CREATE TABLE `new_table1`",
+				"CREATE TABLE `new_table2`",
 				"-- CREATE TABLES (present in dev but not in prod)",
 				"BEGIN;",
 				"COMMIT;",
@@ -585,12 +623,20 @@ func TestGenerateMigration_OnlyTableOperations(t *testing.T) {
 		{
 			name: "Both added and removed tables",
 			diff: schema.DiffResult{
-				AddedTables:   []string{"new_table"},
+				AddedTables: []schema.Table{
+					{
+						Name: "new_table",
+						Columns: map[string]schema.Column{
+							"id": {Name: "id", DataType: "INT", IsNullable: false},
+						},
+						PrimaryKey: []string{"id"},
+					},
+				},
 				RemovedTables: []string{"old_table"},
 			},
 			wantContains: []string{
 				"-- DROP TABLE `old_table`;",
-				"-- CREATE TABLE `new_table` (...);",
+				"CREATE TABLE `new_table`",
 				"BEGIN;",
 				"COMMIT;",
 			},
@@ -881,4 +927,359 @@ func TestGenerateMigration_DropTableWithConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ============================================================================
+// CREATE TABLE Tests
+// ============================================================================
+
+func TestGenerateCreateTable_MySQL(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":         {Name: "id", DataType: "INT", IsNullable: false},
+					"email":      {Name: "email", DataType: "VARCHAR(255)", IsNullable: false},
+					"name":       {Name: "name", DataType: "VARCHAR(100)", IsNullable: true},
+					"created_at": {Name: "created_at", DataType: "TIMESTAMP", IsNullable: false, DefaultValue: strPtr("CURRENT_TIMESTAMP")},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mysql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "CREATE TABLE `users`") {
+		t.Error("Expected CREATE TABLE statement")
+	}
+	if !strings.Contains(sql, "`id` INT NOT NULL") {
+		t.Error("Expected id column definition")
+	}
+	if !strings.Contains(sql, "`email` VARCHAR(255) NOT NULL") {
+		t.Error("Expected email column definition")
+	}
+	if !strings.Contains(sql, "PRIMARY KEY (`id`)") {
+		t.Error("Expected PRIMARY KEY constraint")
+	}
+	if !strings.Contains(sql, "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4") {
+		t.Error("Expected MySQL table options")
+	}
+}
+
+func TestGenerateCreateTable_PostgreSQL(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "products",
+				Columns: map[string]schema.Column{
+					"id":    {Name: "id", DataType: "SERIAL", IsNullable: false},
+					"name":  {Name: "name", DataType: "VARCHAR(200)", IsNullable: false},
+					"price": {Name: "price", DataType: "DECIMAL(10,2)", IsNullable: false, DefaultValue: strPtr("0.00")},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "postgres", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "CREATE TABLE \"products\"") {
+		t.Error("Expected CREATE TABLE with double quotes")
+	}
+	if !strings.Contains(sql, "\"id\" SERIAL NOT NULL") {
+		t.Error("Expected id column definition")
+	}
+	if !strings.Contains(sql, "PRIMARY KEY (\"id\")") {
+		t.Error("Expected PRIMARY KEY constraint")
+	}
+	if strings.Contains(sql, "ENGINE=") {
+		t.Error("PostgreSQL should not have ENGINE option")
+	}
+}
+
+func TestGenerateCreateTable_SQLite(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "settings",
+				Columns: map[string]schema.Column{
+					"key":   {Name: "key", DataType: "TEXT", IsNullable: false},
+					"value": {Name: "value", DataType: "TEXT", IsNullable: true},
+				},
+				PrimaryKey: []string{"key"},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "sqlite", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "CREATE TABLE \"settings\"") {
+		t.Error("Expected CREATE TABLE with double quotes")
+	}
+	if !strings.Contains(sql, "\"key\" TEXT NOT NULL") {
+		t.Error("Expected key column definition")
+	}
+	if !strings.Contains(sql, "PRIMARY KEY (\"key\")") {
+		t.Error("Expected PRIMARY KEY constraint")
+	}
+}
+
+func TestGenerateCreateTable_WithIndexes(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "orders",
+				Columns: map[string]schema.Column{
+					"id":          {Name: "id", DataType: "INT", IsNullable: false},
+					"customer_id": {Name: "customer_id", DataType: "INT", IsNullable: false},
+					"status":      {Name: "status", DataType: "VARCHAR(50)", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+				Indexes: map[string]schema.Index{
+					"idx_orders_customer": {Name: "idx_orders_customer", Columns: []string{"customer_id"}, IsUnique: false},
+					"idx_orders_status":   {Name: "idx_orders_status", Columns: []string{"status"}, IsUnique: false},
+				},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mysql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "CREATE TABLE `orders`") {
+		t.Error("Expected CREATE TABLE statement")
+	}
+	if !strings.Contains(sql, "CREATE INDEX `idx_orders_customer` ON `orders`") {
+		t.Error("Expected CREATE INDEX for customer_id")
+	}
+	if !strings.Contains(sql, "CREATE INDEX `idx_orders_status` ON `orders`") {
+		t.Error("Expected CREATE INDEX for status")
+	}
+}
+
+func TestGenerateCreateTable_CompositePrimaryKey(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "order_items",
+				Columns: map[string]schema.Column{
+					"order_id":   {Name: "order_id", DataType: "INT", IsNullable: false},
+					"product_id": {Name: "product_id", DataType: "INT", IsNullable: false},
+					"quantity":   {Name: "quantity", DataType: "INT", IsNullable: false, DefaultValue: strPtr("1")},
+				},
+				PrimaryKey: []string{"order_id", "product_id"},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mysql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "PRIMARY KEY (`order_id`, `product_id`)") {
+		t.Error("Expected composite PRIMARY KEY")
+	}
+}
+
+func TestGenerateCreateTable_WithDefaultValues(t *testing.T) {
+	defaultStatus := "active"
+	defaultCount := "0"
+
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "items",
+				Columns: map[string]schema.Column{
+					"id":     {Name: "id", DataType: "INT", IsNullable: false},
+					"status": {Name: "status", DataType: "VARCHAR(20)", IsNullable: false, DefaultValue: &defaultStatus},
+					"count":  {Name: "count", DataType: "INT", IsNullable: false, DefaultValue: &defaultCount},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mysql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "DEFAULT 'active'") {
+		t.Error("Expected quoted string default")
+	}
+	if !strings.Contains(sql, "DEFAULT 0") {
+		t.Error("Expected unquoted numeric default")
+	}
+}
+
+func TestGenerateCreateTable_NoPrimaryKey(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "logs",
+				Columns: map[string]schema.Column{
+					"message":    {Name: "message", DataType: "TEXT", IsNullable: true},
+					"created_at": {Name: "created_at", DataType: "TIMESTAMP", IsNullable: false},
+				},
+				PrimaryKey: nil,
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mysql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "CREATE TABLE `logs`") {
+		t.Error("Expected CREATE TABLE statement")
+	}
+	if strings.Contains(sql, "PRIMARY KEY") {
+		t.Error("Should not have PRIMARY KEY when not defined")
+	}
+}
+
+// ============================================================================
+// DROP TABLE Tests
+// ============================================================================
+
+func TestGenerateDropTable_MySQL_Commented(t *testing.T) {
+	diff := schema.DiffResult{
+		RemovedTables: []string{"old_table"},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mysql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "-- DROP TABLE `old_table`;") {
+		t.Error("Expected commented DROP TABLE statement")
+	}
+	if !strings.Contains(sql, "-- WARNING: These operations will delete data!") {
+		t.Error("Expected warning message")
+	}
+}
+
+func TestGenerateDropTable_MySQL_Enabled(t *testing.T) {
+	diff := schema.DiffResult{
+		RemovedTables: []string{"old_table"},
+	}
+
+	opts := &schema.MigrationOptions{AllowDropTable: true}
+	sql, err := schema.GenerateMigration(diff, "mysql", opts)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if strings.Contains(sql, "-- DROP TABLE `old_table`;") {
+		t.Error("DROP TABLE should not be commented when AllowDropTable=true")
+	}
+	if !strings.Contains(sql, "DROP TABLE `old_table`;") {
+		t.Error("Expected uncommented DROP TABLE statement")
+	}
+}
+
+func TestGenerateDropTable_PostgreSQL(t *testing.T) {
+	diff := schema.DiffResult{
+		RemovedTables: []string{"legacy_data"},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "postgres", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "-- DROP TABLE \"legacy_data\";") {
+		t.Error("Expected commented DROP TABLE with double quotes")
+	}
+}
+
+func TestGenerateDropTable_SQLite(t *testing.T) {
+	diff := schema.DiffResult{
+		RemovedTables: []string{"temp_data"},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "sqlite", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "-- DROP TABLE \"temp_data\";") {
+		t.Error("Expected commented DROP TABLE with double quotes")
+	}
+}
+
+func TestGenerateDropTable_MultipleTables(t *testing.T) {
+	diff := schema.DiffResult{
+		RemovedTables: []string{"old_table1", "old_table2", "old_table3"},
+	}
+
+	opts := &schema.MigrationOptions{AllowDropTable: true}
+	sql, err := schema.GenerateMigration(diff, "mysql", opts)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "DROP TABLE `old_table1`;") {
+		t.Error("Expected DROP TABLE for old_table1")
+	}
+	if !strings.Contains(sql, "DROP TABLE `old_table2`;") {
+		t.Error("Expected DROP TABLE for old_table2")
+	}
+	if !strings.Contains(sql, "DROP TABLE `old_table3`;") {
+		t.Error("Expected DROP TABLE for old_table3")
+	}
+}
+
+func TestGenerateMigration_CreateAndDropTables(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "new_users",
+				Columns: map[string]schema.Column{
+					"id":    {Name: "id", DataType: "INT", IsNullable: false},
+					"email": {Name: "email", DataType: "VARCHAR(255)", IsNullable: false},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+		RemovedTables: []string{"old_users"},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mysql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, "CREATE TABLE `new_users`") {
+		t.Error("Expected CREATE TABLE statement")
+	}
+	if !strings.Contains(sql, "-- DROP TABLE `old_users`;") {
+		t.Error("Expected commented DROP TABLE statement")
+	}
+
+	dropPos := strings.Index(sql, "DROP TABLE")
+	createPos := strings.Index(sql, "CREATE TABLE")
+	if dropPos > createPos {
+		t.Error("DROP TABLE should appear before CREATE TABLE")
+	}
+}
+
+func strPtr(s string) *string {
+	return &s
 }

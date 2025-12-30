@@ -178,9 +178,9 @@ func TestDefaultValue_Detection(t *testing.T) {
 
 func TestDefaultValue_MySQL_Migration(t *testing.T) {
 	tests := []struct {
-		name     string
-		colDiff  schema.ColumnDiff
-		wantSQL  string
+		name    string
+		colDiff schema.ColumnDiff
+		wantSQL string
 	}{
 		{
 			name: "Add DEFAULT value",
@@ -252,9 +252,9 @@ func TestDefaultValue_MySQL_Migration(t *testing.T) {
 
 func TestDefaultValue_PostgreSQL_Migration(t *testing.T) {
 	tests := []struct {
-		name     string
-		colDiff  schema.ColumnDiff
-		wantSQL  string
+		name    string
+		colDiff schema.ColumnDiff
+		wantSQL string
 	}{
 		{
 			name: "Add DEFAULT value",

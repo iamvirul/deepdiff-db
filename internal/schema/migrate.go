@@ -2,6 +2,8 @@ package schema
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -27,12 +29,12 @@ type MigrationOptions struct {
 // It supports MySQL, PostgreSQL, and SQLite drivers and returns the complete
 // migration script as a string wrapped in a transaction.
 // GenerateMigration generates a SQL migration script that reconciles the provided schema diff for the specified database driver.
-// 
+//
 // The returned script is a single string wrapped in a transaction (BEGIN/COMMIT) and includes sectioned statements and warnings
 // for removed tables, added tables, added/removed/modified columns. If opts is nil, safe defaults are applied: AllowDropColumn=false,
 // AllowDropTable=false and ConfirmDestructive=true; these options control whether DROP statements are emitted or commented out and
 // whether extra destructive-confirmation warnings are included.
-// 
+//
 // Supported drivers are "mysql", "postgres", "postgresql", and "sqlite". An error is returned if the driver is unsupported or if
 // generating any individual statement fails.
 func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (string, error) {
@@ -84,13 +86,19 @@ func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (
 	}
 
 	// Process added tables (CREATE TABLE)
-	// Note: We can't generate CREATE TABLE statements without the full table definition
-	// This would require passing the dev schema to this function
 	if len(diff.AddedTables) > 0 {
 		stmts = append(stmts, "-- CREATE TABLES (present in dev but not in prod)")
-		stmts = append(stmts, "-- WARNING: Manual table creation required - full schema not available")
-		for _, tableName := range diff.AddedTables {
-			stmts = append(stmts, fmt.Sprintf("-- CREATE TABLE %s (...);", quoteIdentifier(tableName, driver)))
+		for _, table := range diff.AddedTables {
+			createStmt := generateCreateTable(table, driver)
+			stmts = append(stmts, createStmt)
+
+			// Generate CREATE INDEX statements for the new table's indexes
+			if len(table.Indexes) > 0 {
+				for _, idx := range table.Indexes {
+					idxStmt := generateCreateIndex(table.Name, idx, driver)
+					stmts = append(stmts, idxStmt)
+				}
+			}
 		}
 		stmts = append(stmts, "")
 	}
@@ -400,4 +408,100 @@ func generateDropIndex(tableName string, idx Index, driver string) string {
 	default:
 		return fmt.Sprintf("-- DROP INDEX %s; -- unsupported driver", idx.Name)
 	}
+}
+
+// generateCreateTable generates a CREATE TABLE statement with all columns, primary key, and indexes.
+func generateCreateTable(table Table, driver string) string {
+	var b strings.Builder
+	quotedTable := quoteIdentifier(table.Name, driver)
+
+	b.WriteString(fmt.Sprintf("CREATE TABLE %s (\n", quotedTable))
+
+	// Collect column definitions
+	var colDefs []string
+
+	// Sort columns for deterministic output
+	colNames := make([]string, 0, len(table.Columns))
+	for name := range table.Columns {
+		colNames = append(colNames, name)
+	}
+	sort.Strings(colNames)
+
+	for _, colName := range colNames {
+		col := table.Columns[colName]
+		colDef := generateColumnDefinition(col, driver)
+		colDefs = append(colDefs, "  "+colDef)
+	}
+
+	// Add primary key constraint if present
+	if len(table.PrimaryKey) > 0 {
+		pkCols := make([]string, len(table.PrimaryKey))
+		for i, col := range table.PrimaryKey {
+			pkCols[i] = quoteIdentifier(col, driver)
+		}
+		pkDef := fmt.Sprintf("  PRIMARY KEY (%s)", strings.Join(pkCols, ", "))
+		colDefs = append(colDefs, pkDef)
+	}
+
+	b.WriteString(strings.Join(colDefs, ",\n"))
+	b.WriteString("\n)")
+
+	// Add MySQL-specific table options
+	if driver == "mysql" {
+		b.WriteString(" ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
+	}
+
+	b.WriteString(";")
+
+	return b.String()
+}
+
+// generateColumnDefinition generates a column definition for CREATE TABLE.
+func generateColumnDefinition(col Column, driver string) string {
+	var parts []string
+
+	quotedName := quoteIdentifier(col.Name, driver)
+	parts = append(parts, quotedName)
+	parts = append(parts, col.DataType)
+
+	if !col.IsNullable {
+		parts = append(parts, "NOT NULL")
+	}
+
+	if col.DefaultValue != nil {
+		defaultVal := *col.DefaultValue
+		// Check if default value needs quoting (non-numeric, non-function values)
+		if needsQuoting(defaultVal) {
+			parts = append(parts, fmt.Sprintf("DEFAULT '%s'", defaultVal))
+		} else {
+			parts = append(parts, fmt.Sprintf("DEFAULT %s", defaultVal))
+		}
+	}
+
+	return strings.Join(parts, " ")
+}
+
+// needsQuoting determines if a default value needs to be quoted.
+func needsQuoting(val string) bool {
+	// Don't quote NULL
+	if strings.ToUpper(val) == "NULL" {
+		return false
+	}
+	// Don't quote boolean values
+	if strings.ToUpper(val) == "TRUE" || strings.ToUpper(val) == "FALSE" {
+		return false
+	}
+	// Don't quote numeric values
+	if _, err := strconv.ParseFloat(val, 64); err == nil {
+		return false
+	}
+	// Don't quote function calls (contain parentheses)
+	if strings.Contains(val, "(") && strings.Contains(val, ")") {
+		return false
+	}
+	// Don't quote CURRENT_TIMESTAMP and similar
+	if strings.HasPrefix(strings.ToUpper(val), "CURRENT_") {
+		return false
+	}
+	return true
 }
