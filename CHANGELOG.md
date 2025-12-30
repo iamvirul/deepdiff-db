@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3] - 2025-12-30
+
+### Added
+- `schema-migrate` command for generating standalone schema migration scripts
+- Support for DROP COLUMN operations with configurable safety controls (`allow_drop_column`)
+- Support for MODIFY COLUMN operations with DEFAULT value handling
+- Support for CREATE TABLE and DROP TABLE operations with configurable safety controls (`allow_drop_table`)
+- Index support for schema migrations (CREATE INDEX, DROP INDEX) with configurable safety controls (`allow_drop_index`)
+- Foreign key support for schema migrations (ADD FOREIGN KEY, DROP FOREIGN KEY) with configurable safety controls (`allow_drop_foreign_key`)
+- Primary key modification support with configurable safety controls (`allow_modify_primary_key`)
+- Dependency ordering for schema migrations to ensure correct execution order
+- Comprehensive test coverage for ordering logic
+- Comprehensive test coverage for index support
+- Comprehensive test coverage for DEFAULT value introspection
+- Sample configurations demonstrating new features:
+  - `04-drop-column-safety`: Demonstrates DROP COLUMN feature with safety controls
+  - `05-modify-column`: Demonstrates MODIFY COLUMN feature
+  - `06-index-support`: Demonstrates index operations
+  - `07-table-operations`: Demonstrates CREATE/DROP TABLE operations
+  - `08-foreign-key-support`: Demonstrates foreign key operations
+  - `09-dependency-ordering`: Demonstrates dependency ordering for migrations
+- ROADMAP.md documenting future features and release schedule
+- Semantic versioning with timestamp-based dev builds in build scripts
+
+### Changed
+- Schema migration generation now uses dependency-aware ordering
+- Improved identifier quoting to handle embedded quotes and schema-qualified names
+- MySQL MODIFY COLUMN now always includes NULL constraint explicitly
+- Build scripts now include version information with git commit hash
+- PR checks workflow with branch protection integration
+
+### Fixed
+- Fixed error return value check in container.Terminate calls
+- Fixed column_type vs data_type usage for MySQL introspection
+- Fixed PR checks workflow permission and merge abort issues
+- Updated sample documentation to use correct command syntax
+
 ## [0.2] - 2025-12-20
 
 ### Added
@@ -63,7 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.2...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.3...HEAD
+[0.3]: https://github.com/iamvirul/deepdiff-db/compare/v0.2...v0.3
 [0.2]: https://github.com/iamvirul/deepdiff-db/compare/v0.1...v0.2
 [0.1]: https://github.com/iamvirul/deepdiff-db/releases/tag/v0.1
 
