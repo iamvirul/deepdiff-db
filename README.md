@@ -54,7 +54,7 @@ Precompiled binaries are available for the following platforms:
 - macOS (Intel, Apple Silicon)
 - Windows (x64)
 
-Download the latest release from the [GitHub Releases](https://github.com/iamvirul/deepdiffdb/releases) page.
+Download the latest release from the [GitHub Releases](https://github.com/iamvirul/deepdiff-db/releases) page.
 
 **Linux Example:**
 ```bash
