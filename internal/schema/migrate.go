@@ -705,7 +705,7 @@ func generateModifyPrimaryKey(tableName string, pkDiff *PrimaryKeyDiff, driver s
 		stmts = append(stmts, fmt.Sprintf("-- Current primary key: (%s)", strings.Join(pkDiff.ProdColumns, ", ")))
 		stmts = append(stmts, fmt.Sprintf("-- New primary key: (%s)", strings.Join(pkDiff.DevColumns, ", ")))
 		stmts = append(stmts, "-- Manual table recreation required:")
-		stmts = append(stmts, fmt.Sprintf("-- 1. Create new table with correct primary key"))
+		stmts = append(stmts, "-- 1. Create new table with correct primary key")
 		stmts = append(stmts, fmt.Sprintf("-- 2. Copy data from %s to new table", tableName))
 		stmts = append(stmts, fmt.Sprintf("-- 3. Drop old table %s", tableName))
 		stmts = append(stmts, fmt.Sprintf("-- 4. Rename new table to %s", tableName))
