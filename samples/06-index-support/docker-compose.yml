@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # Production database with existing indexes
+  prod-db:
+    image: mysql:8.0
+    container_name: deepdiff-index-prod-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: testdb
+    ports:
+      - "3309:3306"
+    volumes:
+      - ./init-scripts/01-prod-schema.sql:/docker-entrypoint-initdb.d/01-prod-schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
+      timeout: 5s
+      retries: 10
+      interval: 3s
+    networks:
+      - deepdiff-index-network
+
+  # Development database with new/modified indexes
+  dev-db:
+    image: mysql:8.0
+    container_name: deepdiff-index-dev-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: testdb
+    ports:
+      - "3310:3306"
+    volumes:
+      - ./init-scripts/02-dev-schema.sql:/docker-entrypoint-initdb.d/02-dev-schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
+      timeout: 5s
+      retries: 10
+      interval: 3s
+    networks:
+      - deepdiff-index-network
+
+networks:
+  deepdiff-index-network:
+    driver: bridge

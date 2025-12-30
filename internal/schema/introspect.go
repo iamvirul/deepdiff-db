@@ -99,6 +99,12 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 	default:
 		return nil, fmt.Errorf("schema load unsupported driver: %s", driver)
 	}
+
+	// Load indexes for all tables
+	if err := loadIndexes(ctx, db, driver, database, s); err != nil {
+		return nil, fmt.Errorf("load indexes: %w", err)
+	}
+
 	return s, nil
 }
 
@@ -270,4 +276,245 @@ func listSqliteColumns(ctx context.Context, db *sql.DB, table string) (map[strin
 	}
 
 	return cols, pk, nil
+}
+
+// loadIndexes queries the database for index metadata and populates the Indexes map for each table in the schema.
+// It dispatches to driver-specific index loading functions based on the driver parameter.
+// Primary key indexes are excluded as they are already handled separately.
+func loadIndexes(ctx context.Context, db *sql.DB, driver string, database string, s *Schema) error {
+	driver = strings.ToLower(driver)
+
+	switch driver {
+	case "mysql":
+		return loadMySQLIndexes(ctx, db, database, s)
+	case "postgres", "postgresql":
+		return loadPostgreSQLIndexes(ctx, db, s)
+	case "sqlite":
+		return loadSQLiteIndexes(ctx, db, s)
+	default:
+		return fmt.Errorf("index introspection unsupported for driver: %s", driver)
+	}
+}
+
+// loadMySQLIndexes queries MySQL's information_schema.statistics to load index metadata.
+// It populates the Indexes map for each table in the schema, excluding PRIMARY indexes.
+func loadMySQLIndexes(ctx context.Context, db *sql.DB, database string, s *Schema) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT table_name, index_name, column_name, seq_in_index, non_unique
+		FROM information_schema.statistics
+		WHERE table_schema = ? AND index_name != 'PRIMARY'
+		ORDER BY table_name, index_name, seq_in_index
+	`, database)
+	if err != nil {
+		return fmt.Errorf("mysql indexes: %w", err)
+	}
+	defer rows.Close()
+
+	// Temporary structure to accumulate columns per index
+	type indexEntry struct {
+		tableName  string
+		indexName  string
+		columnName string
+		seqInIndex int
+		nonUnique  int
+	}
+
+	var entries []indexEntry
+	for rows.Next() {
+		var e indexEntry
+		if err := rows.Scan(&e.tableName, &e.indexName, &e.columnName, &e.seqInIndex, &e.nonUnique); err != nil {
+			return fmt.Errorf("scan mysql index: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Group entries by table and index, then populate schema
+	indexMap := make(map[string]map[string]*Index) // table -> indexName -> Index
+	for _, e := range entries {
+		if _, ok := s.Tables[e.tableName]; !ok {
+			continue // Skip indexes for tables not in schema (e.g., ignored tables)
+		}
+		if indexMap[e.tableName] == nil {
+			indexMap[e.tableName] = make(map[string]*Index)
+		}
+		if indexMap[e.tableName][e.indexName] == nil {
+			indexMap[e.tableName][e.indexName] = &Index{
+				Name:     e.indexName,
+				Columns:  []string{},
+				IsUnique: e.nonUnique == 0,
+			}
+		}
+		indexMap[e.tableName][e.indexName].Columns = append(indexMap[e.tableName][e.indexName].Columns, e.columnName)
+	}
+
+	// Assign indexes to tables
+	for tableName, indexes := range indexMap {
+		t := s.Tables[tableName]
+		if t.Indexes == nil {
+			t.Indexes = make(map[string]Index)
+		}
+		for indexName, idx := range indexes {
+			t.Indexes[indexName] = *idx
+		}
+		s.Tables[tableName] = t
+	}
+
+	return nil
+}
+
+// loadPostgreSQLIndexes queries PostgreSQL's system catalogs to load index metadata.
+// It populates the Indexes map for each table in the schema, excluding primary key indexes.
+func loadPostgreSQLIndexes(ctx context.Context, db *sql.DB, s *Schema) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT
+			t.relname AS table_name,
+			i.relname AS index_name,
+			a.attname AS column_name,
+			array_position(ix.indkey, a.attnum) AS column_position,
+			ix.indisunique AS is_unique
+		FROM pg_class t
+		JOIN pg_index ix ON ix.indrelid = t.oid
+		JOIN pg_class i ON i.oid = ix.indexrelid
+		JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+		JOIN pg_namespace n ON n.oid = t.relnamespace
+		WHERE n.nspname = current_schema()
+		  AND NOT ix.indisprimary
+		ORDER BY t.relname, i.relname, array_position(ix.indkey, a.attnum)
+	`)
+	if err != nil {
+		return fmt.Errorf("postgres indexes: %w", err)
+	}
+	defer rows.Close()
+
+	// Temporary structure to accumulate columns per index
+	type indexEntry struct {
+		tableName  string
+		indexName  string
+		columnName string
+		position   int
+		isUnique   bool
+	}
+
+	var entries []indexEntry
+	for rows.Next() {
+		var e indexEntry
+		if err := rows.Scan(&e.tableName, &e.indexName, &e.columnName, &e.position, &e.isUnique); err != nil {
+			return fmt.Errorf("scan postgres index: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Group entries by table and index, then populate schema
+	indexMap := make(map[string]map[string]*Index) // table -> indexName -> Index
+	for _, e := range entries {
+		if _, ok := s.Tables[e.tableName]; !ok {
+			continue // Skip indexes for tables not in schema (e.g., ignored tables)
+		}
+		if indexMap[e.tableName] == nil {
+			indexMap[e.tableName] = make(map[string]*Index)
+		}
+		if indexMap[e.tableName][e.indexName] == nil {
+			indexMap[e.tableName][e.indexName] = &Index{
+				Name:     e.indexName,
+				Columns:  []string{},
+				IsUnique: e.isUnique,
+			}
+		}
+		indexMap[e.tableName][e.indexName].Columns = append(indexMap[e.tableName][e.indexName].Columns, e.columnName)
+	}
+
+	// Assign indexes to tables
+	for tableName, indexes := range indexMap {
+		t := s.Tables[tableName]
+		if t.Indexes == nil {
+			t.Indexes = make(map[string]Index)
+		}
+		for indexName, idx := range indexes {
+			t.Indexes[indexName] = *idx
+		}
+		s.Tables[tableName] = t
+	}
+
+	return nil
+}
+
+// loadSQLiteIndexes uses PRAGMA statements to load index metadata for SQLite.
+// It populates the Indexes map for each table in the schema, excluding primary key
+// and auto-generated indexes (prefixed with 'sqlite_autoindex').
+func loadSQLiteIndexes(ctx context.Context, db *sql.DB, s *Schema) error {
+	for tableName, table := range s.Tables {
+		if table.Indexes == nil {
+			table.Indexes = make(map[string]Index)
+		}
+
+		// Get index list for this table
+		indexRows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA index_list(%s);", tableName))
+		if err != nil {
+			return fmt.Errorf("sqlite index_list: %w", err)
+		}
+
+		type indexMeta struct {
+			seq     int
+			name    string
+			unique  int
+			origin  string
+			partial int
+		}
+		var indexes []indexMeta
+
+		for indexRows.Next() {
+			var idx indexMeta
+			if err := indexRows.Scan(&idx.seq, &idx.name, &idx.unique, &idx.origin, &idx.partial); err != nil {
+				indexRows.Close()
+				return fmt.Errorf("scan sqlite index_list: %w", err)
+			}
+			// Skip primary key indexes (origin = 'pk') and auto-generated indexes
+			if idx.origin == "pk" || strings.HasPrefix(idx.name, "sqlite_autoindex") {
+				continue
+			}
+			indexes = append(indexes, idx)
+		}
+		indexRows.Close()
+		if err := indexRows.Err(); err != nil {
+			return err
+		}
+
+		// For each index, get column info
+		for _, idx := range indexes {
+			infoRows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA index_info(%s);", idx.name))
+			if err != nil {
+				return fmt.Errorf("sqlite index_info: %w", err)
+			}
+
+			var columns []string
+			for infoRows.Next() {
+				var seqno, cid int
+				var name string
+				if err := infoRows.Scan(&seqno, &cid, &name); err != nil {
+					infoRows.Close()
+					return fmt.Errorf("scan sqlite index_info: %w", err)
+				}
+				columns = append(columns, name)
+			}
+			infoRows.Close()
+			if err := infoRows.Err(); err != nil {
+				return err
+			}
+
+			table.Indexes[idx.name] = Index{
+				Name:     idx.name,
+				Columns:  columns,
+				IsUnique: idx.unique == 1,
+			}
+		}
+
+		s.Tables[tableName] = table
+	}
+	return nil
 }

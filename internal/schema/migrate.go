@@ -15,6 +15,10 @@ type MigrationOptions struct {
 	// When false (default), DROP TABLE statements are commented out for safety.
 	AllowDropTable bool
 
+	// AllowDropIndex controls whether DROP INDEX statements are uncommented.
+	// When false (default), DROP INDEX statements are commented out for safety.
+	AllowDropIndex bool
+
 	// ConfirmDestructive adds additional warnings for destructive operations.
 	ConfirmDestructive bool
 }
@@ -35,8 +39,9 @@ func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (
 	// Use safe defaults if opts is nil
 	if opts == nil {
 		opts = &MigrationOptions{
-			AllowDropColumn: false,
-			AllowDropTable:  false,
+			AllowDropColumn:    false,
+			AllowDropTable:     false,
+			AllowDropIndex:     false,
 			ConfirmDestructive: true,
 		}
 	}
@@ -138,6 +143,46 @@ func GenerateMigration(diff DiffResult, driver string, opts *MigrationOptions) (
 				return "", fmt.Errorf("generate modify column %s.%s: %w", td.Name, colDiff.Column, err)
 			}
 			stmts = append(stmts, stmt)
+		}
+
+		// Add indexes (present in dev but not in prod)
+		if len(td.AddedIndexes) > 0 {
+			stmts = append(stmts, "-- CREATE INDEXES (present in dev but not in prod)")
+			for _, idx := range td.AddedIndexes {
+				stmt := generateCreateIndex(td.Name, idx, driver)
+				stmts = append(stmts, stmt)
+			}
+		}
+
+		// Drop indexes (present in prod but not in dev)
+		if len(td.RemovedIndexes) > 0 {
+			stmts = append(stmts, "-- DROP INDEXES (present in prod but not in dev)")
+			stmts = append(stmts, "-- WARNING: Dropping indexes may impact query performance")
+			if opts.ConfirmDestructive {
+				stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
+			}
+			for _, idx := range td.RemovedIndexes {
+				stmt := generateDropIndex(td.Name, idx, driver)
+				if !opts.AllowDropIndex {
+					stmt = "-- " + stmt
+				}
+				stmts = append(stmts, stmt)
+			}
+		}
+
+		// Modified indexes (differ in columns or uniqueness)
+		if len(td.ModifiedIndexes) > 0 {
+			stmts = append(stmts, "-- MODIFIED INDEXES (differ between prod and dev)")
+			stmts = append(stmts, "-- NOTE: To modify an index, drop and recreate it. Manual review required.")
+			for _, idxDiff := range td.ModifiedIndexes {
+				stmts = append(stmts, fmt.Sprintf("-- Index %s differs between prod and dev", idxDiff.Name))
+				if idxDiff.ColumnsDiffer {
+					stmts = append(stmts, fmt.Sprintf("--   Columns: prod=%v dev=%v", idxDiff.ProdColumns, idxDiff.DevColumns))
+				}
+				if idxDiff.UniqueDiffers {
+					stmts = append(stmts, fmt.Sprintf("--   Unique: prod=%v dev=%v", *idxDiff.ProdUnique, *idxDiff.DevUnique))
+				}
+			}
 		}
 
 		stmts = append(stmts, "")
@@ -321,4 +366,38 @@ func quoteIdentifier(identifier string, driver string) string {
 
 	// Rejoin with '.'
 	return strings.Join(quotedParts, ".")
+}
+
+// generateCreateIndex generates a CREATE INDEX or CREATE UNIQUE INDEX statement.
+func generateCreateIndex(tableName string, idx Index, driver string) string {
+	quotedTable := quoteIdentifier(tableName, driver)
+	quotedIndex := quoteIdentifier(idx.Name, driver)
+
+	// Quote column names
+	quotedCols := make([]string, len(idx.Columns))
+	for i, col := range idx.Columns {
+		quotedCols[i] = quoteIdentifier(col, driver)
+	}
+	colList := strings.Join(quotedCols, ", ")
+
+	if idx.IsUnique {
+		return fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s);", quotedIndex, quotedTable, colList)
+	}
+	return fmt.Sprintf("CREATE INDEX %s ON %s (%s);", quotedIndex, quotedTable, colList)
+}
+
+// generateDropIndex generates a DROP INDEX statement.
+// MySQL requires the table name in DROP INDEX, while PostgreSQL and SQLite do not.
+func generateDropIndex(tableName string, idx Index, driver string) string {
+	quotedIndex := quoteIdentifier(idx.Name, driver)
+
+	switch driver {
+	case "mysql":
+		quotedTable := quoteIdentifier(tableName, driver)
+		return fmt.Sprintf("DROP INDEX %s ON %s;", quotedIndex, quotedTable)
+	case "postgres", "postgresql", "sqlite":
+		return fmt.Sprintf("DROP INDEX %s;", quotedIndex)
+	default:
+		return fmt.Sprintf("-- DROP INDEX %s; -- unsupported driver", idx.Name)
+	}
 }

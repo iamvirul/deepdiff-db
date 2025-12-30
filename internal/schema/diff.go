@@ -15,6 +15,9 @@ type TableDiff struct {
 	AddedColumns     []Column     `json:"added_columns,omitempty"`
 	RemovedColumns   []Column     `json:"removed_columns,omitempty"`
 	ModifiedColumns  []ColumnDiff `json:"modified_columns,omitempty"`
+	AddedIndexes     []Index      `json:"added_indexes,omitempty"`
+	RemovedIndexes   []Index      `json:"removed_indexes,omitempty"`
+	ModifiedIndexes  []IndexDiff  `json:"modified_indexes,omitempty"`
 	ExtraInProd      []string     `json:"extra_in_prod,omitempty"`
 	ExtraInDev       []string     `json:"extra_in_dev,omitempty"`
 	OnlyInProd       bool         `json:"only_in_prod,omitempty"`
@@ -36,6 +39,19 @@ type ColumnDiff struct {
 	DefaultMismatch  bool    `json:"default_mismatch,omitempty"`
 	ProdDefault      *string `json:"prod_default,omitempty"`
 	DevDefault       *string `json:"dev_default,omitempty"`
+}
+
+// IndexDiff captures mismatches for an index across prod/dev.
+type IndexDiff struct {
+	Name          string   `json:"index_name"`
+	MissingInProd bool     `json:"missing_in_prod,omitempty"`
+	MissingInDev  bool     `json:"missing_in_dev,omitempty"`
+	ColumnsDiffer bool     `json:"columns_differ,omitempty"`
+	ProdColumns   []string `json:"prod_columns,omitempty"`
+	DevColumns    []string `json:"dev_columns,omitempty"`
+	UniqueDiffers bool     `json:"unique_differs,omitempty"`
+	ProdUnique    *bool    `json:"prod_unique,omitempty"`
+	DevUnique     *bool    `json:"dev_unique,omitempty"`
 }
 
 // DiffResult aggregates all table diffs.
@@ -95,7 +111,11 @@ func DiffSchemas(prod, dev *Schema) DiffResult {
 		// Process column differences
 		td.ColumnDiffs = diffColumns(p.Columns, d.Columns)
 		td.AddedColumns, td.RemovedColumns, td.ModifiedColumns = categorizeColumnDiffs(td.ColumnDiffs, d.Columns, p.Columns)
-		td.HasDifferences = len(td.ColumnDiffs) > 0
+
+		// Process index differences
+		td.AddedIndexes, td.RemovedIndexes, td.ModifiedIndexes = diffIndexes(p.Indexes, d.Indexes)
+
+		td.HasDifferences = len(td.ColumnDiffs) > 0 || len(td.AddedIndexes) > 0 || len(td.RemovedIndexes) > 0 || len(td.ModifiedIndexes) > 0
 		result.Tables = append(result.Tables, td)
 	}
 
@@ -256,4 +276,87 @@ func categorizeColumnDiffs(diffs []ColumnDiff, devCols, prodCols map[string]Colu
 		}
 	}
 	return
+}
+
+// diffIndexes compares indexes between prod and dev tables.
+// It returns three slices: added indexes (in dev but not prod), removed indexes (in prod but not dev),
+// and modified indexes (exist in both but differ in columns or uniqueness).
+func diffIndexes(prodIndexes, devIndexes map[string]Index) (added []Index, removed []Index, modified []IndexDiff) {
+	if prodIndexes == nil {
+		prodIndexes = make(map[string]Index)
+	}
+	if devIndexes == nil {
+		devIndexes = make(map[string]Index)
+	}
+
+	// Collect all index names
+	seen := make(map[string]struct{})
+	for name := range prodIndexes {
+		seen[name] = struct{}{}
+	}
+	for name := range devIndexes {
+		seen[name] = struct{}{}
+	}
+
+	var names []string
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		prodIdx, prodOK := prodIndexes[name]
+		devIdx, devOK := devIndexes[name]
+
+		if prodOK && !devOK {
+			// Index exists in prod but not in dev - should be removed
+			removed = append(removed, prodIdx)
+			continue
+		}
+
+		if !prodOK && devOK {
+			// Index exists in dev but not in prod - should be added
+			added = append(added, devIdx)
+			continue
+		}
+
+		// Index exists in both - check for differences
+		diff := IndexDiff{Name: name}
+		hasDiff := false
+
+		// Compare columns (order matters)
+		if !slicesEqual(prodIdx.Columns, devIdx.Columns) {
+			diff.ColumnsDiffer = true
+			diff.ProdColumns = prodIdx.Columns
+			diff.DevColumns = devIdx.Columns
+			hasDiff = true
+		}
+
+		// Compare uniqueness
+		if prodIdx.IsUnique != devIdx.IsUnique {
+			diff.UniqueDiffers = true
+			diff.ProdUnique = &prodIdx.IsUnique
+			diff.DevUnique = &devIdx.IsUnique
+			hasDiff = true
+		}
+
+		if hasDiff {
+			modified = append(modified, diff)
+		}
+	}
+
+	return
+}
+
+// slicesEqual compares two string slices for equality (same length and elements in same order).
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

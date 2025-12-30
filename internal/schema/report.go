@@ -70,6 +70,21 @@ func writeText(result DiffResult, path string) error {
 				}
 			}
 		}
+		// Index differences
+		for _, idx := range td.AddedIndexes {
+			fmt.Fprintf(&b, "  - index %s missing in prod (columns=%v unique=%v)\n", idx.Name, idx.Columns, idx.IsUnique)
+		}
+		for _, idx := range td.RemovedIndexes {
+			fmt.Fprintf(&b, "  - index %s missing in dev (columns=%v unique=%v)\n", idx.Name, idx.Columns, idx.IsUnique)
+		}
+		for _, idxDiff := range td.ModifiedIndexes {
+			if idxDiff.ColumnsDiffer {
+				fmt.Fprintf(&b, "  - index %s columns differ prod=%v dev=%v\n", idxDiff.Name, idxDiff.ProdColumns, idxDiff.DevColumns)
+			}
+			if idxDiff.UniqueDiffers {
+				fmt.Fprintf(&b, "  - index %s uniqueness differs prod=%v dev=%v\n", idxDiff.Name, boolString(idxDiff.ProdUnique), boolString(idxDiff.DevUnique))
+			}
+		}
 		b.WriteString("\n")
 	}
 
