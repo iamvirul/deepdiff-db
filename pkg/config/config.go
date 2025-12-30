@@ -48,6 +48,10 @@ type MigrationConfig struct {
 	// When false (default), DROP TABLE statements are commented out for safety.
 	AllowDropTable bool `yaml:"allow_drop_table"`
 
+	// AllowDropIndex controls whether DROP INDEX statements are uncommented.
+	// When false (default), DROP INDEX statements are commented out for safety.
+	AllowDropIndex bool `yaml:"allow_drop_index"`
+
 	// ConfirmDestructive requires manual confirmation for destructive operations.
 	// When true, destructive operations include additional warnings.
 	ConfirmDestructive bool `yaml:"confirm_destructive"`

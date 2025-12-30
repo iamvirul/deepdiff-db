@@ -1,0 +1,30 @@
+# DeepDiff DB Configuration - Active Mode
+# DROP INDEX statements are enabled (use with caution!)
+
+prod:
+  driver: mysql
+  host: localhost
+  port: 3309
+  user: root
+  password: rootpass
+  database: testdb
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3310
+  user: root
+  password: rootpass
+  database: testdb
+
+output:
+  dir: ./diff-output
+
+# Migration settings (active mode)
+# Use this configuration in non-production environments or when you're
+# confident about the index changes
+migration:
+  allow_drop_column: false     # Keep DROP COLUMN commented for safety
+  allow_drop_table: false      # Keep DROP TABLE commented for safety
+  allow_drop_index: true       # Enable DROP INDEX statements
+  confirm_destructive: true    # Show extra warnings for destructive operations

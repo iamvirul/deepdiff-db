@@ -497,6 +497,7 @@ func runSchemaMigrate(args []string) error {
 	opts := &schema.MigrationOptions{
 		AllowDropColumn:    cfg.Migration.AllowDropColumn,
 		AllowDropTable:     cfg.Migration.AllowDropTable,
+		AllowDropIndex:     cfg.Migration.AllowDropIndex,
 		ConfirmDestructive: cfg.Migration.ConfirmDestructive,
 	}
 
