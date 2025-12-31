@@ -1,0 +1,55 @@
+prod:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3318
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+dev:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3317
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+ignore:
+  tables: []
+  columns:
+    - "*.created_at"
+    - "*.updated_at"
+
+output:
+  dir: "./diff-output"
+
+# Conflict Resolution Configuration
+# This section defines how conflicts between prod and dev databases are resolved.
+#
+# Strategies:
+#   - "ours"   : Keep the production version (discard dev changes)
+#   - "theirs" : Use the development version (overwrite prod)
+#   - "manual" : Require manual review (conflicts reported but not auto-resolved)
+#
+conflict_resolution:
+  # Default strategy applied to all tables unless overridden
+  default_strategy: "manual"
+
+  # Per-table strategy overrides
+  strategies:
+    # Logs table: Always use dev version
+    # Logs are ephemeral and dev logs are more recent/relevant
+    - table: "logs"
+      strategy: "theirs"
+
+    # Config table: Always keep prod version
+    # Production configuration should never be overwritten by dev values
+    - table: "config"
+      strategy: "ours"
+
+    # Users table: Require manual review (explicit override, same as default)
+    # User data is critical and should be carefully reviewed
+    - table: "users"
+      strategy: "manual"
+
+    # Settings table uses the default strategy (manual) since no override is specified

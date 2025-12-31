@@ -8,13 +8,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Strategy constants for conflict resolution.
+const (
+	StrategyOurs   = "ours"   // Keep production version
+	StrategyTheirs = "theirs" // Use development version
+	StrategyManual = "manual" // Require manual review
+)
+
 // Config holds the full DeepDiff DB configuration.
 type Config struct {
-	Prod      DBConfig        `yaml:"prod"`
-	Dev       DBConfig        `yaml:"dev"`
-	Ignore    IgnoreConfig    `yaml:"ignore"`
-	Output    OutputConfig    `yaml:"output"`
-	Migration MigrationConfig `yaml:"migration"`
+	Prod               DBConfig                 `yaml:"prod"`
+	Dev                DBConfig                 `yaml:"dev"`
+	Ignore             IgnoreConfig             `yaml:"ignore"`
+	Output             OutputConfig             `yaml:"output"`
+	Migration          MigrationConfig          `yaml:"migration"`
+	ConflictResolution ConflictResolutionConfig `yaml:"conflict_resolution"`
 }
 
 // DBConfig represents connection details for a single database.
@@ -65,6 +73,28 @@ type MigrationConfig struct {
 	ConfirmDestructive bool `yaml:"confirm_destructive"`
 }
 
+// ConflictResolutionConfig defines how conflicts between prod and dev databases are resolved.
+type ConflictResolutionConfig struct {
+	// DefaultStrategy is the global default strategy for conflict resolution.
+	// Valid values: "ours" (keep prod), "theirs" (use dev), "manual" (require review).
+	// Defaults to "manual" if not specified.
+	DefaultStrategy string `yaml:"default_strategy"`
+
+	// Strategies defines per-table strategy overrides.
+	// These take precedence over the DefaultStrategy.
+	Strategies []TableStrategy `yaml:"strategies"`
+}
+
+// TableStrategy defines a conflict resolution strategy for a specific table.
+type TableStrategy struct {
+	// Table is the name of the table this strategy applies to.
+	Table string `yaml:"table"`
+
+	// Strategy is the resolution strategy for this table.
+	// Valid values: "ours" (keep prod), "theirs" (use dev), "manual" (require review).
+	Strategy string `yaml:"strategy"`
+}
+
 // Load reads configuration from the YAML file at path, unmarshals it into a Config,
 // validates the resulting configuration, and ensures Output.Dir defaults to "./diff-output"
 // when not specified.
@@ -91,6 +121,11 @@ func Load(path string) (*Config, error) {
 		cfg.Output.Dir = "./diff-output"
 	}
 
+	// Default conflict resolution strategy to "manual" if not specified
+	if cfg.ConflictResolution.DefaultStrategy == "" {
+		cfg.ConflictResolution.DefaultStrategy = StrategyManual
+	}
+
 	return &cfg, nil
 }
 
@@ -100,6 +135,9 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := c.Dev.validate("dev"); err != nil {
+		return err
+	}
+	if err := c.ConflictResolution.validate(); err != nil {
 		return err
 	}
 	return nil
@@ -125,3 +163,51 @@ func (c *DBConfig) validate(prefix string) error {
 
 // ErrInvalidConfig indicates missing or invalid fields.
 var ErrInvalidConfig = errors.New("invalid configuration")
+
+// isValidStrategy checks if the given strategy is valid.
+func isValidStrategy(strategy string) bool {
+	switch strategy {
+	case StrategyOurs, StrategyTheirs, StrategyManual, "":
+		return true
+	default:
+		return false
+	}
+}
+
+// validate checks that the conflict resolution configuration is valid.
+func (c *ConflictResolutionConfig) validate() error {
+	// Validate default strategy if specified
+	if c.DefaultStrategy != "" && !isValidStrategy(c.DefaultStrategy) {
+		return fmt.Errorf("conflict_resolution.default_strategy: invalid value %q (must be %q, %q, or %q)",
+			c.DefaultStrategy, StrategyOurs, StrategyTheirs, StrategyManual)
+	}
+
+	// Validate per-table strategies
+	for i, ts := range c.Strategies {
+		if ts.Table == "" {
+			return fmt.Errorf("conflict_resolution.strategies[%d].table: table name is required", i)
+		}
+		if ts.Strategy == "" {
+			return fmt.Errorf("conflict_resolution.strategies[%d].strategy: strategy is required for table %q", i, ts.Table)
+		}
+		if !isValidStrategy(ts.Strategy) {
+			return fmt.Errorf("conflict_resolution.strategies[%d].strategy: invalid value %q for table %q (must be %q, %q, or %q)",
+				i, ts.Strategy, ts.Table, StrategyOurs, StrategyTheirs, StrategyManual)
+		}
+	}
+
+	return nil
+}
+
+// GetStrategyForTable returns the conflict resolution strategy for the given table.
+// It first checks for a table-specific override, then falls back to the default strategy.
+func (c *ConflictResolutionConfig) GetStrategyForTable(tableName string) string {
+	// Check for table-specific override
+	for _, ts := range c.Strategies {
+		if ts.Table == tableName {
+			return ts.Strategy
+		}
+	}
+	// Fall back to default strategy
+	return c.DefaultStrategy
+}

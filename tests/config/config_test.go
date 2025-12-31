@@ -598,3 +598,375 @@ func TestMigrationConfig_Struct(t *testing.T) {
 	}
 }
 
+// ============================================================================
+// Conflict Resolution Config Tests
+// ============================================================================
+
+func TestLoad_ConflictResolutionConfig_DefaultStrategy(t *testing.T) {
+	tests := []struct {
+		name            string
+		config          string
+		wantStrategy    string
+		wantError       bool
+		wantErrContains string
+	}{
+		{
+			name: "default strategy manual when not specified",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+`,
+			wantStrategy: "manual",
+			wantError:    false,
+		},
+		{
+			name: "explicit default strategy ours",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+conflict_resolution:
+  default_strategy: "ours"
+`,
+			wantStrategy: "ours",
+			wantError:    false,
+		},
+		{
+			name: "explicit default strategy theirs",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+conflict_resolution:
+  default_strategy: "theirs"
+`,
+			wantStrategy: "theirs",
+			wantError:    false,
+		},
+		{
+			name: "explicit default strategy manual",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+conflict_resolution:
+  default_strategy: "manual"
+`,
+			wantStrategy: "manual",
+			wantError:    false,
+		},
+		{
+			name: "invalid default strategy",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+conflict_resolution:
+  default_strategy: "invalid"
+`,
+			wantError:       true,
+			wantErrContains: "invalid value",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath := filepath.Join(tmpDir, "test.yaml")
+			if err := os.WriteFile(configPath, []byte(tt.config), 0o644); err != nil {
+				t.Fatalf("failed to write test config: %v", err)
+			}
+
+			cfg, err := config.Load(configPath)
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("expected error but got none")
+				} else if tt.wantErrContains != "" && !contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("expected error containing %q, got %q", tt.wantErrContains, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if cfg.ConflictResolution.DefaultStrategy != tt.wantStrategy {
+				t.Errorf("expected DefaultStrategy=%q, got %q", tt.wantStrategy, cfg.ConflictResolution.DefaultStrategy)
+			}
+		})
+	}
+}
+
+func TestLoad_ConflictResolutionConfig_TableStrategies(t *testing.T) {
+	tests := []struct {
+		name            string
+		config          string
+		wantStrategies  []config.TableStrategy
+		wantError       bool
+		wantErrContains string
+	}{
+		{
+			name: "valid table strategies",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+conflict_resolution:
+  default_strategy: "manual"
+  strategies:
+    - table: "logs"
+      strategy: "theirs"
+    - table: "config"
+      strategy: "ours"
+    - table: "users"
+      strategy: "manual"
+`,
+			wantStrategies: []config.TableStrategy{
+				{Table: "logs", Strategy: "theirs"},
+				{Table: "config", Strategy: "ours"},
+				{Table: "users", Strategy: "manual"},
+			},
+			wantError: false,
+		},
+		{
+			name: "missing table name",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+conflict_resolution:
+  strategies:
+    - strategy: "theirs"
+`,
+			wantError:       true,
+			wantErrContains: "table name is required",
+		},
+		{
+			name: "missing strategy",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+conflict_resolution:
+  strategies:
+    - table: "logs"
+`,
+			wantError:       true,
+			wantErrContains: "strategy is required",
+		},
+		{
+			name: "invalid table strategy",
+			config: `
+prod:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: prod_db
+
+dev:
+  driver: mysql
+  host: localhost
+  port: 3306
+  database: dev_db
+
+conflict_resolution:
+  strategies:
+    - table: "logs"
+      strategy: "invalid"
+`,
+			wantError:       true,
+			wantErrContains: "invalid value",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath := filepath.Join(tmpDir, "test.yaml")
+			if err := os.WriteFile(configPath, []byte(tt.config), 0o644); err != nil {
+				t.Fatalf("failed to write test config: %v", err)
+			}
+
+			cfg, err := config.Load(configPath)
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("expected error but got none")
+				} else if tt.wantErrContains != "" && !contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("expected error containing %q, got %q", tt.wantErrContains, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(cfg.ConflictResolution.Strategies) != len(tt.wantStrategies) {
+				t.Errorf("expected %d strategies, got %d", len(tt.wantStrategies), len(cfg.ConflictResolution.Strategies))
+				return
+			}
+
+			for i, want := range tt.wantStrategies {
+				got := cfg.ConflictResolution.Strategies[i]
+				if got.Table != want.Table || got.Strategy != want.Strategy {
+					t.Errorf("strategy[%d]: expected {%q, %q}, got {%q, %q}",
+						i, want.Table, want.Strategy, got.Table, got.Strategy)
+				}
+			}
+		})
+	}
+}
+
+func TestConflictResolutionConfig_GetStrategyForTable(t *testing.T) {
+	cfg := config.ConflictResolutionConfig{
+		DefaultStrategy: "manual",
+		Strategies: []config.TableStrategy{
+			{Table: "logs", Strategy: "theirs"},
+			{Table: "config", Strategy: "ours"},
+		},
+	}
+
+	tests := []struct {
+		tableName    string
+		wantStrategy string
+	}{
+		{"logs", "theirs"},
+		{"config", "ours"},
+		{"users", "manual"},       // Falls back to default
+		{"unknown", "manual"},     // Falls back to default
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.tableName, func(t *testing.T) {
+			got := cfg.GetStrategyForTable(tt.tableName)
+			if got != tt.wantStrategy {
+				t.Errorf("GetStrategyForTable(%q) = %q, want %q", tt.tableName, got, tt.wantStrategy)
+			}
+		})
+	}
+}
+
+func TestConflictResolutionConfig_Struct(t *testing.T) {
+	// Test direct struct creation
+	crConfig := config.ConflictResolutionConfig{
+		DefaultStrategy: "theirs",
+		Strategies: []config.TableStrategy{
+			{Table: "logs", Strategy: "theirs"},
+			{Table: "users", Strategy: "ours"},
+		},
+	}
+
+	if crConfig.DefaultStrategy != "theirs" {
+		t.Errorf("expected DefaultStrategy to be 'theirs', got %q", crConfig.DefaultStrategy)
+	}
+
+	if len(crConfig.Strategies) != 2 {
+		t.Errorf("expected 2 strategies, got %d", len(crConfig.Strategies))
+	}
+
+	if crConfig.Strategies[0].Table != "logs" || crConfig.Strategies[0].Strategy != "theirs" {
+		t.Errorf("expected first strategy to be {logs, theirs}, got {%q, %q}",
+			crConfig.Strategies[0].Table, crConfig.Strategies[0].Strategy)
+	}
+}
+
+func TestStrategyConstants(t *testing.T) {
+	// Verify strategy constants are correct
+	if config.StrategyOurs != "ours" {
+		t.Errorf("expected StrategyOurs to be 'ours', got %q", config.StrategyOurs)
+	}
+	if config.StrategyTheirs != "theirs" {
+		t.Errorf("expected StrategyTheirs to be 'theirs', got %q", config.StrategyTheirs)
+	}
+	if config.StrategyManual != "manual" {
+		t.Errorf("expected StrategyManual to be 'manual', got %q", config.StrategyManual)
+	}
+}
+
+// contains is a helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
