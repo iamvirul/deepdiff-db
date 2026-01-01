@@ -1,0 +1,68 @@
+prod:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3320
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+dev:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3319
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+ignore:
+  tables: []
+  columns:
+    - "*.created_at"
+    - "*.updated_at"
+    - "*.logged_at"
+    - "*.performed_at"
+
+output:
+  dir: "./diff-output"
+
+# Conflict Resolution Engine Configuration
+# =========================================
+# This configuration demonstrates how the resolution engine applies
+# different strategies to conflicts based on table-specific rules.
+#
+# The resolution engine processes each conflict and determines:
+# - Strategy: ours, theirs, or manual
+# - Decision: keep_prod, use_dev, or pending
+# - Resolved: true (auto-resolved) or false (needs review)
+
+conflict_resolution:
+  # Default strategy for tables without specific overrides
+  default_strategy: "manual"
+
+  strategies:
+    # Products & Inventory: Use dev version (theirs)
+    # These tables contain updated prices, stock levels, and logs
+    # that should flow from dev to prod
+    - table: "products"
+      strategy: "theirs"
+
+    - table: "inventory_log"
+      strategy: "theirs"
+
+    - table: "audit_trail"
+      strategy: "theirs"
+
+    # Orders & Feature Flags: Keep prod version (ours)
+    # These tables contain authoritative production data
+    # that should not be overwritten by test data
+    - table: "orders"
+      strategy: "ours"
+
+    - table: "feature_flags"
+      strategy: "ours"
+
+    # Customers: Manual review required
+    # Customer data is critical and tier/points changes
+    # must be reviewed before applying
+    - table: "customers"
+      strategy: "manual"
