@@ -399,3 +399,199 @@ func TestFilterResolvedWithEmptyResolutions(t *testing.T) {
 		t.Errorf("expected all conflicts unresolved, got %d", len(unresolved.Conflicts))
 	}
 }
+
+func TestFilterDataDiffByResolutions(t *testing.T) {
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table:   "products",
+				Added:   []string{"5", "6"},
+				Removed: []string{"7"},
+				Updated: []string{"1", "2", "3"},
+			},
+			{
+				Table:   "orders",
+				Added:   []string{"10"},
+				Removed: []string{},
+				Updated: []string{"4", "5"},
+			},
+			{
+				Table:   "customers",
+				Updated: []string{"1", "2"},
+			},
+		},
+	}
+
+	resolutions := []resolve.Resolution{
+		// products: 1 = theirs (include), 2 = ours (exclude), 3 = manual (exclude)
+		{Conflict: content.Conflict{Table: "products", Key: "1"}, Decision: resolve.DecisionUseDev},
+		{Conflict: content.Conflict{Table: "products", Key: "2"}, Decision: resolve.DecisionKeepProd},
+		{Conflict: content.Conflict{Table: "products", Key: "3"}, Decision: resolve.DecisionPending},
+		// orders: 4 = theirs (include), 5 = ours (exclude)
+		{Conflict: content.Conflict{Table: "orders", Key: "4"}, Decision: resolve.DecisionUseDev},
+		{Conflict: content.Conflict{Table: "orders", Key: "5"}, Decision: resolve.DecisionKeepProd},
+		// customers: 1 = manual (exclude), 2 = manual (exclude)
+		{Conflict: content.Conflict{Table: "customers", Key: "1"}, Decision: resolve.DecisionPending},
+		{Conflict: content.Conflict{Table: "customers", Key: "2"}, Decision: resolve.DecisionPending},
+	}
+
+	filtered, excludedCounts := resolve.FilterDataDiffByResolutions(diff, resolutions)
+
+	// Check products table
+	var productsDiff *content.TableDataDiff
+	for i := range filtered.Tables {
+		if filtered.Tables[i].Table == "products" {
+			productsDiff = &filtered.Tables[i]
+			break
+		}
+	}
+	if productsDiff == nil {
+		t.Fatal("products table not found in filtered diff")
+	}
+	if len(productsDiff.Added) != 2 {
+		t.Errorf("products.Added should be unchanged, got %d", len(productsDiff.Added))
+	}
+	if len(productsDiff.Removed) != 1 {
+		t.Errorf("products.Removed should be unchanged, got %d", len(productsDiff.Removed))
+	}
+	if len(productsDiff.Updated) != 1 || productsDiff.Updated[0] != "1" {
+		t.Errorf("products.Updated should only contain '1', got %v", productsDiff.Updated)
+	}
+
+	// Check orders table
+	var ordersDiff *content.TableDataDiff
+	for i := range filtered.Tables {
+		if filtered.Tables[i].Table == "orders" {
+			ordersDiff = &filtered.Tables[i]
+			break
+		}
+	}
+	if ordersDiff == nil {
+		t.Fatal("orders table not found in filtered diff")
+	}
+	if len(ordersDiff.Updated) != 1 || ordersDiff.Updated[0] != "4" {
+		t.Errorf("orders.Updated should only contain '4', got %v", ordersDiff.Updated)
+	}
+
+	// Check customers table (all excluded)
+	var customersDiff *content.TableDataDiff
+	for i := range filtered.Tables {
+		if filtered.Tables[i].Table == "customers" {
+			customersDiff = &filtered.Tables[i]
+			break
+		}
+	}
+	if customersDiff == nil {
+		t.Fatal("customers table not found in filtered diff")
+	}
+	if len(customersDiff.Updated) != 0 {
+		t.Errorf("customers.Updated should be empty, got %v", customersDiff.Updated)
+	}
+
+	// Check excluded counts
+	if excludedCounts[resolve.DecisionKeepProd] != 2 {
+		t.Errorf("expected 2 keep_prod excluded, got %d", excludedCounts[resolve.DecisionKeepProd])
+	}
+	if excludedCounts[resolve.DecisionPending] != 3 {
+		t.Errorf("expected 3 pending excluded, got %d", excludedCounts[resolve.DecisionPending])
+	}
+}
+
+func TestFilterDataDiffByResolutionsNoResolutions(t *testing.T) {
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table:   "products",
+				Updated: []string{"1", "2", "3"},
+			},
+		},
+	}
+
+	// No resolutions - all keys should remain (backward compatible)
+	filtered, excludedCounts := resolve.FilterDataDiffByResolutions(diff, []resolve.Resolution{})
+
+	if len(filtered.Tables) != 1 {
+		t.Fatalf("expected 1 table, got %d", len(filtered.Tables))
+	}
+	if len(filtered.Tables[0].Updated) != 3 {
+		t.Errorf("all keys should remain without resolutions, got %d", len(filtered.Tables[0].Updated))
+	}
+	if len(excludedCounts) != 0 {
+		t.Errorf("no keys should be excluded without resolutions")
+	}
+}
+
+func TestFilterDataDiffByResolutionsPartialResolutions(t *testing.T) {
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table:   "products",
+				Updated: []string{"1", "2", "3", "4"},
+			},
+		},
+	}
+
+	// Only some keys have resolutions
+	resolutions := []resolve.Resolution{
+		{Conflict: content.Conflict{Table: "products", Key: "1"}, Decision: resolve.DecisionUseDev},
+		{Conflict: content.Conflict{Table: "products", Key: "2"}, Decision: resolve.DecisionKeepProd},
+		// Keys 3 and 4 have no resolution - should be included
+	}
+
+	filtered, excludedCounts := resolve.FilterDataDiffByResolutions(diff, resolutions)
+
+	// Keys 1, 3, 4 should be included; key 2 excluded
+	if len(filtered.Tables[0].Updated) != 3 {
+		t.Errorf("expected 3 keys (1, 3, 4), got %d: %v", len(filtered.Tables[0].Updated), filtered.Tables[0].Updated)
+	}
+	if excludedCounts[resolve.DecisionKeepProd] != 1 {
+		t.Errorf("expected 1 keep_prod excluded, got %d", excludedCounts[resolve.DecisionKeepProd])
+	}
+}
+
+func TestBuildResolutionSummary(t *testing.T) {
+	resolutions := []resolve.Resolution{
+		{Conflict: content.Conflict{Table: "products", Key: "1"}, Strategy: resolve.StrategyTheirs, Decision: resolve.DecisionUseDev, Resolved: true},
+		{Conflict: content.Conflict{Table: "products", Key: "2"}, Strategy: resolve.StrategyOurs, Decision: resolve.DecisionKeepProd, Resolved: true},
+		{Conflict: content.Conflict{Table: "orders", Key: "1"}, Strategy: resolve.StrategyManual, Decision: resolve.DecisionPending, Resolved: false},
+		{Conflict: content.Conflict{Table: "customers", Key: "1"}, Strategy: resolve.StrategyManual, Decision: resolve.DecisionPending, Resolved: false},
+	}
+
+	summary := resolve.BuildResolutionSummary(resolutions)
+
+	if summary.TotalConflicts != 4 {
+		t.Errorf("expected 4 total conflicts, got %d", summary.TotalConflicts)
+	}
+	if summary.ResolvedCount != 2 {
+		t.Errorf("expected 2 resolved, got %d", summary.ResolvedCount)
+	}
+	if summary.UnresolvedCount != 2 {
+		t.Errorf("expected 2 unresolved, got %d", summary.UnresolvedCount)
+	}
+	if summary.ByStrategy[resolve.StrategyTheirs] != 1 {
+		t.Errorf("expected 1 theirs, got %d", summary.ByStrategy[resolve.StrategyTheirs])
+	}
+	if summary.ByStrategy[resolve.StrategyOurs] != 1 {
+		t.Errorf("expected 1 ours, got %d", summary.ByStrategy[resolve.StrategyOurs])
+	}
+	if summary.ByStrategy[resolve.StrategyManual] != 2 {
+		t.Errorf("expected 2 manual, got %d", summary.ByStrategy[resolve.StrategyManual])
+	}
+	if summary.ByTable["products"] != 2 {
+		t.Errorf("expected 2 products conflicts, got %d", summary.ByTable["products"])
+	}
+	if summary.ByTable["orders"] != 1 {
+		t.Errorf("expected 1 orders conflict, got %d", summary.ByTable["orders"])
+	}
+}
+
+func TestBuildResolutionSummaryEmpty(t *testing.T) {
+	summary := resolve.BuildResolutionSummary([]resolve.Resolution{})
+
+	if summary.TotalConflicts != 0 {
+		t.Errorf("expected 0 total conflicts, got %d", summary.TotalConflicts)
+	}
+	if summary.ResolvedCount != 0 {
+		t.Errorf("expected 0 resolved, got %d", summary.ResolvedCount)
+	}
+}

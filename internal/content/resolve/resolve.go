@@ -211,3 +211,95 @@ func GetUnresolvedResolutions(resolutions []Resolution) []Resolution {
 	}
 	return unresolved
 }
+
+// FilterDataDiffByResolutions filters the Updated keys in a DataDiff based on resolutions.
+// Keys resolved with "theirs" (use_dev) remain in the Updated list.
+// Keys resolved with "ours" (keep_prod) or "manual" (pending) are removed.
+// Added and Removed keys are not affected by conflict resolution.
+// Returns the filtered DataDiff and counts of excluded keys by decision.
+func FilterDataDiffByResolutions(diff content.DataDiff, resolutions []Resolution) (content.DataDiff, map[Decision]int) {
+	// Build lookup maps for quick access
+	// Map: table -> key -> decision
+	decisionMap := make(map[string]map[string]Decision)
+	for _, res := range resolutions {
+		if decisionMap[res.Conflict.Table] == nil {
+			decisionMap[res.Conflict.Table] = make(map[string]Decision)
+		}
+		decisionMap[res.Conflict.Table][res.Conflict.Key] = res.Decision
+	}
+
+	excludedCounts := make(map[Decision]int)
+	filteredTables := make([]content.TableDataDiff, 0, len(diff.Tables))
+
+	for _, td := range diff.Tables {
+		filteredTd := content.TableDataDiff{
+			Table:   td.Table,
+			Added:   td.Added,   // Added keys are not affected
+			Removed: td.Removed, // Removed keys are not affected
+		}
+
+		// Filter Updated keys based on resolutions
+		tableDecisions := decisionMap[td.Table]
+		for _, key := range td.Updated {
+			decision, hasResolution := tableDecisions[key]
+			if !hasResolution {
+				// No resolution for this key, include it (backward compatible)
+				filteredTd.Updated = append(filteredTd.Updated, key)
+				continue
+			}
+
+			switch decision {
+			case DecisionUseDev:
+				// "theirs" strategy: include in pack (update prod with dev)
+				filteredTd.Updated = append(filteredTd.Updated, key)
+			case DecisionKeepProd:
+				// "ours" strategy: exclude from pack (keep prod value)
+				excludedCounts[DecisionKeepProd]++
+			case DecisionPending:
+				// "manual" strategy: exclude from pack (needs review)
+				excludedCounts[DecisionPending]++
+			default:
+				// Unknown decision, include by default
+				filteredTd.Updated = append(filteredTd.Updated, key)
+			}
+		}
+
+		filteredTables = append(filteredTables, filteredTd)
+	}
+
+	return content.DataDiff{Tables: filteredTables}, excludedCounts
+}
+
+// ResolutionSummary contains summary statistics about conflict resolution.
+type ResolutionSummary struct {
+	TotalConflicts    int            `json:"total_conflicts"`
+	ResolvedCount     int            `json:"resolved_count"`
+	UnresolvedCount   int            `json:"unresolved_count"`
+	ByStrategy        map[Strategy]int `json:"by_strategy"`
+	ByDecision        map[Decision]int `json:"by_decision"`
+	ByTable           map[string]int   `json:"by_table"`
+}
+
+// BuildResolutionSummary creates a summary of resolution statistics.
+func BuildResolutionSummary(resolutions []Resolution) ResolutionSummary {
+	summary := ResolutionSummary{
+		TotalConflicts:  len(resolutions),
+		ByStrategy:      make(map[Strategy]int),
+		ByDecision:      make(map[Decision]int),
+		ByTable:         make(map[string]int),
+	}
+
+	for _, res := range resolutions {
+		summary.ByStrategy[res.Strategy]++
+		summary.ByDecision[res.Decision]++
+		summary.ByTable[res.Conflict.Table]++
+
+		if res.Resolved {
+			summary.ResolvedCount++
+		} else {
+			summary.UnresolvedCount++
+		}
+	}
+
+	return summary
+}

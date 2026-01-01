@@ -104,27 +104,42 @@ Review the conflicts report:
 cat diff-output/conflicts.json
 ```
 
-### Example 2: Generate Migration Pack
+### Example 2: Generate Migration Pack with Resolution
 
-Generate a migration pack with resolution engine applied:
+Generate a migration pack with the resolution engine applied:
 
 ```bash
 deepdiffdb gen-pack --config deepdiffdb.config.yaml
 ```
 
+**Expected Output:**
+
+```
+Conflict Resolution Summary:
+  Total conflicts: 14
+  Auto-resolved (theirs -> use dev): 5
+  Auto-resolved (ours -> keep prod): 6
+  Pending manual review: 3
+
+Schema OK. Data diff complete.
+Changes detected. Pack written to ./diff-output/migration_pack.sql
+  6 conflicts excluded (ours strategy - keeping prod values)
+  Warning: 3 conflicts excluded (manual review required)
+```
+
 **Resolution Engine Behavior:**
 
 1. **Auto-resolved (theirs)**: Products, inventory_log, audit_trail
-   - Conflicts included in migration pack
+   - Conflicts **included** in migration pack
    - Dev version will be applied to prod
 
 2. **Auto-resolved (ours)**: Orders, feature_flags
-   - Conflicts excluded from migration pack
-   - Prod version preserved
+   - Conflicts **excluded** from migration pack
+   - Prod version preserved (no changes applied)
 
 3. **Unresolved (manual)**: Customers
-   - Conflicts reported for review
-   - Not included in automatic migration
+   - Conflicts **excluded** from migration pack
+   - Reported for manual review before applying
 
 ### Example 3: Review Pending Conflicts
 
@@ -200,6 +215,13 @@ resolved := resolve.FilterUnresolved(conflicts, resolutions)
 // Get counts by decision type
 counts := resolve.CountByDecision(resolutions)
 // {keep_prod: 6, use_dev: 5, pending: 3}
+
+// Filter DataDiff for pack generation (integrated with gen-pack)
+filteredDiff, excludedCounts := resolve.FilterDataDiffByResolutions(dataDiff, resolutions)
+
+// Build resolution summary for reporting
+summary := resolve.BuildResolutionSummary(resolutions)
+// summary.TotalConflicts, summary.ResolvedCount, summary.UnresolvedCount
 ```
 
 ## Use Cases
