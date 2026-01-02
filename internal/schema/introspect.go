@@ -28,7 +28,7 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 			       c.column_type,
 			       c.is_nullable,
 			       c.column_default,
-			       kcu.ordinal_position AS pk_ordinal
+			       CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN kcu.ordinal_position ELSE NULL END AS pk_ordinal
 			FROM information_schema.columns c
 			LEFT JOIN information_schema.key_column_usage kcu
 			  ON kcu.table_schema = c.table_schema
