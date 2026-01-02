@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/iamvirul/deepdiff-db/internal/cli"
 	"github.com/iamvirul/deepdiff-db/internal/content"
 	"github.com/iamvirul/deepdiff-db/internal/content/resolve"
 	"github.com/iamvirul/deepdiff-db/internal/drivers"
@@ -55,6 +57,8 @@ func run(args []string) error {
 		return runGenPack(args[1:])
 	case "apply":
 		return runApply(args[1:])
+	case "resolve-conflicts":
+		return runResolveConflicts(args[1:])
 	case "-h", "--help", "help":
 		printUsage()
 		return nil
@@ -434,6 +438,272 @@ func runApply(args []string) error {
 	return nil
 }
 
+// runResolveConflicts implements the interactive conflict resolution command.
+// It loads conflicts from conflicts.json, optionally resumes from a saved resolutions file,
+// and allows users to interactively resolve conflicts one by one with full row data comparison.
+func runResolveConflicts(args []string) error {
+	fs := flag.NewFlagSet("resolve-conflicts", flag.ContinueOnError)
+	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	conflictsPath := fs.String("conflicts", "", "Path to conflicts.json file (default: <output-dir>/conflicts.json)")
+	resolutionsPath := fs.String("resolutions", "", "Path to resolutions.json for persistence (default: <output-dir>/resolutions.json)")
+	autoMode := fs.Bool("auto", false, "Apply configured strategies without prompts")
+	resumeMode := fs.Bool("resume", false, "Resume from existing resolutions file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Set default paths
+	if *conflictsPath == "" {
+		*conflictsPath = filepath.Join(cfg.Output.Dir, "conflicts.json")
+	}
+	if *resolutionsPath == "" {
+		*resolutionsPath = filepath.Join(cfg.Output.Dir, "resolutions.json")
+	}
+
+	// Load conflicts
+	conflictsData, err := os.ReadFile(*conflictsPath)
+	if err != nil {
+		return fmt.Errorf("read conflicts file: %w", err)
+	}
+
+	var conflicts content.Conflicts
+	if err := json.Unmarshal(conflictsData, &conflicts); err != nil {
+		return fmt.Errorf("parse conflicts file: %w", err)
+	}
+
+	if !conflicts.HasConflicts() {
+		fmt.Println("No conflicts to resolve.")
+		return nil
+	}
+
+	// Initialize resolutions
+	var resolutions []resolve.Resolution
+
+	if *resumeMode {
+		// Load existing resolutions and merge with current conflicts
+		saved, err := resolve.LoadResolutions(*resolutionsPath)
+		if err != nil {
+			fmt.Printf("Warning: could not load resolutions file: %v\n", err)
+			fmt.Println("Starting fresh resolution session.")
+			resolutions = resolve.ResolveConflicts(conflicts, nil) // All pending
+		} else {
+			resolutions = resolve.MergeResolutions(saved.Resolutions, conflicts)
+			fmt.Printf("Resumed from saved resolutions. %d conflicts loaded.\n", len(resolutions))
+		}
+	} else {
+		// Start fresh - create pending resolutions for all conflicts
+		resolutions = make([]resolve.Resolution, 0, len(conflicts.Conflicts))
+		for _, c := range conflicts.Conflicts {
+			resolutions = append(resolutions, resolve.Resolution{
+				Conflict: c,
+				Strategy: resolve.StrategyManual,
+				Decision: resolve.DecisionPending,
+				Resolved: false,
+			})
+		}
+	}
+
+	// Auto mode: apply configured strategies without prompts
+	if *autoMode {
+		resolutions = resolve.ResolveConflicts(conflicts, cfg)
+		if err := resolve.SaveResolutions(resolutions, *resolutionsPath); err != nil {
+			return fmt.Errorf("save resolutions: %w", err)
+		}
+
+		summary := resolve.BuildResolutionSummary(resolutions)
+		display := cli.NewDisplay()
+		display.PrintSummary(summary, *resolutionsPath)
+		return nil
+	}
+
+	// Interactive mode: connect to databases for row data
+	ctx := context.Background()
+
+	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	if err != nil {
+		return fmt.Errorf("prod connection failed: %w", err)
+	}
+	defer prodDB.Close()
+
+	devDB, err := drivers.Open(ctx, cfg.Dev)
+	if err != nil {
+		return fmt.Errorf("dev connection failed: %w", err)
+	}
+	defer devDB.Close()
+
+	// Load schemas for row fetching
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("load prod schema: %w", err)
+	}
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("load dev schema: %w", err)
+	}
+
+	display := cli.NewDisplay()
+	prompter := cli.NewPrompter()
+
+	// Show welcome message
+	pendingCount := resolve.GetPendingCount(resolutions)
+	display.PrintWelcome(len(resolutions), pendingCount)
+
+	if pendingCount == 0 {
+		display.PrintAllResolved()
+		summary := resolve.BuildResolutionSummary(resolutions)
+		display.PrintSummary(summary, *resolutionsPath)
+		return nil
+	}
+
+	// Interactive resolution loop
+	totalConflicts := len(resolutions)
+	currentIndex := 0
+
+	// Find first pending conflict
+	for currentIndex < totalConflicts && resolutions[currentIndex].Resolved {
+		currentIndex++
+	}
+
+	for currentIndex < totalConflicts {
+		res := &resolutions[currentIndex]
+
+		// Skip already resolved
+		if res.Resolved {
+			currentIndex++
+			continue
+		}
+
+		// Calculate display position (counting only pending)
+		displayPos := 0
+		for i := 0; i <= currentIndex; i++ {
+			if !resolutions[i].Resolved || i == currentIndex {
+				displayPos++
+			}
+		}
+
+		// Fetch row data for comparison
+		prod, dev, err := resolve.FetchConflictRows(
+			ctx, prodDB, devDB, cfg.Prod.Driver,
+			prodSchema, devSchema, res.Conflict,
+		)
+		if err != nil {
+			display.PrintError(fmt.Sprintf("fetch row data: %v", err))
+			display.PrintInfo("Skipping to next conflict...")
+			currentIndex++
+			continue
+		}
+
+		// Display conflict
+		display.PrintProgress(displayPos, pendingCount, res.Conflict.Table, res.Conflict.Key)
+
+		// Compare rows and display
+		diffs := resolve.CompareRows(prod, dev)
+		display.PrintConflictComparison(prod, dev, diffs)
+
+		// Prompt for resolution
+		choice, err := prompter.PromptResolution(res.Conflict.Table)
+		if err != nil {
+			display.PrintError(fmt.Sprintf("prompt error: %v", err))
+			continue
+		}
+
+		switch choice {
+		case cli.ChoiceKeepProd:
+			resolutions = resolve.UpdateResolution(resolutions, currentIndex, resolve.StrategyOurs, resolve.DecisionKeepProd)
+			currentIndex++
+
+		case cli.ChoiceUseDev:
+			resolutions = resolve.UpdateResolution(resolutions, currentIndex, resolve.StrategyTheirs, resolve.DecisionUseDev)
+			currentIndex++
+
+		case cli.ChoiceSkip:
+			currentIndex++
+
+		case cli.ChoiceOursForTable:
+			resolutions = resolve.ApplyBulkResolution(resolutions, res.Conflict.Table, false, resolve.StrategyOurs)
+			count := countTableResolutions(resolutions, res.Conflict.Table, resolve.DecisionKeepProd)
+			display.PrintBulkApplied("ours", count, res.Conflict.Table)
+			// Skip to next table
+			for currentIndex < totalConflicts && resolutions[currentIndex].Conflict.Table == res.Conflict.Table {
+				currentIndex++
+			}
+
+		case cli.ChoiceTheirsForTable:
+			resolutions = resolve.ApplyBulkResolution(resolutions, res.Conflict.Table, false, resolve.StrategyTheirs)
+			count := countTableResolutions(resolutions, res.Conflict.Table, resolve.DecisionUseDev)
+			display.PrintBulkApplied("theirs", count, res.Conflict.Table)
+			// Skip to next table
+			for currentIndex < totalConflicts && resolutions[currentIndex].Conflict.Table == res.Conflict.Table {
+				currentIndex++
+			}
+
+		case cli.ChoiceOursForAll:
+			resolutions = resolve.ApplyBulkResolution(resolutions, "", true, resolve.StrategyOurs)
+			count := countDecisionResolutions(resolutions, resolve.DecisionKeepProd)
+			display.PrintBulkApplied("ours", count, "all remaining conflicts")
+			currentIndex = totalConflicts // Exit loop
+
+		case cli.ChoiceTheirsForAll:
+			resolutions = resolve.ApplyBulkResolution(resolutions, "", true, resolve.StrategyTheirs)
+			count := countDecisionResolutions(resolutions, resolve.DecisionUseDev)
+			display.PrintBulkApplied("theirs", count, "all remaining conflicts")
+			currentIndex = totalConflicts // Exit loop
+
+		case cli.ChoiceQuit:
+			display.PrintSaving(*resolutionsPath)
+			if err := resolve.SaveResolutions(resolutions, *resolutionsPath); err != nil {
+				return fmt.Errorf("save resolutions: %w", err)
+			}
+			display.PrintSaved(*resolutionsPath)
+			pendingCount = resolve.GetPendingCount(resolutions)
+			display.PrintSkipped(pendingCount)
+			return nil
+
+		case cli.ChoiceInvalid:
+			display.PrintError("Invalid choice. Please try again.")
+			continue
+		}
+
+		// Save after each decision
+		if err := resolve.SaveResolutions(resolutions, *resolutionsPath); err != nil {
+			display.PrintWarning(fmt.Sprintf("could not save resolutions: %v", err))
+		}
+	}
+
+	// Final summary
+	summary := resolve.BuildResolutionSummary(resolutions)
+	display.PrintSummary(summary, *resolutionsPath)
+
+	return nil
+}
+
+// countTableResolutions counts resolutions for a specific table and decision.
+func countTableResolutions(resolutions []resolve.Resolution, table string, decision resolve.Decision) int {
+	count := 0
+	for _, res := range resolutions {
+		if res.Conflict.Table == table && res.Decision == decision {
+			count++
+		}
+	}
+	return count
+}
+
+// countDecisionResolutions counts resolutions with a specific decision.
+func countDecisionResolutions(resolutions []resolve.Resolution, decision resolve.Decision) int {
+	count := 0
+	for _, res := range resolutions {
+		if res.Decision == decision {
+			count++
+		}
+	}
+	return count
+}
+
 // runSchemaDiff parses flags for the "schema-diff" command, loads configuration, opens production and development databases, loads their schemas, writes schema diff reports to the configured output directory, and returns an error if schema drift is detected or any operation fails.
 func runSchemaDiff(args []string) error {
 	fs := flag.NewFlagSet("schema-diff", flag.ContinueOnError)
@@ -609,12 +879,13 @@ Usage:
   %[1]s <command> [flags]
 
 Commands:
-  check           Validate configuration and show quick summary
-  schema-diff     Detect schema drift
-  schema-migrate  Generate schema migration script
-  diff            Full diff: schema + data
-  gen-pack        Generate SQL migration pack
-  apply           Apply migration pack
+  check             Validate configuration and show quick summary
+  schema-diff       Detect schema drift
+  schema-migrate    Generate schema migration script
+  diff              Full diff: schema + data
+  gen-pack          Generate SQL migration pack
+  apply             Apply migration pack
+  resolve-conflicts Interactively resolve pending conflicts
 
 Global Flags:
   -v, --version   Show version information
