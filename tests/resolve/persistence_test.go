@@ -120,10 +120,8 @@ func TestSaveResolutionsPreservesCreatedAt(t *testing.T) {
 	if loaded2.CreatedAt != createdAt {
 		t.Errorf("createdAt changed: was %s, now %s", createdAt, loaded2.CreatedAt)
 	}
-	if loaded2.UpdatedAt == loaded2.CreatedAt {
-		// This could fail if executed within the same second
-		// but is unlikely in practice
-	}
+	// Note: UpdatedAt may equal CreatedAt if executed within the same second,
+	// which is acceptable behavior
 }
 
 func TestMergeResolutions(t *testing.T) {
