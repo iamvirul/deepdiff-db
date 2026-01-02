@@ -1,0 +1,34 @@
+services:
+  db1:
+    image: mysql:8.0
+    container_name: mysql_interactive_resolution_db1
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: testdb
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_AUTHENTICATION_PLUGIN: "mysql_native_password"
+    ports:
+      - "3322:3306"
+    volumes:
+      - ./init-scripts/01-prod-schema.sql:/docker-entrypoint-initdb.d/init.sql
+      - interactive_resolution_db1_data:/var/lib/mysql
+
+  db2:
+    image: mysql:8.0
+    container_name: mysql_interactive_resolution_db2
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: testdb
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_AUTHENTICATION_PLUGIN: "mysql_native_password"
+    ports:
+      - "3321:3306"
+    volumes:
+      - ./init-scripts/02-dev-schema.sql:/docker-entrypoint-initdb.d/init.sql
+      - interactive_resolution_db2_data:/var/lib/mysql
+
+volumes:
+  interactive_resolution_db1_data:
+  interactive_resolution_db2_data:

@@ -306,6 +306,8 @@ docker-compose down -v
 - [Sample 02: Advanced Migrations](../02-advanced-migrations/) - Full workflow with data diffing
 - [Sample 03: Schema Migrations](../03-schema-migrations/) - Generating schema migration scripts
 - [Sample 04: DROP COLUMN Safety](../04-drop-column-safety/) - Safe column removal
+- [Sample 10: Conflict Resolution](../10-conflict-resolution/) - Configuring conflict resolution strategies
+- [Sample 12: Interactive Resolution](../12-interactive-resolution/) - Interactive CLI for conflict resolution
 
 ---
 

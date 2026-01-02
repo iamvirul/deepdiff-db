@@ -24,3 +24,25 @@ ignore:
 output:
   dir: "./diff-output"
 
+# Conflict resolution settings (optional)
+# Used by the resolve-conflicts and gen-pack commands
+conflict_resolution:
+  # Default strategy for all conflicts: "ours", "theirs", or "manual"
+  # - ours: Keep production values (reject dev changes)
+  # - theirs: Use development values (accept dev changes)
+  # - manual: Require interactive decision for each conflict
+  default_strategy: "manual"
+
+  # Table-specific strategies (overrides default_strategy)
+  strategies:
+    # Example: Always keep production data for certain tables
+    # - table: "users"
+    #   strategy: "ours"
+
+    # Example: Always accept dev changes for feature flags
+    # - table: "feature_flags"
+    #   strategy: "theirs"
+
+    # Example: Require manual review for orders
+    # - table: "orders"
+    #   strategy: "manual"
