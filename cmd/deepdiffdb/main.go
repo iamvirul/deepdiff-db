@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/iamvirul/deepdiff-db/internal/content"
+	"github.com/iamvirul/deepdiff-db/internal/content/resolve"
 	"github.com/iamvirul/deepdiff-db/internal/drivers"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
@@ -312,7 +313,38 @@ func runGenPack(args []string) error {
 		}
 	}
 
-	packPath, err := content.GeneratePack(ctx, cfg.Prod.Driver, devDB, cfg.Dev.Database, prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, cfg.Output.Dir)
+	// Apply conflict resolution if conflicts exist
+	var resolutions []resolve.Resolution
+	var filteredDiff content.DataDiff
+	var excludedCounts map[resolve.Decision]int
+
+	if conflicts.HasConflicts() {
+		// Resolve conflicts based on configured strategies
+		resolutions = resolve.ResolveConflicts(conflicts, cfg)
+
+		// Filter the data diff based on resolutions
+		filteredDiff, excludedCounts = resolve.FilterDataDiffByResolutions(dataDiff, resolutions)
+
+		// Print resolution summary
+		summary := resolve.BuildResolutionSummary(resolutions)
+		fmt.Printf("\nConflict Resolution Summary:\n")
+		fmt.Printf("  Total conflicts: %d\n", summary.TotalConflicts)
+		if summary.ByDecision[resolve.DecisionUseDev] > 0 {
+			fmt.Printf("  Auto-resolved (theirs -> use dev): %d\n", summary.ByDecision[resolve.DecisionUseDev])
+		}
+		if summary.ByDecision[resolve.DecisionKeepProd] > 0 {
+			fmt.Printf("  Auto-resolved (ours -> keep prod): %d\n", summary.ByDecision[resolve.DecisionKeepProd])
+		}
+		if summary.UnresolvedCount > 0 {
+			fmt.Printf("  Pending manual review: %d\n", summary.UnresolvedCount)
+		}
+		fmt.Println()
+	} else {
+		filteredDiff = dataDiff
+		excludedCounts = make(map[resolve.Decision]int)
+	}
+
+	packPath, err := content.GeneratePack(ctx, cfg.Prod.Driver, devDB, cfg.Dev.Database, prodSchema, devSchema, schemaDiff, filteredDiff, ignoreColumn, cfg.Output.Dir)
 	if err != nil {
 		return fmt.Errorf("generate pack: %w", err)
 	}
@@ -326,10 +358,20 @@ func runGenPack(args []string) error {
 	} else {
 		fmt.Println("Schema OK. Data diff complete.")
 	}
-	if dataDiff.HasChanges() {
+	if filteredDiff.HasChanges() {
 		fmt.Printf("Changes detected. Pack written to %s\n", packPath)
-		if conflicts.HasConflicts() {
-			fmt.Printf("Warning: %d conflicts detected. Review %s before applying pack.\n", len(conflicts.Conflicts), filepath.Join(cfg.Output.Dir, "conflicts.json"))
+		if excludedCounts[resolve.DecisionKeepProd] > 0 {
+			fmt.Printf("  %d conflicts excluded (ours strategy - keeping prod values)\n", excludedCounts[resolve.DecisionKeepProd])
+		}
+		if excludedCounts[resolve.DecisionPending] > 0 {
+			fmt.Printf("  Warning: %d conflicts excluded (manual review required)\n", excludedCounts[resolve.DecisionPending])
+		}
+	} else if dataDiff.HasChanges() {
+		// Original diff had changes but filtered diff doesn't
+		fmt.Println("All data changes were excluded by conflict resolution.")
+		fmt.Printf("  %d conflicts kept in prod (ours strategy)\n", excludedCounts[resolve.DecisionKeepProd])
+		if excludedCounts[resolve.DecisionPending] > 0 {
+			fmt.Printf("  %d conflicts pending manual review\n", excludedCounts[resolve.DecisionPending])
 		}
 	} else {
 		fmt.Println("No data differences found. Pack not required.")
