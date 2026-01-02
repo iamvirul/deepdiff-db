@@ -11,7 +11,7 @@ USE testdb;
 -- ============================================
 CREATE TABLE products (
     id INT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
+    name VARCHAR(100) NOT NULL UNIQUE,
     price DECIMAL(10,2) NOT NULL,
     stock INT NOT NULL,
     category VARCHAR(50),
@@ -77,7 +77,7 @@ INSERT INTO inventory_log (id, product_id, action, quantity_change, notes) VALUE
 -- ============================================
 CREATE TABLE customers (
     id INT PRIMARY KEY,
-    email VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
     name VARCHAR(100) NOT NULL,
     tier VARCHAR(20) DEFAULT 'standard',
     loyalty_points INT DEFAULT 0,
@@ -99,7 +99,7 @@ INSERT INTO customers (id, email, name, tier, loyalty_points) VALUES
 -- ============================================
 CREATE TABLE feature_flags (
     id INT PRIMARY KEY,
-    flag_name VARCHAR(50) NOT NULL,
+    flag_name VARCHAR(50) NOT NULL UNIQUE,
     enabled BOOLEAN DEFAULT FALSE,
     rollout_percentage INT DEFAULT 0,
     description TEXT
