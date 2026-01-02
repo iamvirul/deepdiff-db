@@ -257,6 +257,8 @@ docker-compose down -v
 ## Learn More
 
 - [DeepDiff DB Documentation](../../README.md)
+- [Sample 11: Resolution Engine](../11-resolution-engine/) - Resolution engine internals
+- [Sample 12: Interactive Resolution](../12-interactive-resolution/) - Interactive CLI for conflict resolution
 - [Sample 01: Basic Schema Drift](../01-basic-schema-drift/) - Getting started
 - [Sample 02: Advanced Migrations](../02-advanced-migrations/) - Full workflow
 

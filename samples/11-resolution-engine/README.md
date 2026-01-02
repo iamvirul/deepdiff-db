@@ -153,6 +153,16 @@ These conflicts require manual review before deciding whether to:
 - Keep the production version (customer tier/points)
 - Use the development version (updated tiers/points)
 
+### Example 4: Interactive Resolution
+
+Use the `resolve-conflicts` command to interactively resolve pending conflicts:
+
+```bash
+deepdiffdb resolve-conflicts --config deepdiffdb.config.yaml
+```
+
+This provides a full row-by-row comparison with visual diff markers. See [Sample 12](../12-interactive-resolution/) for detailed interactive resolution examples.
+
 ## Understanding Resolution Output
 
 ### Resolution Summary
@@ -283,6 +293,7 @@ docker-compose down -v
 ## Related Samples
 
 - [Sample 10: Conflict Resolution Configuration](../10-conflict-resolution/) - Configuration basics
+- [Sample 12: Interactive Resolution](../12-interactive-resolution/) - Interactive CLI for conflict resolution
 - [Sample 02: Advanced Migrations](../02-advanced-migrations/) - Full workflow
 - [Sample 01: Basic Schema Drift](../01-basic-schema-drift/) - Getting started
 

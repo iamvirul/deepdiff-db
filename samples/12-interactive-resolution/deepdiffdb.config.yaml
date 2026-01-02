@@ -1,0 +1,63 @@
+prod:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3322
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+dev:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3321
+  user: "root"
+  password: "rootpassword"
+  database: "testdb"
+
+ignore:
+  tables: []
+  columns:
+    - "*.created_at"
+    - "*.updated_at"
+    - "*.logged_at"
+    - "*.performed_at"
+
+output:
+  dir: "./diff-output"
+
+# Conflict Resolution Configuration
+# =================================
+# This sample demonstrates the interactive resolve-conflicts command.
+# The configuration below sets up a mix of strategies:
+# - Some tables auto-resolve (theirs/ours)
+# - Some tables require manual review (manual)
+
+conflict_resolution:
+  # Default to manual review - forces interactive decisions
+  default_strategy: "manual"
+
+  strategies:
+    # Products: Auto-accept dev changes (theirs)
+    # Price and stock updates should flow from dev to prod
+    - table: "products"
+      strategy: "theirs"
+
+    # Orders: Auto-keep prod (ours)
+    # Production orders are the source of truth
+    - table: "orders"
+      strategy: "ours"
+
+    # Inventory Log: Auto-accept dev changes (theirs)
+    # Log data syncs from dev
+    - table: "inventory_log"
+      strategy: "theirs"
+
+    # Customers: Manual review required
+    # Customer tier/points changes need human approval
+    - table: "customers"
+      strategy: "manual"
+
+    # Feature Flags: Manual review required (demonstrate interactive flow)
+    # Override the common pattern to show interactive resolution
+    - table: "feature_flags"
+      strategy: "manual"

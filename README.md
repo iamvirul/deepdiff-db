@@ -169,6 +169,14 @@ migration:
   allow_drop_foreign_key: false
   allow_modify_primary_key: false
   confirm_destructive: false
+
+conflict_resolution:
+  default_strategy: "manual"   # ours, theirs, or manual
+  strategies:
+    - table: "logs"
+      strategy: "theirs"       # Always use dev version
+    - table: "config"
+      strategy: "ours"         # Always keep prod version
 ```
 
 ### Configuration Options
@@ -195,6 +203,15 @@ migration:
 - `allow_drop_foreign_key`: Enable DROP FOREIGN KEY statements (default: false)
 - `allow_modify_primary_key`: Enable PRIMARY KEY modification statements (default: false)
 - `confirm_destructive`: Require confirmation for destructive operations (default: false)
+
+**Conflict Resolution Configuration:**
+- `conflict_resolution.default_strategy`: Default strategy for all tables (`ours`, `theirs`, or `manual`)
+- `conflict_resolution.strategies`: Per-table strategy overrides (array of `{table, strategy}` objects)
+
+Resolution strategies:
+- `ours`: Keep production values (reject dev changes)
+- `theirs`: Use development values (accept dev changes)
+- `manual`: Require interactive decision for each conflict
 
 An example configuration file is included at `deepdiffdb.config.yaml.example`.
 
@@ -317,6 +334,38 @@ deepdiffdb apply --pack migration_pack.sql --dry-run
 
 Validates the SQL without executing it.
 
+### resolve-conflicts
+
+Interactively resolve data conflicts between production and development databases.
+
+```bash
+deepdiffdb resolve-conflicts --config deepdiffdb.config.yaml
+```
+
+**Features:**
+- Side-by-side row comparison with visual difference markers
+- Per-conflict resolution choices (keep prod, use dev, skip)
+- Bulk operations (resolve all in table, resolve all remaining)
+- Session persistence (save progress and resume later)
+- Auto mode for CI/CD pipelines
+
+**Auto Mode (for CI/CD):**
+```bash
+deepdiffdb resolve-conflicts --config deepdiffdb.config.yaml --auto
+```
+
+Applies configured strategies automatically without prompts.
+
+**Resume Mode:**
+```bash
+deepdiffdb resolve-conflicts --config deepdiffdb.config.yaml --resume
+```
+
+Continues from a previous session by loading existing resolutions.
+
+**Output Files:**
+- `resolutions.json` - Saved resolution decisions
+
 ## Usage Examples
 
 ### Basic Workflow
@@ -418,7 +467,7 @@ Current limitations and known constraints:
 - **Schema Auto-merge** - Schema differences must be resolved manually
 - **Primary Key Requirement** - All tables must have primary keys (unless explicitly ignored)
 - **Large Database Performance** - Very large databases may produce large diff files and require significant processing time
-- **Conflict Resolution** - Conflict resolution is currently manual (automated strategies planned)
+- **Conflict Resolution** - Complex merge strategies (e.g., column-level merging) are not supported
 - **SQLite Constraints** - SQLite has limited support for ALTER TABLE operations
 
 See [ROADMAP.md](ROADMAP.md) for planned features and improvements.
