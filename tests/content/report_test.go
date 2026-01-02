@@ -369,3 +369,259 @@ func TestWriteReportsWithInfo_ZeroValues(t *testing.T) {
 	}
 }
 
+func TestWriteReportsWithResolutions(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table:   "users",
+				Added:   []string{"1"},
+				Updated: []string{"2", "3"},
+			},
+		},
+	}
+
+	conflicts := content.Conflicts{
+		Conflicts: []content.Conflict{
+			{Table: "users", Key: "2", ProdHash: "hash1", DevHash: "hash2"},
+			{Table: "users", Key: "3", ProdHash: "hash3", DevHash: "hash4"},
+		},
+	}
+
+	resInfo := &content.ResolutionInfo{
+		TotalConflicts:  2,
+		ResolvedCount:   1,
+		UnresolvedCount: 1,
+		ByDecision: map[string]int{
+			"keep_prod": 1,
+			"pending":   1,
+		},
+		ByTable: map[string]int{
+			"users": 2,
+		},
+	}
+
+	if err := content.WriteReportsWithResolutions(diff, conflicts, tmpDir, "OK", 1, "migration_pack.sql", resInfo); err != nil {
+		t.Fatalf("WriteReportsWithResolutions failed: %v", err)
+	}
+
+	// Check summary.txt contains resolution info
+	summaryPath := filepath.Join(tmpDir, "summary.txt")
+	summaryContent, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("failed to read summary file: %v", err)
+	}
+
+	summaryStr := string(summaryContent)
+	if !strings.Contains(summaryStr, "Resolution Summary:") {
+		t.Error("Summary should contain 'Resolution Summary:'")
+	}
+	if !strings.Contains(summaryStr, "Auto-resolved: 1") {
+		t.Error("Summary should contain 'Auto-resolved: 1'")
+	}
+	if !strings.Contains(summaryStr, "Pending review: 1") {
+		t.Error("Summary should contain 'Pending review: 1'")
+	}
+	if !strings.Contains(summaryStr, "Keep production (ours): 1") {
+		t.Error("Summary should contain 'Keep production (ours): 1'")
+	}
+	if !strings.Contains(summaryStr, "users: 2") {
+		t.Error("Summary should contain 'users: 2'")
+	}
+
+	// Check resolutions_summary.json was created
+	resSummaryPath := filepath.Join(tmpDir, "resolutions_summary.json")
+	if _, err := os.Stat(resSummaryPath); os.IsNotExist(err) {
+		t.Fatal("resolutions_summary.json was not created")
+	}
+
+	resSummaryContent, err := os.ReadFile(resSummaryPath)
+	if err != nil {
+		t.Fatalf("failed to read resolutions_summary.json: %v", err)
+	}
+
+	if !strings.Contains(string(resSummaryContent), `"total_conflicts": 2`) {
+		t.Error("resolutions_summary.json should contain total_conflicts")
+	}
+	if !strings.Contains(string(resSummaryContent), `"resolved_count": 1`) {
+		t.Error("resolutions_summary.json should contain resolved_count")
+	}
+}
+
+func TestWriteReportsWithResolutions_NoResolutions(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{Table: "users", Added: []string{"1"}},
+		},
+	}
+
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{}}
+
+	// nil resInfo - no resolutions
+	if err := content.WriteReportsWithResolutions(diff, conflicts, tmpDir, "OK", 1, "", nil); err != nil {
+		t.Fatalf("WriteReportsWithResolutions failed: %v", err)
+	}
+
+	// Check summary.txt does NOT contain resolution info
+	summaryPath := filepath.Join(tmpDir, "summary.txt")
+	summaryContent, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("failed to read summary file: %v", err)
+	}
+
+	summaryStr := string(summaryContent)
+	if strings.Contains(summaryStr, "Resolution Summary:") {
+		t.Error("Summary should NOT contain 'Resolution Summary:' when no resolutions")
+	}
+
+	// Check resolutions_summary.json was NOT created
+	resSummaryPath := filepath.Join(tmpDir, "resolutions_summary.json")
+	if _, err := os.Stat(resSummaryPath); !os.IsNotExist(err) {
+		t.Error("resolutions_summary.json should NOT be created when no resolutions")
+	}
+}
+
+func TestWriteReportsWithResolutions_AllDecisionTypes(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{Table: "users", Updated: []string{"1", "2", "3"}},
+		},
+	}
+
+	conflicts := content.Conflicts{
+		Conflicts: []content.Conflict{
+			{Table: "users", Key: "1"},
+			{Table: "users", Key: "2"},
+			{Table: "users", Key: "3"},
+		},
+	}
+
+	resInfo := &content.ResolutionInfo{
+		TotalConflicts:  3,
+		ResolvedCount:   2,
+		UnresolvedCount: 1,
+		ByDecision: map[string]int{
+			"keep_prod": 1,
+			"use_dev":   1,
+			"pending":   1,
+		},
+		ByTable: map[string]int{
+			"users": 3,
+		},
+	}
+
+	if err := content.WriteReportsWithResolutions(diff, conflicts, tmpDir, "OK", 1, "", resInfo); err != nil {
+		t.Fatalf("WriteReportsWithResolutions failed: %v", err)
+	}
+
+	summaryPath := filepath.Join(tmpDir, "summary.txt")
+	summaryContent, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("failed to read summary file: %v", err)
+	}
+
+	summaryStr := string(summaryContent)
+	if !strings.Contains(summaryStr, "Keep production (ours): 1") {
+		t.Error("Summary should contain 'Keep production (ours): 1'")
+	}
+	if !strings.Contains(summaryStr, "Use development (theirs): 1") {
+		t.Error("Summary should contain 'Use development (theirs): 1'")
+	}
+	if !strings.Contains(summaryStr, "Pending manual review: 1") {
+		t.Error("Summary should contain 'Pending manual review: 1'")
+	}
+}
+
+func TestWriteReportsWithResolutions_MultipleTables(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{Table: "users", Updated: []string{"1"}},
+			{Table: "orders", Updated: []string{"1", "2"}},
+			{Table: "products", Updated: []string{"1"}},
+		},
+	}
+
+	conflicts := content.Conflicts{
+		Conflicts: []content.Conflict{
+			{Table: "users", Key: "1"},
+			{Table: "orders", Key: "1"},
+			{Table: "orders", Key: "2"},
+			{Table: "products", Key: "1"},
+		},
+	}
+
+	resInfo := &content.ResolutionInfo{
+		TotalConflicts:  4,
+		ResolvedCount:   3,
+		UnresolvedCount: 1,
+		ByDecision: map[string]int{
+			"keep_prod": 2,
+			"use_dev":   1,
+			"pending":   1,
+		},
+		ByTable: map[string]int{
+			"users":    1,
+			"orders":   2,
+			"products": 1,
+		},
+	}
+
+	if err := content.WriteReportsWithResolutions(diff, conflicts, tmpDir, "OK", 3, "", resInfo); err != nil {
+		t.Fatalf("WriteReportsWithResolutions failed: %v", err)
+	}
+
+	summaryPath := filepath.Join(tmpDir, "summary.txt")
+	summaryContent, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("failed to read summary file: %v", err)
+	}
+
+	summaryStr := string(summaryContent)
+	// Check all tables are listed (should be sorted)
+	if !strings.Contains(summaryStr, "orders: 2") {
+		t.Error("Summary should contain 'orders: 2'")
+	}
+	if !strings.Contains(summaryStr, "products: 1") {
+		t.Error("Summary should contain 'products: 1'")
+	}
+	if !strings.Contains(summaryStr, "users: 1") {
+		t.Error("Summary should contain 'users: 1'")
+	}
+}
+
+func TestBuildResolutionInfo(t *testing.T) {
+	byDecision := map[string]int{
+		"keep_prod": 5,
+		"use_dev":   3,
+		"pending":   2,
+	}
+	byTable := map[string]int{
+		"users":  4,
+		"orders": 6,
+	}
+
+	resInfo := content.BuildResolutionInfo(10, 8, 2, byDecision, byTable)
+
+	if resInfo.TotalConflicts != 10 {
+		t.Errorf("expected TotalConflicts 10, got %d", resInfo.TotalConflicts)
+	}
+	if resInfo.ResolvedCount != 8 {
+		t.Errorf("expected ResolvedCount 8, got %d", resInfo.ResolvedCount)
+	}
+	if resInfo.UnresolvedCount != 2 {
+		t.Errorf("expected UnresolvedCount 2, got %d", resInfo.UnresolvedCount)
+	}
+	if resInfo.ByDecision["keep_prod"] != 5 {
+		t.Errorf("expected ByDecision[keep_prod] 5, got %d", resInfo.ByDecision["keep_prod"])
+	}
+	if resInfo.ByTable["users"] != 4 {
+		t.Errorf("expected ByTable[users] 4, got %d", resInfo.ByTable["users"])
+	}
+}

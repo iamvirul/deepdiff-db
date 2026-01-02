@@ -353,7 +353,24 @@ func runGenPack(args []string) error {
 		return fmt.Errorf("generate pack: %w", err)
 	}
 
-	if err := content.WriteReportsWithInfo(dataDiff, conflicts, cfg.Output.Dir, "OK", tablesScanned, packPath); err != nil {
+	// Build resolution info for reports if resolutions exist
+	var resInfo *content.ResolutionInfo
+	if len(resolutions) > 0 {
+		summary := resolve.BuildResolutionSummary(resolutions)
+		byDecision := make(map[string]int)
+		for d, count := range summary.ByDecision {
+			byDecision[string(d)] = count
+		}
+		resInfo = content.BuildResolutionInfo(
+			summary.TotalConflicts,
+			summary.ResolvedCount,
+			summary.UnresolvedCount,
+			byDecision,
+			summary.ByTable,
+		)
+	}
+
+	if err := content.WriteReportsWithResolutions(dataDiff, conflicts, cfg.Output.Dir, "OK", tablesScanned, packPath, resInfo); err != nil {
 		return fmt.Errorf("write content diff: %w", err)
 	}
 
