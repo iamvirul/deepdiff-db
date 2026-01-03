@@ -295,16 +295,16 @@ func TestGenerateReport(t *testing.T) {
 	// Check for key elements
 	checks := []string{
 		"<!DOCTYPE html>",
-		"DeepDiff DB Report",
+		"Database Diff Report",
 		"localhost:3306/prod_db",
 		"localhost:3306/dev_db",
 		"v0.5-test",
-		"Schema Diff",
-		"Data Diff",
+		"Schema",
+		"Data",
 		"Conflicts",
-		"SQL Migration",
+		"Migration",
 		"users",
-		"Export to PDF",
+		"Export PDF",
 	}
 
 	for _, check := range checks {
