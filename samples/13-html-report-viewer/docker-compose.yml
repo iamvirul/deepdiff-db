@@ -1,0 +1,32 @@
+services:
+  prod-db:
+    image: mysql:8.0
+    container_name: html-report-prod
+    environment:
+      MYSQL_ROOT_PASSWORD: prodpass
+      MYSQL_DATABASE: prod_ecommerce
+    ports:
+      - "3316:3306"
+    volumes:
+      - ./init-scripts/01-prod-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pprodpass"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  dev-db:
+    image: mysql:8.0
+    container_name: html-report-dev
+    environment:
+      MYSQL_ROOT_PASSWORD: devpass
+      MYSQL_DATABASE: dev_ecommerce
+    ports:
+      - "3317:3306"
+    volumes:
+      - ./init-scripts/02-dev-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pdevpass"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5] - 2026-01-03
+
+### Added
+- Interactive HTML report generation with `--html` flag
+  - Works with both `diff` and `gen-pack` commands
+  - Self-contained HTML with embedded CSS and JavaScript
+  - Visual schema diff viewer with collapsible sections
+  - Data diff visualization with table filtering
+  - Conflict highlighting with resolution status indicators
+  - SQL migration preview with syntax highlighting
+  - Export to PDF functionality (via browser print)
+- New package `internal/report/html` for HTML report generation
+- Comprehensive test coverage for HTML report generation
+- New sample configuration:
+  - `13-html-report-viewer`: Demonstrates HTML report generation with various schema and data changes
+
+### Changed
+- Updated CLI help text to mention `--html` flag support
+- `diff` and `gen-pack` commands now support `--html` flag
+
 ## [0.4] - 2026-01-03
 
 ### Added
@@ -139,7 +159,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.4...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.5...HEAD
+[0.5]: https://github.com/iamvirul/deepdiff-db/compare/v0.4...v0.5
 [0.4]: https://github.com/iamvirul/deepdiff-db/compare/v0.3...v0.4
 [0.3]: https://github.com/iamvirul/deepdiff-db/compare/v0.2...v0.3
 [0.2]: https://github.com/iamvirul/deepdiff-db/compare/v0.1...v0.2

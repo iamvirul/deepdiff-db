@@ -8,7 +8,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v0.4
+## Current Status: v0.5
 
 **Last Release:** 2026-01-03
 
@@ -28,15 +28,36 @@ We release a new version every **Saturday**. Each release includes one or more f
 - Foreign key constraint handling (ADD/DROP FOREIGN KEY)
 - Primary key modification support
 - Dependency-aware migration ordering
-- **NEW:** Interactive `resolve-conflicts` command with `--auto` and `--resume` flags
-- **NEW:** Conflict resolution configuration (`ours`, `theirs`, `manual` strategies)
-- **NEW:** Per-table conflict resolution strategies
-- **NEW:** Resolution persistence with `resolutions.json`
-- **NEW:** Enhanced conflict reports with resolution statistics
+- Interactive `resolve-conflicts` command with `--auto` and `--resume` flags
+- Conflict resolution configuration (`ours`, `theirs`, `manual` strategies)
+- Per-table conflict resolution strategies
+- Resolution persistence with `resolutions.json`
+- Enhanced conflict reports with resolution statistics
+- **NEW:** Interactive HTML report generation with `--html` flag
+- **NEW:** Visual schema diff viewer
+- **NEW:** Data diff visualization with filters
+- **NEW:** Conflict highlighting and navigation
+- **NEW:** SQL preview with syntax highlighting
+- **NEW:** Export to PDF functionality
 
 ---
 
 ## Completed Releases
+
+### v0.5: HTML Report Viewer (Released 2026-01-03)
+
+**Features Delivered:**
+- Interactive HTML report generation with `--html` flag
+- Visual schema diff viewer with collapsible sections
+- Data diff visualization with table filtering
+- Conflict highlighting with resolution status
+- SQL migration preview with syntax highlighting
+- Export to PDF functionality (via browser print)
+- Self-contained HTML with embedded CSS and JavaScript
+
+**Impact:** Improves developer experience and makes reports more accessible
+
+---
 
 ### v0.4: Conflict Resolution Strategies (Released 2026-01-03)
 
@@ -55,23 +76,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ## Upcoming Releases
 
-### Week 1 - v0.5: HTML Report Viewer
+### Week 1 - v0.6: Enhanced Error Handling & Logging
 **Target Date:** Next Saturday
-
-**Features:**
-- Interactive HTML report generation
-- Visual schema diff viewer
-- Data diff visualization with filters
-- Conflict highlighting and navigation
-- Export to PDF option
-- Embedded SQL preview in reports
-
-**Impact:** Improves developer experience and makes reports more accessible
-
----
-
-### Week 2 - v0.6: Enhanced Error Handling & Logging
-**Target Date:** Week 2 Saturday
 
 **Features:**
 - Structured logging with levels (DEBUG, INFO, WARN, ERROR)
@@ -85,8 +91,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 3 - v0.7: Streaming Support for Large Datasets
-**Target Date:** Week 3 Saturday
+### Week 2 - v0.7: Streaming Support for Large Datasets
+**Target Date:** Week 2 Saturday
 
 **Features:**
 - Streaming diff for tables > 1M rows
@@ -100,8 +106,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 4 - v0.8: MSSQL Support
-**Target Date:** Week 4 Saturday
+### Week 3 - v0.8: MSSQL Support
+**Target Date:** Week 3 Saturday
 
 **Features:**
 - Microsoft SQL Server driver support
@@ -114,8 +120,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 5 - v0.9: Oracle Support
-**Target Date:** Week 5 Saturday
+### Week 4 - v0.9: Oracle Support
+**Target Date:** Week 4 Saturday
 
 **Features:**
 - Oracle Database driver support
@@ -128,8 +134,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 6 - v1.0: Production Ready Release
-**Target Date:** Week 6 Saturday
+### Week 5 - v1.0: Production Ready Release
+**Target Date:** Week 5 Saturday
 
 **Features:**
 - Comprehensive documentation
@@ -191,11 +197,11 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ### High Priority (Must Have for v1.0)
 - ~~Conflict Resolution Strategies~~ (v0.4)
+- ~~HTML Report Viewer~~ (v0.5)
 - Enhanced Error Handling & Logging
 - Documentation & Production Readiness
 
 ### Medium Priority (Should Have)
-- HTML Report Viewer
 - Streaming Support for Large Datasets
 - MSSQL Support
 
@@ -208,6 +214,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 ## Success Criteria for v1.0
 
 - [x] Conflict Resolution Strategies (v0.4)
+- [x] HTML Report Viewer (v0.5)
 - [ ] All high-priority features implemented
 - [ ] Test coverage > 80%
 - [ ] Comprehensive documentation
@@ -237,5 +244,5 @@ If you'd like to contribute to any of these features, please:
 
 ---
 
-**Last Updated:** 2026-01-03
+**Last Updated:** 2026-01-04
 
