@@ -286,9 +286,10 @@ deepdiffdb diff --config deepdiffdb.config.yaml --html
 ```
 
 The `--html` flag generates an interactive `report.html` file with:
-- Visual schema diff viewer with collapsible sections
-- Data diff visualization with filtering and search
-- Conflict highlighting with resolution status
+- Professional minimal UI design with tab-based navigation
+- Visual schema diff viewer with collapsible sections (columns, indexes, foreign keys)
+- Data diff visualization with filtering and expandable row keys
+- Conflict highlighting with strategy badges and resolution status
 - Export to PDF functionality (via browser print)
 
 **Output Files:**
@@ -315,7 +316,12 @@ deepdiffdb gen-pack --config deepdiffdb.config.yaml
 deepdiffdb gen-pack --config deepdiffdb.config.yaml --html
 ```
 
-The `--html` flag generates an interactive `report.html` file that includes all diff information plus the generated SQL migration with syntax highlighting.
+The `--html` flag generates an interactive `report.html` file with:
+- All diff information (schema, data, conflicts)
+- Resolution strategy breakdown (auto-resolved vs pending)
+- Per-table strategy table showing conflict counts
+- SQL migration preview with syntax highlighting
+- Expandable row keys for detailed inspection
 
 **Output Files:**
 - `schema_diff.json` - Schema differences (warnings only)

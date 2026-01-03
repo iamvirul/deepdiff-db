@@ -13,19 +13,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Interactive HTML report generation with `--html` flag
   - Works with both `diff` and `gen-pack` commands
   - Self-contained HTML with embedded CSS and JavaScript
-  - Visual schema diff viewer with collapsible sections
-  - Data diff visualization with table filtering
-  - Conflict highlighting with resolution status indicators
-  - SQL migration preview with syntax highlighting
-  - Export to PDF functionality (via browser print)
+  - Professional minimal UI design inspired by GitHub/Linear
+  - Tab-based navigation (Schema, Data, Conflicts, Migration)
+- Schema diff viewer with advanced features:
+  - Collapsible sections with +/−/~ indicators
+  - Column changes with type and nullable diff display
+  - Index changes with column information
+  - **Foreign Key changes** showing add/remove/modify with ON DELETE/UPDATE actions
+- Data diff visualization:
+  - Table filtering dropdown
+  - Row counts for added/removed/modified
+  - **Expandable row keys** - click to reveal affected primary keys
+- Conflict management:
+  - **Resolution strategy breakdown** showing auto-resolved (ours/theirs) vs pending counts
+  - **Per-table strategy table** with conflict/resolved/pending counts per table
+  - **Strategy badges** on each conflict (ours/theirs/manual)
+  - Resolution status indicators (Keep Source/Use Target/Pending)
+- SQL migration preview with syntax highlighting
+- Export to PDF functionality (via browser print)
 - New package `internal/report/html` for HTML report generation
-- Comprehensive test coverage for HTML report generation
+- Comprehensive test coverage for HTML report generation (13 tests)
 - New sample configuration:
   - `13-html-report-viewer`: Demonstrates HTML report generation with various schema and data changes
 
 ### Changed
 - Updated CLI help text to mention `--html` flag support
 - `diff` and `gen-pack` commands now support `--html` flag
+- `BuildReportData` now accepts resolutions for detailed breakdown display
 
 ## [0.4] - 2026-01-03
 

@@ -34,9 +34,11 @@ We release a new version every **Saturday**. Each release includes one or more f
 - Resolution persistence with `resolutions.json`
 - Enhanced conflict reports with resolution statistics
 - **NEW:** Interactive HTML report generation with `--html` flag
-- **NEW:** Visual schema diff viewer
-- **NEW:** Data diff visualization with filters
-- **NEW:** Conflict highlighting and navigation
+- **NEW:** Visual schema diff viewer with foreign key support
+- **NEW:** Data diff visualization with expandable row keys
+- **NEW:** Resolution strategy breakdown (auto/pending counts)
+- **NEW:** Per-table strategy table with conflict statistics
+- **NEW:** Conflict highlighting with strategy badges
 - **NEW:** SQL preview with syntax highlighting
 - **NEW:** Export to PDF functionality
 
@@ -48,14 +50,24 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 **Features Delivered:**
 - Interactive HTML report generation with `--html` flag
-- Visual schema diff viewer with collapsible sections
-- Data diff visualization with table filtering
-- Conflict highlighting with resolution status
+- Professional minimal UI design (GitHub/Linear inspired)
+- Tab-based navigation (Schema, Data, Conflicts, Migration)
+- Visual schema diff viewer:
+  - Collapsible sections with +/−/~ indicators
+  - Column and index change display
+  - Foreign key changes with ON DELETE/UPDATE actions
+- Data diff visualization:
+  - Table filtering dropdown
+  - Expandable row keys (click to see affected primary keys)
+- Conflict management:
+  - Resolution strategy breakdown (auto-resolved ours/theirs vs pending)
+  - Per-table strategy table with conflict/resolved/pending counts
+  - Strategy badges on each conflict (ours/theirs/manual)
 - SQL migration preview with syntax highlighting
 - Export to PDF functionality (via browser print)
 - Self-contained HTML with embedded CSS and JavaScript
 
-**Impact:** Improves developer experience and makes reports more accessible
+**Impact:** Provides comprehensive visual analysis of database differences with professional UI
 
 ---
 
