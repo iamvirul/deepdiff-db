@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4] - 2026-01-03
+
+### Added
+- `resolve-conflicts` command for interactive conflict resolution
+  - Interactive mode with side-by-side row comparison display
+  - `--auto` flag for automated resolution using configured strategies
+  - `--resume` flag to continue from saved resolutions
+  - Bulk operations for resolving multiple conflicts at once
+  - Progress tracking and resolution summary display
+- Conflict resolution configuration support in `deepdiffdb.config.yaml`
+  - `conflict_resolution.default_strategy` for global default (`ours`, `theirs`, `manual`)
+  - `conflict_resolution.strategies` array for per-table strategy overrides
+- Resolution persistence with `resolutions.json` file
+  - Save and load resolution decisions
+  - Merge saved resolutions with new conflicts
+  - Track resolution timestamps and decisions
+- Enhanced conflict reports with resolution statistics
+  - `summary.txt` now includes Resolution Summary section
+  - New `resolutions_summary.json` with detailed statistics
+  - Breakdown by decision type (keep_prod, use_dev, pending)
+  - Breakdown by table
+- New sample configurations:
+  - `10-conflict-detection`: Demonstrates conflict detection and reporting
+  - `11-resolution-engine`: Demonstrates conflict resolution engine
+  - `12-interactive-resolution`: Demonstrates interactive resolve-conflicts command
+- Comprehensive test coverage for new features:
+  - CLI prompt and display utilities
+  - Resolution engine (apply strategies, summary building)
+  - Resolution persistence (save, load, merge)
+  - Enhanced report generation with resolutions
+
+### Changed
+- `gen-pack` command now generates enhanced reports with resolution statistics when resolutions are available
+- Updated `deepdiffdb.config.yaml.example` with conflict resolution configuration examples
+- Improved documentation with resolve-conflicts command usage
+
+### Fixed
+- Empty branch staticcheck warning in persistence tests
+
 ## [0.3] - 2025-12-30
 
 ### Added
@@ -100,7 +139,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.3...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.4...HEAD
+[0.4]: https://github.com/iamvirul/deepdiff-db/compare/v0.3...v0.4
 [0.3]: https://github.com/iamvirul/deepdiff-db/compare/v0.2...v0.3
 [0.2]: https://github.com/iamvirul/deepdiff-db/compare/v0.1...v0.2
 [0.1]: https://github.com/iamvirul/deepdiff-db/releases/tag/v0.1

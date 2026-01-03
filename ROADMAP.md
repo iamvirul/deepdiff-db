@@ -8,9 +8,9 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v0.3
+## Current Status: v0.4
 
-**Last Release:** 2025-12-30
+**Last Release:** 2026-01-03
 
 **Current Features:**
 - Schema drift detection
@@ -28,28 +28,35 @@ We release a new version every **Saturday**. Each release includes one or more f
 - Foreign key constraint handling (ADD/DROP FOREIGN KEY)
 - Primary key modification support
 - Dependency-aware migration ordering
+- **NEW:** Interactive `resolve-conflicts` command with `--auto` and `--resume` flags
+- **NEW:** Conflict resolution configuration (`ours`, `theirs`, `manual` strategies)
+- **NEW:** Per-table conflict resolution strategies
+- **NEW:** Resolution persistence with `resolutions.json`
+- **NEW:** Enhanced conflict reports with resolution statistics
 
 ---
 
-## Upcoming Releases
+## Completed Releases
 
-### Week 1 - v0.4: Conflict Resolution Strategies
-**Target Date:** Next Saturday
+### v0.4: Conflict Resolution Strategies (Released 2026-01-03)
 
-**Features:**
+**Features Delivered:**
 - Merge strategies: ours (prod), theirs (dev), manual
-- Interactive conflict resolution CLI
+- Interactive conflict resolution CLI (`resolve-conflicts` command)
 - Conflict resolution configuration in YAML
 - Per-table conflict resolution strategies
-- Automatic conflict resolution for non-critical tables
-- Conflict resolution report
+- Automatic conflict resolution with `--auto` flag
+- Resolution persistence with `--resume` flag
+- Enhanced conflict reports with resolution statistics
 
 **Impact:** Reduces manual intervention for conflict resolution
 
 ---
 
-### Week 2 - v0.5: HTML Report Viewer
-**Target Date:** Week 2 Saturday
+## Upcoming Releases
+
+### Week 1 - v0.5: HTML Report Viewer
+**Target Date:** Next Saturday
 
 **Features:**
 - Interactive HTML report generation
@@ -63,8 +70,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 3 - v0.6: Enhanced Error Handling & Logging
-**Target Date:** Week 3 Saturday
+### Week 2 - v0.6: Enhanced Error Handling & Logging
+**Target Date:** Week 2 Saturday
 
 **Features:**
 - Structured logging with levels (DEBUG, INFO, WARN, ERROR)
@@ -78,8 +85,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 4 - v0.7: Streaming Support for Large Datasets
-**Target Date:** Week 4 Saturday
+### Week 3 - v0.7: Streaming Support for Large Datasets
+**Target Date:** Week 3 Saturday
 
 **Features:**
 - Streaming diff for tables > 1M rows
@@ -93,8 +100,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 5 - v0.8: MSSQL Support
-**Target Date:** Week 5 Saturday
+### Week 4 - v0.8: MSSQL Support
+**Target Date:** Week 4 Saturday
 
 **Features:**
 - Microsoft SQL Server driver support
@@ -107,8 +114,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 6 - v0.9: Oracle Support
-**Target Date:** Week 6 Saturday
+### Week 5 - v0.9: Oracle Support
+**Target Date:** Week 5 Saturday
 
 **Features:**
 - Oracle Database driver support
@@ -121,8 +128,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 7 - v1.0: Production Ready Release
-**Target Date:** Week 7 Saturday
+### Week 6 - v1.0: Production Ready Release
+**Target Date:** Week 6 Saturday
 
 **Features:**
 - Comprehensive documentation
@@ -183,7 +190,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 ## Priority Matrix
 
 ### High Priority (Must Have for v1.0)
-- Conflict Resolution Strategies
+- ~~Conflict Resolution Strategies~~ (v0.4)
 - Enhanced Error Handling & Logging
 - Documentation & Production Readiness
 
@@ -200,6 +207,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ## Success Criteria for v1.0
 
+- [x] Conflict Resolution Strategies (v0.4)
 - [ ] All high-priority features implemented
 - [ ] Test coverage > 80%
 - [ ] Comprehensive documentation
@@ -229,5 +237,5 @@ If you'd like to contribute to any of these features, please:
 
 ---
 
-**Last Updated:** 2025-12-30
+**Last Updated:** 2026-01-03
 

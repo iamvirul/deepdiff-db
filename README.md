@@ -303,7 +303,8 @@ deepdiffdb gen-pack --config deepdiffdb.config.yaml
 - `schema_diff.json` - Schema differences (warnings only)
 - `content_diff.json` - Data differences
 - `conflicts.json` - Conflict details
-- `summary.txt` - Summary statistics
+- `summary.txt` - Summary statistics with resolution breakdown
+- `resolutions_summary.json` - Detailed resolution statistics (when resolutions exist)
 - `migration_pack.sql` - Combined migration script
 
 **Features:**
@@ -413,6 +414,15 @@ Tables scanned: 12
 Added rows: 18
 Updated rows: 4
 Conflicts: 2
+
+Resolution Summary:
+  Auto-resolved: 1
+  Pending review: 1
+
+By Decision:
+  Keep production (ours): 1
+  Pending manual review: 1
+
 Migration pack: migration_pack.sql
 ```
 
