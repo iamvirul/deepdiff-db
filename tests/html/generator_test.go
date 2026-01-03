@@ -55,7 +55,7 @@ func TestBuildReportData_Empty(t *testing.T) {
 	data := htmlreport.BuildReportData(
 		"localhost:3306/prod",
 		"localhost:3306/dev",
-		nil, nil, nil, nil,
+		nil, nil, nil, nil, nil,
 		"", "", 0, nil,
 	)
 
@@ -93,7 +93,7 @@ func TestBuildReportData_WithSchemaDiff(t *testing.T) {
 	data := htmlreport.BuildReportData(
 		"localhost:3306/prod",
 		"localhost:3306/dev",
-		schemaDiff, nil, nil, nil,
+		schemaDiff, nil, nil, nil, nil,
 		"", "", 5, nil,
 	)
 
@@ -123,7 +123,7 @@ func TestBuildReportData_WithDataDiff(t *testing.T) {
 	data := htmlreport.BuildReportData(
 		"localhost:3306/prod",
 		"localhost:3306/dev",
-		nil, dataDiff, nil, nil,
+		nil, dataDiff, nil, nil, nil,
 		"", "", 5, nil,
 	)
 
@@ -152,7 +152,7 @@ func TestBuildReportData_WithConflicts(t *testing.T) {
 	data := htmlreport.BuildReportData(
 		"localhost:3306/prod",
 		"localhost:3306/dev",
-		nil, nil, conflicts, nil,
+		nil, nil, conflicts, nil, nil,
 		"", "", 5, nil,
 	)
 
@@ -185,7 +185,7 @@ func TestBuildReportData_WithResolutions(t *testing.T) {
 	data := htmlreport.BuildReportData(
 		"localhost:3306/prod",
 		"localhost:3306/dev",
-		nil, nil, nil, resInfo,
+		nil, nil, nil, resInfo, nil,
 		"", "", 5, nil,
 	)
 
@@ -208,7 +208,7 @@ COMMIT;`
 	data := htmlreport.BuildReportData(
 		"localhost:3306/prod",
 		"localhost:3306/dev",
-		nil, nil, nil, nil,
+		nil, nil, nil, nil, nil,
 		migrationSQL, "migration_pack.sql", 5, nil,
 	)
 
@@ -377,7 +377,7 @@ func TestSchemaChangeDisplay(t *testing.T) {
 
 	data := htmlreport.BuildReportData(
 		"prod", "dev",
-		schemaDiff, nil, nil, nil,
+		schemaDiff, nil, nil, nil, nil,
 		"", "", 5, nil,
 	)
 
@@ -423,7 +423,7 @@ func TestTableDiffDisplay_KeyLimiting(t *testing.T) {
 	// With default options (MaxKeysPerTable = 100)
 	data := htmlreport.BuildReportData(
 		"prod", "dev",
-		nil, dataDiff, nil, nil,
+		nil, dataDiff, nil, nil, nil,
 		"", "", 1, nil,
 	)
 
@@ -449,7 +449,7 @@ func TestTableDiffDisplay_KeyLimiting(t *testing.T) {
 	}
 	data = htmlreport.BuildReportData(
 		"prod", "dev",
-		nil, dataDiff, nil, nil,
+		nil, dataDiff, nil, nil, nil,
 		"", "", 1, opts,
 	)
 
@@ -476,7 +476,7 @@ func TestTableDiffDisplay_NoDetailedKeys(t *testing.T) {
 	}
 	data := htmlreport.BuildReportData(
 		"prod", "dev",
-		nil, dataDiff, nil, nil,
+		nil, dataDiff, nil, nil, nil,
 		"", "", 1, opts,
 	)
 

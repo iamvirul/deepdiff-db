@@ -242,6 +242,7 @@ func runFullDiff(args []string) error {
 			&dataDiff,
 			&conflicts,
 			nil, // No resolution info for diff command
+			nil, // No resolutions for diff command
 			"",  // No migration SQL for diff command
 			"",  // No migration pack for diff command
 			tablesScanned,
@@ -444,6 +445,7 @@ func runGenPack(args []string) error {
 			&dataDiff,
 			&conflicts,
 			resInfo,
+			resolutions,
 			migrationSQL,
 			filepath.Base(packPath),
 			tablesScanned,

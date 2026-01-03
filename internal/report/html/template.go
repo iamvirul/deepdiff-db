@@ -293,6 +293,152 @@ const reportTemplate = `<!DOCTYPE html>
         .badge-danger { background: var(--danger-light); color: var(--danger); }
         .badge-neutral { background: var(--bg-tertiary); color: var(--text-secondary); }
 
+        /* Resolution Summary */
+        .resolution-summary {
+            margin-bottom: 24px;
+            padding: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 16px;
+        }
+
+        .resolution-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .resolution-stat {
+            text-align: center;
+            padding: 16px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        .resolution-value {
+            font-size: 28px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            margin-bottom: 4px;
+        }
+
+        .resolution-value.success { color: var(--success); }
+        .resolution-value.warning { color: var(--warning); }
+        .resolution-value.neutral { color: var(--text-secondary); }
+
+        .resolution-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .strategy-table-wrap {
+            overflow-x: auto;
+        }
+
+        .strategy-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .strategy-table th,
+        .strategy-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .strategy-table th {
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: var(--bg);
+        }
+
+        .strategy-table td:nth-child(n+3) {
+            text-align: center;
+        }
+
+        .strategy-table th:nth-child(n+3) {
+            text-align: center;
+        }
+
+        /* Expandable keys */
+        .data-row {
+            cursor: pointer;
+        }
+
+        .data-row:hover {
+            background: var(--bg-secondary);
+        }
+
+        .expand-hint {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            margin-left: 8px;
+        }
+
+        .keys-row td {
+            padding: 0 !important;
+            background: var(--bg-secondary);
+        }
+
+        .keys-detail {
+            padding: 12px 16px;
+        }
+
+        .keys-section {
+            margin-bottom: 10px;
+        }
+
+        .keys-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .keys-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 6px;
+        }
+
+        .keys-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .key-item {
+            display: inline-block;
+            padding: 3px 8px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+
+        /* Conflict badges */
+        .conflict-badges {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .badge-strategy {
+            font-size: 10px;
+        }
+
         /* Change indicators */
         .change {
             display: inline-flex;
@@ -675,6 +821,56 @@ const reportTemplate = `<!DOCTYPE html>
             </div>
         </div>
 
+        {{if .ResolutionBreakdown}}
+        <div class="resolution-summary">
+            <h3 class="section-title">Resolution Summary</h3>
+            <div class="resolution-grid">
+                <div class="resolution-stat">
+                    <div class="resolution-value success">{{.ResolutionBreakdown.AutoResolvedTheirs}}</div>
+                    <div class="resolution-label">Auto (use target)</div>
+                </div>
+                <div class="resolution-stat">
+                    <div class="resolution-value neutral">{{.ResolutionBreakdown.AutoResolvedOurs}}</div>
+                    <div class="resolution-label">Auto (keep source)</div>
+                </div>
+                <div class="resolution-stat">
+                    <div class="resolution-value warning">{{.ResolutionBreakdown.PendingManual}}</div>
+                    <div class="resolution-label">Pending review</div>
+                </div>
+            </div>
+            {{if .ResolutionBreakdown.TableStrategies}}
+            <div class="strategy-table-wrap">
+                <table class="strategy-table">
+                    <thead>
+                        <tr>
+                            <th>Table</th>
+                            <th>Strategy</th>
+                            <th>Conflicts</th>
+                            <th>Resolved</th>
+                            <th>Pending</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .ResolutionBreakdown.TableStrategies}}
+                        <tr>
+                            <td><span class="mono">{{.Table}}</span></td>
+                            <td>
+                                {{if eq .Strategy "ours"}}<span class="badge badge-neutral">ours</span>
+                                {{else if eq .Strategy "theirs"}}<span class="badge badge-success">theirs</span>
+                                {{else}}<span class="badge badge-warning">manual</span>{{end}}
+                            </td>
+                            <td>{{.ConflictCount}}</td>
+                            <td>{{if gt .ResolvedCount 0}}<span class="change change-add">{{.ResolvedCount}}</span>{{else}}0{{end}}</td>
+                            <td>{{if gt .PendingCount 0}}<span class="change change-modify">{{.PendingCount}}</span>{{else}}0{{end}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+
         <div class="tabs">
             <nav class="tab-nav">
                 <button class="tab-btn active" data-tab="schema" onclick="switchTab('schema')">
@@ -725,7 +921,16 @@ const reportTemplate = `<!DOCTYPE html>
                                 </div>
                             </div>
                             {{end}}
-                            {{if and (not .ColumnChanges) (not .IndexChanges)}}
+                            {{range .ForeignKeyChanges}}
+                            <div class="diff-row {{if eq .ChangeType "added"}}add{{else if eq .ChangeType "removed"}}remove{{else}}modify{{end}}">
+                                <div class="diff-indicator">{{if eq .ChangeType "added"}}+{{else if eq .ChangeType "removed"}}−{{else}}~{{end}}</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">FK {{.Name}}</span>
+                                    <span class="diff-detail">{{.Description}}</span>
+                                </div>
+                            </div>
+                            {{end}}
+                            {{if and (not .ColumnChanges) (not .IndexChanges) (not .ForeignKeyChanges)}}
                             <div class="diff-row modify">
                                 <div class="diff-indicator">i</div>
                                 <div class="diff-content">{{.Description}}</div>
@@ -762,12 +967,41 @@ const reportTemplate = `<!DOCTYPE html>
                             </thead>
                             <tbody>
                                 {{range .TableDiffs}}{{if .HasChanges}}
-                                <tr data-table="{{.Table}}">
-                                    <td><span class="mono">{{.Table}}</span></td>
+                                <tr data-table="{{.Table}}" class="data-row" onclick="toggleKeys(this)">
+                                    <td>
+                                        <span class="mono">{{.Table}}</span>
+                                        {{if or .AddedKeys .RemovedKeys .UpdatedKeys}}<span class="expand-hint">(click to expand)</span>{{end}}
+                                    </td>
                                     <td>{{if gt .AddedCount 0}}<span class="change change-add">+{{.AddedCount}}</span>{{else}}<span class="change">—</span>{{end}}</td>
                                     <td>{{if gt .RemovedCount 0}}<span class="change change-remove">−{{.RemovedCount}}</span>{{else}}<span class="change">—</span>{{end}}</td>
                                     <td>{{if gt .UpdatedCount 0}}<span class="change change-modify">~{{.UpdatedCount}}</span>{{else}}<span class="change">—</span>{{end}}</td>
                                 </tr>
+                                {{if or .AddedKeys .RemovedKeys .UpdatedKeys}}
+                                <tr class="keys-row" data-table="{{.Table}}" style="display:none;">
+                                    <td colspan="4">
+                                        <div class="keys-detail">
+                                            {{if .AddedKeys}}
+                                            <div class="keys-section">
+                                                <span class="keys-label change-add">Added Keys:</span>
+                                                <div class="keys-list">{{range .AddedKeys}}<span class="key-item">{{.}}</span>{{end}}</div>
+                                            </div>
+                                            {{end}}
+                                            {{if .RemovedKeys}}
+                                            <div class="keys-section">
+                                                <span class="keys-label change-remove">Removed Keys:</span>
+                                                <div class="keys-list">{{range .RemovedKeys}}<span class="key-item">{{.}}</span>{{end}}</div>
+                                            </div>
+                                            {{end}}
+                                            {{if .UpdatedKeys}}
+                                            <div class="keys-section">
+                                                <span class="keys-label change-modify">Modified Keys:</span>
+                                                <div class="keys-list">{{range .UpdatedKeys}}<span class="key-item">{{.}}</span>{{end}}</div>
+                                            </div>
+                                            {{end}}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{end}}
                                 {{end}}{{end}}
                             </tbody>
                         </table>
@@ -797,12 +1031,16 @@ const reportTemplate = `<!DOCTYPE html>
                                 <span class="hash-arrow">→</span>
                                 <span class="hash">{{.DevHash}}</span>
                             </div>
-                            <span>
+                            <div class="conflict-badges">
+                                {{if .Strategy}}
+                                <span class="badge badge-strategy {{if eq .Strategy "ours"}}badge-neutral{{else if eq .Strategy "theirs"}}badge-success{{else}}badge-warning{{end}}">{{.Strategy}}</span>
+                                {{end}}
                                 {{if .IsResolved}}
-                                    {{if eq .Resolution "keep_prod"}}<span class="badge badge-neutral">Keep Source</span>
-                                    {{else}}<span class="badge badge-success">Use Target</span>{{end}}
+                                    {{if eq .Decision "keep_prod"}}<span class="badge badge-neutral">Keep Source</span>
+                                    {{else if eq .Decision "use_dev"}}<span class="badge badge-success">Use Target</span>
+                                    {{else}}<span class="badge badge-warning">Pending</span>{{end}}
                                 {{else}}<span class="badge badge-warning">Pending</span>{{end}}
-                            </span>
+                            </div>
                         </div>
                         {{end}}
                     </div>
@@ -840,9 +1078,21 @@ const reportTemplate = `<!DOCTYPE html>
 
         function filterTable() {
             const v = document.getElementById('table-filter').value;
-            document.querySelectorAll('#data-table tbody tr').forEach(r => {
-                r.style.display = !v || r.dataset.table === v ? '' : 'none';
+            document.querySelectorAll('#data-table tbody tr.data-row').forEach(r => {
+                const show = !v || r.dataset.table === v;
+                r.style.display = show ? '' : 'none';
+                const keysRow = r.nextElementSibling;
+                if (keysRow && keysRow.classList.contains('keys-row')) {
+                    keysRow.style.display = 'none';
+                }
             });
+        }
+
+        function toggleKeys(row) {
+            const keysRow = row.nextElementSibling;
+            if (keysRow && keysRow.classList.contains('keys-row')) {
+                keysRow.style.display = keysRow.style.display === 'none' ? '' : 'none';
+            }
         }
 
         function filterConflicts() {

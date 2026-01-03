@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/iamvirul/deepdiff-db/internal/content"
+	"github.com/iamvirul/deepdiff-db/internal/content/resolve"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 )
 
@@ -127,6 +128,7 @@ func BuildReportData(
 	dataDiff *content.DataDiff,
 	conflicts *content.Conflicts,
 	resInfo *content.ResolutionInfo,
+	resolutions []resolve.Resolution,
 	migrationSQL string,
 	migrationPack string,
 	tablesScanned int,
@@ -161,16 +163,22 @@ func BuildReportData(
 		data.TableDiffs = buildTableDiffs(dataDiff, opts)
 	}
 
-	// Process conflicts
+	// Process conflicts with resolution details
 	if conflicts != nil && conflicts.HasConflicts() {
 		data.Conflicts = conflicts
 		data.HasConflicts = true
-		data.ConflictItems = buildConflictItems(conflicts, resInfo)
+		data.ConflictItems = buildConflictItemsWithResolutions(conflicts, resolutions)
 	}
 
-	// Process resolutions
+	// Process resolutions and build breakdown
 	if resInfo != nil && resInfo.TotalConflicts > 0 {
 		data.ResolutionInfo = resInfo
+		data.HasResolutions = true
+	}
+
+	// Build resolution breakdown from resolutions slice
+	if len(resolutions) > 0 {
+		data.ResolutionBreakdown = buildResolutionBreakdown(resolutions)
 		data.HasResolutions = true
 	}
 
@@ -335,7 +343,54 @@ func buildSchemaChanges(schemaDiff *schema.DiffResult) []SchemaChangeDisplay {
 			})
 		}
 
-		if len(change.ColumnChanges) > 0 || len(change.IndexChanges) > 0 {
+		// Foreign key changes
+		for _, fk := range td.AddedForeignKeys {
+			change.ForeignKeyChanges = append(change.ForeignKeyChanges, ForeignKeyChangeDisplay{
+				Name:        fk.Name,
+				ChangeType:  "added",
+				Columns:     fk.Columns,
+				RefTable:    fk.ReferencedTable,
+				RefColumns:  fk.ReferencedColumns,
+				OnDelete:    fk.OnDelete,
+				OnUpdate:    fk.OnUpdate,
+				Description: fmt.Sprintf("FK added: %s -> %s(%s)", fk.Name, fk.ReferencedTable, strings.Join(fk.ReferencedColumns, ", ")),
+			})
+		}
+
+		for _, fk := range td.RemovedForeignKeys {
+			change.ForeignKeyChanges = append(change.ForeignKeyChanges, ForeignKeyChangeDisplay{
+				Name:          fk.Name,
+				ChangeType:    "removed",
+				Columns:       fk.Columns,
+				RefTable:      fk.ReferencedTable,
+				RefColumns:    fk.ReferencedColumns,
+				OnDelete:      fk.OnDelete,
+				OnUpdate:      fk.OnUpdate,
+				Description:   fmt.Sprintf("FK removed: %s", fk.Name),
+				IsDestructive: true,
+			})
+		}
+
+		for _, fkDiff := range td.ModifiedForeignKeys {
+			desc := fmt.Sprintf("FK modified: %s", fkDiff.Name)
+			if fkDiff.OnDeleteDiffers {
+				desc += fmt.Sprintf(" (ON DELETE: %s -> %s)", fkDiff.ProdOnDelete, fkDiff.DevOnDelete)
+			}
+			if fkDiff.OnUpdateDiffers {
+				desc += fmt.Sprintf(" (ON UPDATE: %s -> %s)", fkDiff.ProdOnUpdate, fkDiff.DevOnUpdate)
+			}
+			change.ForeignKeyChanges = append(change.ForeignKeyChanges, ForeignKeyChangeDisplay{
+				Name:         fkDiff.Name,
+				ChangeType:   "modified",
+				ProdOnDelete: fkDiff.ProdOnDelete,
+				ProdOnUpdate: fkDiff.ProdOnUpdate,
+				DevOnDelete:  fkDiff.DevOnDelete,
+				DevOnUpdate:  fkDiff.DevOnUpdate,
+				Description:  desc,
+			})
+		}
+
+		if len(change.ColumnChanges) > 0 || len(change.IndexChanges) > 0 || len(change.ForeignKeyChanges) > 0 {
 			changes = append(changes, change)
 		}
 	}
@@ -375,9 +430,16 @@ func buildTableDiffs(dataDiff *content.DataDiff, opts *ReportOptions) []TableDif
 	return diffs
 }
 
-// buildConflictItems converts conflicts to display format.
-func buildConflictItems(conflicts *content.Conflicts, resInfo *content.ResolutionInfo) []ConflictDisplay {
+// buildConflictItemsWithResolutions converts conflicts to display format with resolution details.
+func buildConflictItemsWithResolutions(conflicts *content.Conflicts, resolutions []resolve.Resolution) []ConflictDisplay {
 	var items []ConflictDisplay
+
+	// Build a map of resolutions by table+key for quick lookup
+	resolutionMap := make(map[string]resolve.Resolution)
+	for _, r := range resolutions {
+		key := r.Conflict.Table + ":" + r.Conflict.Key
+		resolutionMap[key] = r
+	}
 
 	for _, c := range conflicts.Conflicts {
 		item := ConflictDisplay{
@@ -387,19 +449,66 @@ func buildConflictItems(conflicts *content.Conflicts, resInfo *content.Resolutio
 			DevHash:  truncateHash(c.DevHash),
 		}
 
-		// If we have resolution info, try to determine the status
-		if resInfo != nil {
-			// We can't directly map individual conflicts to resolutions here,
-			// but we can show the general status
-			if resInfo.ResolvedCount > 0 {
-				item.IsResolved = true
-			}
+		// Look up resolution for this conflict
+		key := c.Table + ":" + c.Key
+		if res, ok := resolutionMap[key]; ok {
+			item.Strategy = string(res.Strategy)
+			item.Decision = string(res.Decision)
+			item.Resolution = string(res.Decision)
+			item.IsResolved = res.Resolved
 		}
 
 		items = append(items, item)
 	}
 
 	return items
+}
+
+// buildResolutionBreakdown creates resolution statistics from resolutions.
+func buildResolutionBreakdown(resolutions []resolve.Resolution) *ResolutionBreakdown {
+	breakdown := &ResolutionBreakdown{
+		TotalConflicts: len(resolutions),
+	}
+
+	// Count by decision type
+	tableStats := make(map[string]*TableStrategyDisplay)
+
+	for _, r := range resolutions {
+		switch r.Decision {
+		case resolve.DecisionKeepProd:
+			breakdown.AutoResolvedOurs++
+		case resolve.DecisionUseDev:
+			breakdown.AutoResolvedTheirs++
+		case resolve.DecisionPending:
+			breakdown.PendingManual++
+		}
+
+		// Build per-table stats
+		ts, ok := tableStats[r.Conflict.Table]
+		if !ok {
+			ts = &TableStrategyDisplay{
+				Table:    r.Conflict.Table,
+				Strategy: string(r.Strategy),
+			}
+			tableStats[r.Conflict.Table] = ts
+		}
+		ts.ConflictCount++
+		if r.Resolved {
+			ts.ResolvedCount++
+		} else {
+			ts.PendingCount++
+		}
+	}
+
+	// Convert map to slice and sort by table name
+	for _, ts := range tableStats {
+		breakdown.TableStrategies = append(breakdown.TableStrategies, *ts)
+	}
+	sort.Slice(breakdown.TableStrategies, func(i, j int) bool {
+		return breakdown.TableStrategies[i].Table < breakdown.TableStrategies[j].Table
+	})
+
+	return breakdown
 }
 
 // Helper functions
