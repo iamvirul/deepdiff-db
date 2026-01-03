@@ -1,0 +1,43 @@
+# DeepDiff DB Configuration
+# Sample 13: HTML Report Viewer
+
+prod:
+  driver: "mysql"
+  host: "localhost"
+  port: 3316
+  user: "root"
+  password: "prodpass"
+  database: "prod_ecommerce"
+
+dev:
+  driver: "mysql"
+  host: "localhost"
+  port: 3317
+  user: "root"
+  password: "devpass"
+  database: "dev_ecommerce"
+
+ignore:
+  tables: []
+  columns:
+    - "*.created_at"
+    - "*.updated_at"
+
+output:
+  dir: "./diff-output"
+
+migration:
+  allow_drop_column: false
+  allow_drop_table: false
+  allow_drop_index: false
+  allow_drop_foreign_key: false
+  allow_modify_primary_key: false
+  confirm_destructive: false
+
+conflict_resolution:
+  default_strategy: "manual"
+  strategies:
+    - table: "audit_log"
+      strategy: "theirs"
+    - table: "inventory_log"
+      strategy: "theirs"

@@ -14,6 +14,7 @@ import (
 	"github.com/iamvirul/deepdiff-db/internal/content"
 	"github.com/iamvirul/deepdiff-db/internal/content/resolve"
 	"github.com/iamvirul/deepdiff-db/internal/drivers"
+	htmlreport "github.com/iamvirul/deepdiff-db/internal/report/html"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 )
@@ -138,6 +139,7 @@ func runCheck(args []string) error {
 func runFullDiff(args []string) error {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	generateHTML := fs.Bool("html", false, "Generate interactive HTML report")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -229,6 +231,31 @@ func runFullDiff(args []string) error {
 	} else {
 		fmt.Println("No data differences found.")
 	}
+
+	// Generate HTML report if requested
+	if *generateHTML {
+		htmlPath := filepath.Join(cfg.Output.Dir, "report.html")
+		reportData := htmlreport.BuildReportData(
+			fmt.Sprintf("%s:%d/%s", cfg.Prod.Host, cfg.Prod.Port, cfg.Prod.Database),
+			fmt.Sprintf("%s:%d/%s", cfg.Dev.Host, cfg.Dev.Port, cfg.Dev.Database),
+			&schemaDiff,
+			&dataDiff,
+			&conflicts,
+			nil, // No resolution info for diff command
+			nil, // No resolutions for diff command
+			"",  // No migration SQL for diff command
+			"",  // No migration pack for diff command
+			tablesScanned,
+			nil,
+		)
+
+		generator := htmlreport.NewGenerator(nil)
+		if err := generator.GenerateReport(reportData, htmlPath); err != nil {
+			return fmt.Errorf("generate HTML report: %w", err)
+		}
+		fmt.Printf("HTML report generated: %s\n", htmlPath)
+	}
+
 	return nil
 }
 
@@ -238,6 +265,7 @@ func runFullDiff(args []string) error {
 func runGenPack(args []string) error {
 	fs := flag.NewFlagSet("gen-pack", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	generateHTML := fs.Bool("html", false, "Generate interactive HTML report")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -397,6 +425,40 @@ func runGenPack(args []string) error {
 	} else {
 		fmt.Println("No data differences found. Pack not required.")
 	}
+
+	// Generate HTML report if requested
+	if *generateHTML {
+		htmlPath := filepath.Join(cfg.Output.Dir, "report.html")
+
+		// Read migration pack SQL if it was generated
+		var migrationSQL string
+		if packPath != "" {
+			if sqlBytes, err := os.ReadFile(packPath); err == nil {
+				migrationSQL = string(sqlBytes)
+			}
+		}
+
+		reportData := htmlreport.BuildReportData(
+			fmt.Sprintf("%s:%d/%s", cfg.Prod.Host, cfg.Prod.Port, cfg.Prod.Database),
+			fmt.Sprintf("%s:%d/%s", cfg.Dev.Host, cfg.Dev.Port, cfg.Dev.Database),
+			&schemaDiff,
+			&dataDiff,
+			&conflicts,
+			resInfo,
+			resolutions,
+			migrationSQL,
+			filepath.Base(packPath),
+			tablesScanned,
+			nil,
+		)
+
+		generator := htmlreport.NewGenerator(nil)
+		if err := generator.GenerateReport(reportData, htmlPath); err != nil {
+			return fmt.Errorf("generate HTML report: %w", err)
+		}
+		fmt.Printf("HTML report generated: %s\n", htmlPath)
+	}
+
 	return nil
 }
 
@@ -899,8 +961,8 @@ Commands:
   check             Validate configuration and show quick summary
   schema-diff       Detect schema drift
   schema-migrate    Generate schema migration script
-  diff              Full diff: schema + data
-  gen-pack          Generate SQL migration pack
+  diff              Full diff: schema + data (supports --html for interactive report)
+  gen-pack          Generate SQL migration pack (supports --html for interactive report)
   apply             Apply migration pack
   resolve-conflicts Interactively resolve pending conflicts
 

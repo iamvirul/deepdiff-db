@@ -280,6 +280,17 @@ Performs a full comparison of both schema and data.
 deepdiffdb diff --config deepdiffdb.config.yaml
 ```
 
+**Generate Interactive HTML Report:**
+```bash
+deepdiffdb diff --config deepdiffdb.config.yaml --html
+```
+
+The `--html` flag generates an interactive `report.html` file with:
+- Visual schema diff viewer with collapsible sections
+- Data diff visualization with filtering and search
+- Conflict highlighting with resolution status
+- Export to PDF functionality (via browser print)
+
 **Output Files:**
 - `schema_diff.json` - Schema differences
 - `schema_diff.txt` - Human-readable schema report
@@ -299,6 +310,13 @@ Generates a SQL migration pack for data differences.
 deepdiffdb gen-pack --config deepdiffdb.config.yaml
 ```
 
+**Generate Interactive HTML Report:**
+```bash
+deepdiffdb gen-pack --config deepdiffdb.config.yaml --html
+```
+
+The `--html` flag generates an interactive `report.html` file that includes all diff information plus the generated SQL migration with syntax highlighting.
+
 **Output Files:**
 - `schema_diff.json` - Schema differences (warnings only)
 - `content_diff.json` - Data differences
@@ -306,6 +324,7 @@ deepdiffdb gen-pack --config deepdiffdb.config.yaml
 - `summary.txt` - Summary statistics with resolution breakdown
 - `resolutions_summary.json` - Detailed resolution statistics (when resolutions exist)
 - `migration_pack.sql` - Combined migration script
+- `report.html` - Interactive HTML report (when `--html` flag is used)
 
 **Features:**
 - Continues even with schema drift (with warnings)
