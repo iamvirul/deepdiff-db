@@ -20,6 +20,7 @@ import (
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 	"github.com/iamvirul/deepdiff-db/pkg/logger"
+	"github.com/iamvirul/deepdiff-db/pkg/progress"
 )
 
 // Version information - set via ldflags during build
@@ -382,6 +383,22 @@ func runGenPack(args []string) error {
 
 	log.Info("starting migration pack generation")
 
+	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	progressMgr := progress.NewManager(progress.Config{
+		Enabled:     !*verbose,
+		ShowMetrics: true,
+	})
+	defer func() {
+		progressMgr.Finish()
+		// Print metrics summary if available
+		if metrics := progressMgr.GetMetrics(); metrics != nil {
+			summary := metrics.Summary()
+			if summary != "" {
+				fmt.Println(summary)
+			}
+		}
+	}()
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -390,6 +407,7 @@ func runGenPack(args []string) error {
 	log.Debug("configuration loaded", "config_path", *configPath)
 
 	ctx := logger.ToContext(context.Background(), log)
+	ctx = progress.ToContext(ctx, progressMgr)
 
 	log.Info("opening database connections")
 	prodDB, err := drivers.Open(ctx, cfg.Prod)

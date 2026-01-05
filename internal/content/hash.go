@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/iamvirul/deepdiff-db/internal/schema"
+	"github.com/iamvirul/deepdiff-db/pkg/logger"
+	"github.com/iamvirul/deepdiff-db/pkg/progress"
 )
 
 // HashTable streams table rows and returns a map of PK composite key -> row hash.
@@ -26,6 +28,10 @@ import (
 // On failure HashTable returns an error for missing primary keys, no selectable columns, query or scan
 // errors, iteration errors, or when a primary key column is not present among the selected columns.
 func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table, ignoreFn func(table, column string) bool) (map[string]string, error) {
+	// Get logger and progress manager from context
+	log := logger.FromContext(ctx).WithTable(tbl.Name)
+	progressMgr := progress.FromContext(ctx)
+
 	if len(tbl.PrimaryKey) == 0 {
 		return nil, fmt.Errorf("table %s has no primary key", tbl.Name)
 	}
@@ -34,6 +40,15 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 	if len(cols) == 0 {
 		return nil, fmt.Errorf("no columns to hash for table %s", tbl.Name)
 	}
+
+	// Get row count for progress bar
+	rowCount, err := getRowCount(ctx, db, driver, tbl.Name)
+	if err != nil {
+		log.Warn("could not get row count for progress tracking", logger.FieldError, err.Error())
+		rowCount = 0
+	}
+
+	log.Debug("starting table hash", logger.FieldRowCount, rowCount, "columns", len(cols))
 
 	query := buildSelect(driver, tbl.Name, cols, tbl.PrimaryKey)
 
@@ -51,6 +66,15 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 
 	result := make(map[string]string)
 
+	// Create progress bar if row count is significant (threshold: 10,000)
+	const progressThreshold = 10000
+	var bar *progress.Bar
+	if progressMgr != nil && rowCount >= progressThreshold {
+		bar = progressMgr.StartBar(ctx, fmt.Sprintf("Hashing %s", tbl.Name), rowCount)
+		defer bar.Finish()
+	}
+
+	rowsProcessed := int64(0)
 	for rows.Next() {
 		if err := rows.Scan(dest...); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
@@ -69,12 +93,33 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 
 		hash := hashRow(cols, values)
 		result[key] = hash
+
+		rowsProcessed++
+		if bar != nil {
+			bar.Add(1)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate rows: %w", err)
 	}
 
+	log.Info("table hashing complete",
+		logger.FieldRowCount, rowsProcessed,
+		"unique_keys", len(result))
+
 	return result, nil
+}
+
+// getRowCount returns the approximate row count for a table.
+// Returns 0 if count cannot be determined.
+func getRowCount(ctx context.Context, db *sql.DB, driver, table string) (int64, error) {
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", quoteIdent(driver, table))
+	var count int64
+	err := db.QueryRowContext(ctx, query).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 // orderedColumns returns an ordered list of column names for hashing.
