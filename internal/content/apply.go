@@ -47,6 +47,20 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 	statements := SplitStatements(sqlText)
 	log.Debug("parsed SQL statements", "count", len(statements))
 
+	// Check for resume from checkpoint
+	startIndex := 0
+	if checkpointMgr != nil && !dryRun {
+		state, err := checkpointMgr.Load()
+		if err == nil && state != nil && state.ApplyPackState != nil {
+			if state.ApplyPackState.PackPath == packPath && state.ApplyPackState.ExecutedStatements > 0 {
+				startIndex = state.ApplyPackState.ExecutedStatements
+				log.Info("resuming pack application", 
+					"executed_statements", startIndex,
+					"total_statements", len(statements))
+			}
+		}
+	}
+
 	if dryRun {
 		// Validate SQL syntax by preparing statements
 		log.Info("validating migration pack statements")
@@ -96,10 +110,18 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 		defer bar.Finish()
 	}
 
-	executedCount := 0
+	executedCount := startIndex
 	const checkpointBatchSize = 100 // Save checkpoint every 100 statements
-	for i, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
+	
+	// Skip already executed statements (resume logic)
+	for i := 0; i < startIndex && i < len(statements); i++ {
+		if bar != nil {
+			bar.Add(1)
+		}
+	}
+	
+	for i := startIndex; i < len(statements); i++ {
+		stmt := strings.TrimSpace(statements[i])
 		if stmt == "" {
 			continue
 		}

@@ -564,23 +564,57 @@ func runGenPack(args []string) error {
 	prodHashes := make(map[string]map[string]string)
 	devHashes := make(map[string]map[string]string)
 
+	// Load existing hash results from checkpoint if resuming
+	// Note: We'll check completed tables and load hashes after hashing each table
+	completedTables := make(map[string]bool)
+	if checkpointState != nil && checkpointState.HashTableState != nil {
+		for _, tableName := range checkpointState.HashTableState.CompletedTables {
+			completedTables[tableName] = true
+		}
+		// Load existing hashes (they're stored per table, we'll use them if table is completed)
+		if checkpointState.HashTableState.Hashes != nil {
+			for tableName, hashes := range checkpointState.HashTableState.Hashes {
+				if completedTables[tableName] {
+					// If table is marked as completed, we have both prod and dev hashes
+					// For now, we'll re-hash to ensure consistency, but we could optimize this
+					log.Debug("found completed table in checkpoint", logger.FieldTable, tableName, "hash_count", len(hashes))
+				}
+			}
+		}
+	}
+
 	for name, prodTable := range prodSchema.Tables {
 		devTable, ok := devSchema.Tables[name]
 		if !ok {
 			continue
 		}
 
+		// Check if table is already hashed (resume logic)
+		if completedTables[name] {
+			// Table was completed in previous run - load from checkpoint
+			if checkpointState != nil && checkpointState.HashTableState != nil {
+				if hashes, ok := checkpointState.HashTableState.Hashes[name]; ok && len(hashes) > 0 {
+					// For now, we'll re-hash to ensure consistency since we don't track prod/dev separately
+					// In a future enhancement, we could optimize this by tracking them separately
+					log.Info("table was completed in checkpoint, re-hashing to ensure consistency", logger.FieldTable, name)
+				}
+			}
+		}
+
 		log.Debug("hashing table", logger.FieldTable, name)
+		
+		// Hash prod table
 		pHashes, err := content.HashTable(ctx, prodDB, cfg.Prod.Driver, prodTable, ignoreColumn)
 		if err != nil {
 			return fmt.Errorf("hash prod table %s: %w", name, err)
 		}
+		prodHashes[name] = pHashes
+
+		// Hash dev table
 		dHashes, err := content.HashTable(ctx, devDB, cfg.Dev.Driver, devTable, ignoreColumn)
 		if err != nil {
 			return fmt.Errorf("hash dev table %s: %w", name, err)
 		}
-
-		prodHashes[name] = pHashes
 		devHashes[name] = dHashes
 	}
 
@@ -771,8 +805,20 @@ func runApply(args []string) error {
 
 	log.Debug("configuration loaded", "config_path", *configPath)
 
+	// Initialize checkpoint manager for apply command
+	checkpointMgr := checkpoint.NewManager(cfg.Output.Dir)
 	ctx := logger.ToContext(context.Background(), log)
 	ctx = progress.ToContext(ctx, progressMgr)
+	ctx = checkpoint.ToContext(ctx, checkpointMgr)
+
+	// Cleanup checkpoint on success
+	defer func() {
+		if checkpointMgr != nil {
+			if err := checkpointMgr.Delete(); err != nil {
+				log.Warn("failed to cleanup checkpoint", logger.FieldError, err.Error())
+			}
+		}
+	}()
 
 	// Apply to prod database
 	log.Info("connecting to target database", logger.FieldDatabase, cfg.Prod.Database)

@@ -66,12 +66,33 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 	}
 
 	var stmts []string
-	stmts = append(stmts, "BEGIN;")
+	
+	// Load existing statements from checkpoint if resuming
+	completedTablesMap := make(map[string]bool)
+	if checkpointMgr != nil {
+		state, err := checkpointMgr.Load()
+		if err == nil && state != nil && state.GeneratePackState != nil {
+			// Load existing statements
+			stmts = append(stmts, state.GeneratePackState.Statements...)
+			// Track completed tables
+			for _, tableName := range state.GeneratePackState.CompletedTables {
+				completedTablesMap[tableName] = true
+			}
+			if len(stmts) > 0 {
+				log.Info("resuming pack generation", "existing_statements", len(stmts), "completed_tables", len(completedTablesMap))
+			}
+		}
+	}
+	
+	// Initialize statements if empty (new run)
+	if len(stmts) == 0 {
+		stmts = append(stmts, "BEGIN;")
 
-	// Disable foreign key checks for MySQL to allow out-of-order operations
-	if prodDriver == "mysql" {
-		stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 0;")
-		log.Debug("disabled foreign key checks for MySQL")
+		// Disable foreign key checks for MySQL to allow out-of-order operations
+		if prodDriver == "mysql" {
+			stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 0;")
+			log.Debug("disabled foreign key checks for MySQL")
+		}
 	}
 
 	// Generate ALTER TABLE statements for columns missing in prod
@@ -141,6 +162,13 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 		if len(td.Added)+len(td.Removed)+len(td.Updated) == 0 {
 			continue
 		}
+		
+		// Skip if table is already completed (resume logic)
+		if completedTablesMap[td.Table] {
+			log.Debug("skipping already processed table", "table", td.Table)
+			continue
+		}
+		
 		devTbl, ok := devSchema.Tables[td.Table]
 		if !ok {
 			continue
@@ -225,6 +253,12 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 	// Generate UPDATE statements for new columns AFTER INSERT
 	// (INSERT statements don't include new columns, so we need to update them after insertion)
 	for tableName, columnsToAdd := range tableColumnsToUpdate {
+		// Skip if table is already completed (resume logic)
+		if completedTablesMap[tableName] {
+			log.Debug("skipping update statements for already processed table", "table", tableName)
+			continue
+		}
+		
 		devTbl, ok := devSchema.Tables[tableName]
 		if !ok {
 			continue

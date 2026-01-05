@@ -135,6 +135,41 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 		logger.FieldRowCount, rowsProcessed,
 		"unique_keys", len(result))
 
+	// Save completed table to checkpoint
+	if checkpointMgr != nil {
+		if err := checkpointMgr.Update(func(s *checkpoint.State) error {
+			if s.HashTableState == nil {
+				s.HashTableState = &checkpoint.HashTableState{
+					Hashes:          make(map[string]map[string]string),
+					CompletedTables: []string{},
+				}
+			}
+			// Mark table as completed
+			found := false
+			for _, t := range s.HashTableState.CompletedTables {
+				if t == tbl.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				s.HashTableState.CompletedTables = append(s.HashTableState.CompletedTables, tbl.Name)
+			}
+			// Save final results (use table name as key - caller will distinguish prod/dev)
+			if s.HashTableState.Hashes[tbl.Name] == nil {
+				s.HashTableState.Hashes[tbl.Name] = make(map[string]string)
+			}
+			for k, v := range result {
+				s.HashTableState.Hashes[tbl.Name][k] = v
+			}
+			s.HashTableState.CurrentTable = "" // Clear current table
+			s.HashTableState.CurrentRowCount = 0
+			return nil
+		}); err != nil {
+			log.Warn("failed to save checkpoint", logger.FieldError, err.Error())
+		}
+	}
+
 	return result, nil
 }
 
