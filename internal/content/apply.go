@@ -70,7 +70,9 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 		var bar *progress.Bar
 		if progressMgr != nil && len(statements) >= progressThreshold {
 			bar = progressMgr.StartBar(ctx, "Validating pack", int64(len(statements)))
-			defer bar.Finish()
+			defer func() {
+				_ = bar.Finish() // Ignore error - bar is finishing anyway
+			}()
 		}
 
 		for i, stmt := range statements {
@@ -84,7 +86,7 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 			}
 			prepared.Close()
 			if bar != nil {
-				bar.Add(1)
+				_ = bar.Add(1) // Ignore error - progress update
 			}
 		}
 		log.Info("migration pack validation successful", "statements_validated", len(statements))
@@ -107,7 +109,9 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 	var bar *progress.Bar
 	if progressMgr != nil && len(statements) >= progressThreshold {
 		bar = progressMgr.StartBar(ctx, "Applying pack", int64(len(statements)))
-		defer bar.Finish()
+		defer func() {
+			_ = bar.Finish() // Ignore error - bar is finishing anyway
+		}()
 	}
 
 	executedCount := startIndex
@@ -116,7 +120,7 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 	// Skip already executed statements (resume logic)
 	for i := 0; i < startIndex && i < len(statements); i++ {
 		if bar != nil {
-			bar.Add(1)
+			_ = bar.Add(1) // Ignore error - progress update
 		}
 	}
 	
@@ -134,7 +138,7 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 		}
 		executedCount++
 		if bar != nil {
-			bar.Add(1)
+			_ = bar.Add(1) // Ignore error - progress update
 		}
 
 		// Checkpoint every N statements

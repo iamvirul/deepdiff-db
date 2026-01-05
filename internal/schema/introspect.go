@@ -106,7 +106,9 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 		var bar *progress.Bar
 		if progressMgr != nil && len(tables) >= progressThreshold {
 			bar = progressMgr.StartBar(ctx, "Loading schema", int64(len(tables)))
-			defer bar.Finish()
+			defer func() {
+				_ = bar.Finish() // Ignore error - bar is finishing anyway
+			}()
 		}
 
 		for _, tbl := range tables {
@@ -120,7 +122,7 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 				PrimaryKey: pk,
 			}
 			if bar != nil {
-				bar.Add(1)
+				_ = bar.Add(1) // Ignore error - progress update
 			}
 		}
 		log.Debug("loaded table and column metadata", "tables", len(s.Tables))

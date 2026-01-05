@@ -237,7 +237,7 @@ func TestBarDescribeAfterFinish(t *testing.T) {
 	ctx := context.Background()
 	bar := mgr.StartBar(ctx, "test", 100)
 
-	bar.Finish()
+	_ = bar.Finish() // Ignore error - bar is finishing
 	bar.Describe("should not update")
 	// Should not error
 }

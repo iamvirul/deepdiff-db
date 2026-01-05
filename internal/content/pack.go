@@ -62,7 +62,9 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 	var bar *progress.Bar
 	if progressMgr != nil && totalOperations >= progressThreshold {
 		bar = progressMgr.StartBar(ctx, "Generating pack", int64(totalOperations))
-		defer bar.Finish()
+		defer func() {
+			_ = bar.Finish() // Ignore error - bar is finishing anyway
+		}()
 	}
 
 	var stmts []string
@@ -193,7 +195,7 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 			}
 			stmts = append(stmts, fmt.Sprintf("DELETE FROM %s WHERE %s;", quoteIdent(prodDriver, devTbl.Name), where))
 			if bar != nil {
-				bar.Add(1)
+				_ = bar.Add(1) // Ignore error - progress update
 			}
 		}
 
@@ -217,7 +219,7 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 				strings.Join(valLiterals, ", "),
 			))
 			if bar != nil {
-				bar.Add(1)
+				_ = bar.Add(1) // Ignore error - progress update
 			}
 		}
 

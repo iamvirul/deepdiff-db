@@ -72,7 +72,9 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 	var bar *progress.Bar
 	if progressMgr != nil && rowCount >= progressThreshold {
 		bar = progressMgr.StartBar(ctx, fmt.Sprintf("Hashing %s", tbl.Name), rowCount)
-		defer bar.Finish()
+		defer func() {
+			_ = bar.Finish() // Ignore error - bar is finishing anyway
+		}()
 	}
 
 	rowsProcessed := int64(0)
@@ -100,7 +102,7 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 
 		rowsProcessed++
 		if bar != nil {
-			bar.Add(1)
+			_ = bar.Add(1) // Ignore error - progress update
 		}
 
 		// Checkpoint every N rows for large tables
