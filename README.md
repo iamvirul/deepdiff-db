@@ -34,6 +34,10 @@ DeepDiff DB makes the entire process deterministic, reviewable, and safe by:
 - **Comprehensive reporting** - JSON and human-readable text reports
 - **Configurable ignore lists** - Exclude tables and columns from comparison
 - **Flexible input sources** - Works with database connections or dump files
+- **Structured logging** - JSON/text formats with configurable levels and file output
+- **Progress tracking** - Visual progress bars and spinners for long-running operations
+- **Checkpoint/resume** - Resume interrupted operations from saved checkpoints
+- **Enhanced error handling** - Rich error messages with actionable suggestions
 
 ### Safety Features
 
@@ -311,6 +315,13 @@ Generates a SQL migration pack for data differences.
 deepdiffdb gen-pack --config deepdiffdb.config.yaml
 ```
 
+**Resume from Checkpoint:**
+```bash
+deepdiffdb gen-pack --config deepdiffdb.config.yaml --resume
+```
+
+Resumes a previously interrupted operation from the last checkpoint.
+
 **Generate Interactive HTML Report:**
 ```bash
 deepdiffdb gen-pack --config deepdiffdb.config.yaml --html
@@ -347,11 +358,19 @@ Applies a migration pack to the production database.
 deepdiffdb apply --pack migration_pack.sql --config deepdiffdb.config.yaml
 ```
 
+**Resume from Checkpoint:**
+```bash
+deepdiffdb apply --pack migration_pack.sql --config deepdiffdb.config.yaml --resume
+```
+
+Resumes a previously interrupted application from the last checkpoint.
+
 **Features:**
 - Fully transactional execution
 - Atomic application (all or nothing)
 - Automatic rollback on error
 - Applies to the production database specified in config
+- Checkpoint support for resuming interrupted operations
 
 **Dry Run Mode:**
 ```bash
@@ -464,7 +483,7 @@ DeepDiff DB uses a multi-stage approach to ensure safe and accurate database syn
 7. **Migration Generation** - Creates SQL migration scripts with proper ordering and batching
 8. **Transactional Application** - Applies changes within a single transaction for atomicity
 
-The tool processes data in chunks for large tables and provides progress indicators for operations exceeding 10,000 rows.
+The tool processes data in chunks for large tables and provides progress indicators for operations exceeding 10,000 rows. Progress bars show throughput (rows/second) and estimated time remaining. Checkpoints are automatically saved during long-running operations, allowing you to resume from interruptions.
 
 ## Architecture
 
@@ -493,6 +512,40 @@ deepdiffdb/
 - **Schema Layer** (`internal/schema/`) - Schema introspection, comparison, and migration generation
 - **Content Layer** (`internal/content/`) - Data hashing, diff computation, and pack generation
 - **Driver Layer** (`internal/drivers/`) - Database connection management and abstraction
+
+## Logging and Progress
+
+DeepDiff DB provides comprehensive logging and progress tracking:
+
+**Logging Options:**
+- `--log-format`: Choose between `text` (default) or `json` format
+- `--log-level`: Set minimum log level (`debug`, `info`, `warn`, `error`)
+- `--log-file`: Write logs to a file in addition to stdout
+- `--verbose`: Enable debug-level logging and source location tracking
+
+**Progress Indicators:**
+- Progress bars for operations with known totals (e.g., hashing tables)
+- Spinners for operations with unknown duration (e.g., database connections)
+- Throughput metrics (rows/second) displayed in real-time
+- Performance metrics summary at operation completion
+
+**Checkpoint/Resume:**
+- Automatic checkpoint saving during long-running operations
+- `--resume` flag to continue from the last checkpoint
+- Configuration validation to ensure consistency
+- 24-hour checkpoint expiration for safety
+
+**Example:**
+```bash
+# Generate pack with JSON logging and progress tracking
+deepdiffdb gen-pack --config deepdiffdb.config.yaml \
+  --log-format json \
+  --log-level info \
+  --log-file operation.log
+
+# Resume interrupted operation
+deepdiffdb gen-pack --config deepdiffdb.config.yaml --resume
+```
 
 ## Limitations
 

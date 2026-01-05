@@ -8,9 +8,9 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v0.5
+## Current Status: v0.6
 
-**Last Release:** 2026-01-03
+**Last Release:** 2026-01-06
 
 **Current Features:**
 - Schema drift detection
@@ -41,10 +41,37 @@ We release a new version every **Saturday**. Each release includes one or more f
 - **NEW:** Conflict highlighting with strategy badges
 - **NEW:** SQL preview with syntax highlighting
 - **NEW:** Export to PDF functionality
+- **NEW:** Structured logging with JSON/text formats and log levels
+- **NEW:** Progress tracking with bars and spinners
+- **NEW:** Checkpoint/resume system for long-running operations
+- **NEW:** Enhanced error handling with suggestions and stack traces
+- **NEW:** Performance metrics collection
 
 ---
 
 ## Completed Releases
+
+### v0.6: Enhanced Error Handling & Logging (Released 2026-01-06)
+
+**Features Delivered:**
+- Structured logging system with JSON/text formats
+- Log levels (DEBUG, INFO, WARN, ERROR) with configurable output
+- File output support for log persistence
+- Operation metrics collection with timing information
+- Enhanced error handling with error codes and categories
+- Rich error context with actionable suggestions
+- Optional stack trace capture for debugging
+- Progress tracking with bars and spinners
+- Throughput calculation and performance metrics
+- Checkpoint/resume system for long-running operations
+- `--resume` flag for `gen-pack` and `apply` commands
+- Configuration hash validation for checkpoint safety
+- Retry logic with exponential backoff for transient errors
+- Comprehensive test coverage improvements (logger: 97.6%, errors: 78.6%, progress: 98.4%)
+
+**Impact:** Significantly improved observability, debugging capabilities, and user experience with progress indicators and better error messages
+
+---
 
 ### v0.5: HTML Report Viewer (Released 2026-01-03)
 
@@ -88,23 +115,10 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ## Upcoming Releases
 
-### Week 1 - v0.6: Enhanced Error Handling & Logging
-**Target Date:** Next Saturday
-
-**Features:**
-- Structured logging with levels (DEBUG, INFO, WARN, ERROR)
-- Progress indicators for long-running operations
-- Detailed error messages with context
-- Error recovery suggestions
-- Log file output option
-- Verbose mode for debugging
-
-**Impact:** Better observability and debugging capabilities
-
 ---
 
-### Week 2 - v0.7: Streaming Support for Large Datasets
-**Target Date:** Week 2 Saturday
+### Week 1 - v0.7: Streaming Support for Large Datasets
+**Target Date:** Next Saturday
 
 **Features:**
 - Streaming diff for tables > 1M rows
@@ -118,8 +132,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 3 - v0.8: MSSQL Support
-**Target Date:** Week 3 Saturday
+### Week 2 - v0.8: MSSQL Support
+**Target Date:** Week 2 Saturday
 
 **Features:**
 - Microsoft SQL Server driver support
@@ -132,8 +146,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 4 - v0.9: Oracle Support
-**Target Date:** Week 4 Saturday
+### Week 3 - v0.9: Oracle Support
+**Target Date:** Week 3 Saturday
 
 **Features:**
 - Oracle Database driver support
@@ -146,8 +160,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 5 - v1.0: Production Ready Release
-**Target Date:** Week 5 Saturday
+### Week 4 - v1.0: Production Ready Release
+**Target Date:** Week 4 Saturday
 
 **Features:**
 - Comprehensive documentation
@@ -210,7 +224,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 ### High Priority (Must Have for v1.0)
 - ~~Conflict Resolution Strategies~~ (v0.4)
 - ~~HTML Report Viewer~~ (v0.5)
-- Enhanced Error Handling & Logging
+- ~~Enhanced Error Handling & Logging~~ (v0.6)
 - Documentation & Production Readiness
 
 ### Medium Priority (Should Have)
@@ -227,6 +241,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 - [x] Conflict Resolution Strategies (v0.4)
 - [x] HTML Report Viewer (v0.5)
+- [x] Enhanced Error Handling & Logging (v0.6)
 - [ ] All high-priority features implemented
 - [ ] Test coverage > 80%
 - [ ] Comprehensive documentation
@@ -256,5 +271,5 @@ If you'd like to contribute to any of these features, please:
 
 ---
 
-**Last Updated:** 2026-01-04
+**Last Updated:** 2026-01-06
 

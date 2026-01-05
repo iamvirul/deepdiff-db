@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6] - 2026-01-06
+
+### Added
+- **Structured Logging System** (`pkg/logger`)
+  - JSON and text log formats with configurable output
+  - Log levels: DEBUG, INFO, WARN, ERROR
+  - File output support for log persistence
+  - Source location tracking (optional, for debugging)
+  - Operation metrics collection with timing information
+  - Context-aware logging with structured fields
+  - Convenience methods: `WithTable()`, `WithOperation()`, `WithDatabase()`
+  - `LogOperation()` for automatic operation timing and error logging
+  - Metrics summary printing with formatted output
+- **Enhanced Error Handling** (`pkg/errors`)
+  - Custom error type with error codes and categories
+  - Rich error context with key-value pairs
+  - Actionable suggestions for error resolution
+  - Optional stack trace capture for debugging
+  - Error code categorization (Connection, Schema, Data, Migration, Checkpoint, Configuration, System)
+  - Retryable error detection with exponential backoff
+  - Default suggestions for common error codes
+  - Context-specific suggestions based on error details
+  - Debug string format with full error details
+  - Standard error interface compatibility
+- **Progress Tracking System** (`pkg/progress`)
+  - Progress bars for operations with known totals
+  - Spinners for operations with unknown duration
+  - Throughput calculation (rows/second)
+  - Performance metrics collection (duration, rows processed, memory usage, query count)
+  - Disabled mode for CI/CD environments
+  - Context propagation for progress manager
+  - Metrics summary with formatted output
+- **Checkpoint/Resume System** (`internal/checkpoint`)
+  - Automatic checkpoint saving during long-running operations
+  - Resume capability with `--resume` flag for `gen-pack` and `apply` commands
+  - Configuration hash validation to ensure consistency
+  - Checkpoint expiration (24-hour default) for safety
+  - Atomic checkpoint file writes
+  - Support for hash table, pack generation, and pack application operations
+  - State persistence across interruptions
+- **CLI Enhancements**
+  - `--log-format` flag for choosing JSON or text log format
+  - `--log-level` flag for setting minimum log level
+  - `--log-file` flag for writing logs to a file
+  - `--resume` flag for resuming interrupted operations
+  - Progress indicators for all long-running operations
+  - Enhanced error messages with suggestions
+- **Comprehensive Test Coverage**
+  - Test coverage for logger package: 97.6%
+  - Test coverage for errors package: 78.6%
+  - Test coverage for progress package: 98.4%
+  - Test coverage for checkpoint package: 28.5%
+  - Comprehensive tests for all new packages and features
+
+### Changed
+- All commands now use structured logging instead of `log.Printf`
+- Error handling improved throughout with enhanced error types
+- Progress bars displayed for operations exceeding 10,000 rows
+- Checkpoint system integrated into `gen-pack` and `apply` commands
+- Database connection retry logic with exponential backoff
+- Improved user experience with progress indicators and better error messages
+
+### Fixed
+- All linter errors resolved (errcheck, staticcheck)
+- Proper error handling for all function return values
+- Context handling in tests (no nil contexts)
+- Type-safe context keys
+
 ## [0.5] - 2026-01-03
 
 ### Added
@@ -173,7 +241,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.5...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.6...HEAD
+[0.6]: https://github.com/iamvirul/deepdiff-db/compare/v0.5...v0.6
 [0.5]: https://github.com/iamvirul/deepdiff-db/compare/v0.4...v0.5
 [0.4]: https://github.com/iamvirul/deepdiff-db/compare/v0.3...v0.4
 [0.3]: https://github.com/iamvirul/deepdiff-db/compare/v0.2...v0.3
