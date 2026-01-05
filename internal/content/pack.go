@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iamvirul/deepdiff-db/internal/checkpoint"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/logger"
 	"github.com/iamvirul/deepdiff-db/pkg/progress"
@@ -39,9 +40,10 @@ const (
 // Errors are returned if a table lacks a primary key, if row fetching or WHERE-clause construction fails,
 // or if writing the output file fails.
 func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devDatabase string, prodSchema, devSchema *schema.Schema, schemaDiff schema.DiffResult, diff DataDiff, ignoreFn func(table, column string) bool, outDir string) (string, error) {
-	// Get logger and progress manager from context
+	// Get logger, progress manager, and checkpoint manager from context
 	log := logger.FromContext(ctx).WithOperation("generate_pack")
 	progressMgr := progress.FromContext(ctx)
+	checkpointMgr := checkpoint.FromContext(ctx)
 
 	// Count total changes for logging and progress
 	totalChanges := 0
@@ -188,6 +190,34 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 			))
 			if bar != nil {
 				bar.Add(1)
+			}
+		}
+
+		// Checkpoint after each table is processed
+		if checkpointMgr != nil {
+			if err := checkpointMgr.Update(func(s *checkpoint.State) error {
+				if s.GeneratePackState == nil {
+					s.GeneratePackState = &checkpoint.GeneratePackState{
+						CompletedTables: []string{},
+						Statements:      []string{},
+					}
+				}
+				// Mark table as completed
+				found := false
+				for _, t := range s.GeneratePackState.CompletedTables {
+					if t == td.Table {
+						found = true
+						break
+					}
+				}
+				if !found {
+					s.GeneratePackState.CompletedTables = append(s.GeneratePackState.CompletedTables, td.Table)
+				}
+				// Update statements
+				s.GeneratePackState.Statements = stmts
+				return nil
+			}); err != nil {
+				log.Warn("failed to save checkpoint", logger.FieldError, err.Error(), "table", td.Table)
 			}
 		}
 	}

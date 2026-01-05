@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/iamvirul/deepdiff-db/internal/checkpoint"
 	"github.com/iamvirul/deepdiff-db/pkg/logger"
 	"github.com/iamvirul/deepdiff-db/pkg/progress"
 )
@@ -20,9 +21,10 @@ import (
 // is rolled back. Returns an error if the pack file cannot be read or is empty, or if beginning or committing
 // the transaction fails.
 func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) error {
-	// Get logger and progress manager from context
+	// Get logger, progress manager, and checkpoint manager from context
 	log := logger.FromContext(ctx).WithOperation("apply_pack")
 	progressMgr := progress.FromContext(ctx)
+	checkpointMgr := checkpoint.FromContext(ctx)
 
 	mode := "applying"
 	if dryRun {
@@ -95,6 +97,7 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 	}
 
 	executedCount := 0
+	const checkpointBatchSize = 100 // Save checkpoint every 100 statements
 	for i, stmt := range statements {
 		stmt = strings.TrimSpace(stmt)
 		if stmt == "" {
@@ -110,6 +113,22 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 		executedCount++
 		if bar != nil {
 			bar.Add(1)
+		}
+
+		// Checkpoint every N statements
+		if checkpointMgr != nil && executedCount%checkpointBatchSize == 0 {
+			if err := checkpointMgr.Update(func(s *checkpoint.State) error {
+				if s.ApplyPackState == nil {
+					s.ApplyPackState = &checkpoint.ApplyPackState{
+						PackPath: packPath,
+					}
+				}
+				s.ApplyPackState.ExecutedStatements = executedCount
+				s.ApplyPackState.TotalStatements = len(statements)
+				return nil
+			}); err != nil {
+				log.Warn("failed to save checkpoint", logger.FieldError, err.Error())
+			}
 		}
 	}
 

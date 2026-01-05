@@ -1,6 +1,7 @@
 package checkpoint
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -123,5 +124,33 @@ func (m *Manager) Path() string {
 func (m *Manager) HasCheckpoint() bool {
 	_, err := os.Stat(m.checkpointPath)
 	return err == nil
+}
+
+// managerKeyType is a private type for context keys.
+type managerKeyType struct{}
+
+// managerKey is the context key for storing Manager instances.
+var managerKey = managerKeyType{}
+
+// ToContext adds the checkpoint manager to the given context.
+func ToContext(ctx context.Context, m *Manager) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, managerKey, m)
+}
+
+// FromContext retrieves the checkpoint manager from the given context.
+// Returns nil if no manager is found.
+func FromContext(ctx context.Context) *Manager {
+	if ctx == nil {
+		return nil
+	}
+
+	if m, ok := ctx.Value(managerKey).(*Manager); ok {
+		return m
+	}
+
+	return nil
 }
 

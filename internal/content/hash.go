@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/iamvirul/deepdiff-db/internal/checkpoint"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/logger"
 	"github.com/iamvirul/deepdiff-db/pkg/progress"
@@ -75,6 +76,9 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 	}
 
 	rowsProcessed := int64(0)
+	checkpointMgr := checkpoint.FromContext(ctx)
+	const checkpointInterval = 1000 // Save checkpoint every 1000 rows
+
 	for rows.Next() {
 		if err := rows.Scan(dest...); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
@@ -97,6 +101,30 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 		rowsProcessed++
 		if bar != nil {
 			bar.Add(1)
+		}
+
+		// Checkpoint every N rows for large tables
+		if checkpointMgr != nil && rowsProcessed%checkpointInterval == 0 {
+			if err := checkpointMgr.Update(func(s *checkpoint.State) error {
+				if s.HashTableState == nil {
+					s.HashTableState = &checkpoint.HashTableState{
+						Hashes: make(map[string]map[string]string),
+					}
+				}
+				s.HashTableState.CurrentTable = tbl.Name
+				s.HashTableState.CurrentRowCount = rowsProcessed
+				// Save partial results
+				if s.HashTableState.Hashes[tbl.Name] == nil {
+					s.HashTableState.Hashes[tbl.Name] = make(map[string]string)
+				}
+				// Copy current results
+				for k, v := range result {
+					s.HashTableState.Hashes[tbl.Name][k] = v
+				}
+				return nil
+			}); err != nil {
+				log.Warn("failed to save checkpoint", logger.FieldError, err.Error())
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {

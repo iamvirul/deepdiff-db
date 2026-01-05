@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/iamvirul/deepdiff-db/internal/checkpoint"
 	"github.com/iamvirul/deepdiff-db/internal/cli"
 	"github.com/iamvirul/deepdiff-db/internal/content"
 	"github.com/iamvirul/deepdiff-db/internal/content/resolve"
@@ -425,6 +426,7 @@ func runGenPack(args []string) error {
 	fs := flag.NewFlagSet("gen-pack", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
 	generateHTML := fs.Bool("html", false, "Generate interactive HTML report")
+	resumeCheckpoint := fs.Bool("resume", false, "Resume from checkpoint if available")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
@@ -466,8 +468,56 @@ func runGenPack(args []string) error {
 
 	log.Debug("configuration loaded", "config_path", *configPath)
 
+	// Initialize checkpoint manager
+	checkpointMgr := checkpoint.NewManager(cfg.Output.Dir)
 	ctx := logger.ToContext(context.Background(), log)
 	ctx = progress.ToContext(ctx, progressMgr)
+	ctx = checkpoint.ToContext(ctx, checkpointMgr)
+
+	// Handle resume from checkpoint
+	var checkpointState *checkpoint.State
+	if *resumeCheckpoint && checkpointMgr.HasCheckpoint() {
+		log.Info("checkpoint found, attempting to resume")
+		state, err := checkpointMgr.Load()
+		if err != nil {
+			return fmt.Errorf("load checkpoint: %w", err)
+		}
+		if state != nil {
+			// Validate checkpoint
+			if err := checkpoint.Validate(state, cfg, checkpoint.ResumeOptions{
+				ValidateConfig: true,
+			}); err != nil {
+				return fmt.Errorf("validate checkpoint: %w", err)
+			}
+			checkpointState = state
+			log.Info("resuming from checkpoint", "operation", state.Operation, "created_at", state.CreatedAt)
+		}
+	} else if !*resumeCheckpoint {
+		// Create new checkpoint state if not resuming
+		state, err := checkpoint.NewState(checkpoint.OperationTypeGeneratePack, cfg.Output.Dir, cfg)
+		if err != nil {
+			return fmt.Errorf("create checkpoint state: %w", err)
+		}
+		state.GeneratePackState = &checkpoint.GeneratePackState{
+			CompletedTables: []string{},
+			Statements:      []string{},
+		}
+		if err := checkpointMgr.Save(state); err != nil {
+			log.Warn("failed to create checkpoint", logger.FieldError, err.Error())
+		}
+		checkpointState = state
+	}
+
+	// Cleanup checkpoint on success
+	defer func() {
+		if checkpointMgr != nil && checkpointState != nil {
+			if err := checkpointMgr.Delete(); err != nil {
+				log.Warn("failed to cleanup checkpoint", logger.FieldError, err.Error())
+			} else {
+				log.Debug("checkpoint cleaned up successfully")
+			}
+		}
+	}()
 
 	log.Info("opening database connections")
 	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
