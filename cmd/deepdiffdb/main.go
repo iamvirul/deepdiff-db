@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -67,6 +68,25 @@ func initializeLogger(verbose bool, logFile string, logLevelStr string) (*logger
 
 	log := logger.New(cfg)
 	return log, fileCloser, nil
+}
+
+// openDatabaseWithSpinner opens a database connection with optional spinner for progress indication.
+// This is used for operations where connection time is unknown.
+func openDatabaseWithSpinner(ctx context.Context, cfg config.DBConfig, dbName string) (*sql.DB, error) {
+	progressMgr := progress.FromContext(ctx)
+	
+	var spinner *progress.Bar
+	if progressMgr != nil && progressMgr.IsEnabled() {
+		spinner = progressMgr.StartSpinner(ctx, fmt.Sprintf("Connecting to %s", dbName))
+		defer spinner.Finish()
+	}
+	
+	db, err := drivers.Open(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	
+	return db, nil
 }
 
 // main is the CLI entry point for DeepDiff DB; it dispatches the requested subcommand and exits with a fatal log on error.
@@ -153,7 +173,7 @@ func runCheck(args []string) error {
 		logger.FieldPort, cfg.Prod.Port,
 		logger.FieldDatabase, cfg.Prod.Database)
 
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
@@ -165,7 +185,7 @@ func runCheck(args []string) error {
 		logger.FieldPort, cfg.Dev.Port,
 		logger.FieldDatabase, cfg.Dev.Database)
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
 	if err != nil {
 		return fmt.Errorf("dev connection failed: %w", err)
 	}
@@ -262,13 +282,13 @@ func runFullDiff(args []string) error {
 	ctx = progress.ToContext(ctx, progressMgr)
 
 	log.Info("opening database connections")
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
 	if err != nil {
 		return fmt.Errorf("dev connection failed: %w", err)
 	}
@@ -450,13 +470,13 @@ func runGenPack(args []string) error {
 	ctx = progress.ToContext(ctx, progressMgr)
 
 	log.Info("opening database connections")
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
 	if err != nil {
 		return fmt.Errorf("dev connection failed: %w", err)
 	}
@@ -706,7 +726,7 @@ func runApply(args []string) error {
 
 	// Apply to prod database
 	log.Info("connecting to target database", logger.FieldDatabase, cfg.Prod.Database)
-	targetDB, err := drivers.Open(ctx, cfg.Prod)
+	targetDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "target")
 	if err != nil {
 		return fmt.Errorf("target connection failed: %w", err)
 	}
@@ -841,6 +861,7 @@ func runResolveConflicts(args []string) error {
 	// Interactive mode: connect to databases for row data
 	log.Info("running in interactive mode")
 	ctx := logger.ToContext(context.Background(), log)
+	// Note: No progress manager in interactive mode (conflicts with prompts)
 
 	prodDB, err := drivers.Open(ctx, cfg.Prod)
 	if err != nil {
@@ -1072,13 +1093,13 @@ func runSchemaDiff(args []string) error {
 	ctx = progress.ToContext(ctx, progressMgr)
 
 	log.Info("opening database connections")
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
 	if err != nil {
 		return fmt.Errorf("dev connection failed: %w", err)
 	}
@@ -1167,13 +1188,13 @@ func runSchemaMigrate(args []string) error {
 	ctx = progress.ToContext(ctx, progressMgr)
 
 	log.Info("opening database connections")
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
 	if err != nil {
 		return fmt.Errorf("dev connection failed: %w", err)
 	}
