@@ -87,7 +87,9 @@ func openDatabaseWithSpinner(ctx context.Context, cfg config.DBConfig, dbName st
 	var spinner *progress.Bar
 	if progressMgr != nil && progressMgr.IsEnabled() {
 		spinner = progressMgr.StartSpinner(ctx, fmt.Sprintf("Connecting to %s", dbName))
-		defer spinner.Finish()
+		defer func() {
+			_ = spinner.Finish() // Ignore error - spinner is finishing anyway
+		}()
 	}
 	
 	db, err := drivers.Open(ctx, cfg)
@@ -349,7 +351,9 @@ func runFullDiff(args []string) error {
 	var hashBar *progress.Bar
 	if progressMgr != nil && tablesToHash >= progressThreshold {
 		hashBar = progressMgr.StartBar(ctx, "Hashing tables", int64(tablesToHash*2)) // *2 for prod + dev
-		defer hashBar.Finish()
+		defer func() {
+			_ = hashBar.Finish() // Ignore error - bar is finishing anyway
+		}()
 	}
 
 	for name, prodTable := range prodSchema.Tables {
@@ -363,7 +367,7 @@ func runFullDiff(args []string) error {
 			return fmt.Errorf("hash prod table %s: %w", name, err)
 		}
 		if hashBar != nil {
-			hashBar.Add(1)
+			_ = hashBar.Add(1) // Ignore error - progress update
 		}
 
 		dHashes, err := content.HashTable(ctx, devDB, cfg.Dev.Driver, devTable, ignoreColumn)
@@ -371,7 +375,7 @@ func runFullDiff(args []string) error {
 			return fmt.Errorf("hash dev table %s: %w", name, err)
 		}
 		if hashBar != nil {
-			hashBar.Add(1)
+			_ = hashBar.Add(1) // Ignore error - progress update
 		}
 
 		prodHashes[name] = pHashes

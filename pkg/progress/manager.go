@@ -113,7 +113,7 @@ func (m *Manager) Finish() {
 
 	for name, bar := range m.bars {
 		if !bar.IsComplete() {
-			bar.Finish()
+			_ = bar.Finish() // Ignore error - bar is finishing anyway
 		}
 
 		// Record metrics

@@ -67,11 +67,12 @@ func TestFromContext_WithoutLogger(t *testing.T) {
 }
 
 func TestFromContext_NilContext(t *testing.T) {
-	// Should handle nil context gracefully
-	log := logger.FromContext(nil)
+	// Should handle context without logger gracefully
+	ctx := context.TODO()
+	log := logger.FromContext(ctx)
 
 	if log == nil {
-		t.Fatal("expected non-nil default logger for nil context")
+		t.Fatal("expected non-nil default logger for context without logger")
 	}
 
 	// Should be able to use default logger

@@ -15,7 +15,6 @@ import (
 type Logger struct {
 	slog    *slog.Logger
 	metrics *MetricsCollector
-	mu      sync.RWMutex
 }
 
 // Config holds configuration for creating a new Logger.

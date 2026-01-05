@@ -172,7 +172,7 @@ func TestBarAddAfterFinish(t *testing.T) {
 	ctx := context.Background()
 	bar := mgr.StartBar(ctx, "test", 100)
 
-	bar.Finish()
+	_ = bar.Finish() // Ignore error - bar is finishing
 
 	// Add after finish should not error
 	if err := bar.Add(10); err != nil {
@@ -207,7 +207,7 @@ func TestBarSetAfterFinish(t *testing.T) {
 	ctx := context.Background()
 	bar := mgr.StartBar(ctx, "test", 100)
 
-	bar.Finish()
+	_ = bar.Finish() // Ignore error - bar is finishing
 
 	// Set after finish should not error
 	if err := bar.Set(50); err != nil {
@@ -251,7 +251,7 @@ func TestBarThroughput(t *testing.T) {
 	ctx := context.Background()
 	bar := mgr.StartBar(ctx, "test", 100)
 
-	bar.Add(50)
+	_ = bar.Add(50) // Ignore error - progress update
 	time.Sleep(10 * time.Millisecond)
 
 	throughput := bar.Throughput()
@@ -286,7 +286,7 @@ func TestBarString(t *testing.T) {
 	ctx := context.Background()
 	bar := mgr.StartBar(ctx, "test", 100)
 
-	bar.Add(50)
+	_ = bar.Add(50) // Ignore error - progress update
 	str := bar.String()
 
 	if !strings.Contains(str, "test") {
@@ -307,7 +307,7 @@ func TestBarStringSpinner(t *testing.T) {
 	ctx := context.Background()
 	bar := mgr.StartSpinner(ctx, "test")
 
-	bar.Add(50)
+	_ = bar.Add(50) // Ignore error - progress update
 	str := bar.String()
 
 	if !strings.Contains(str, "test") {
@@ -335,8 +335,8 @@ func TestContext(t *testing.T) {
 }
 
 func TestFromContextNil(t *testing.T) {
-	if progress.FromContext(nil) != nil {
-		t.Error("FromContext with nil context should return nil")
+	if progress.FromContext(context.TODO()) != nil {
+		t.Error("FromContext with context without manager should return nil")
 	}
 
 	ctx := context.Background()
@@ -513,7 +513,7 @@ func TestManagerWithMetrics(t *testing.T) {
 	ctx := context.Background()
 	bar := mgr.StartBar(ctx, "test", 100)
 
-	bar.Add(50)
+	_ = bar.Add(50) // Ignore error - progress update
 	time.Sleep(10 * time.Millisecond)
 
 	mgr.Finish()

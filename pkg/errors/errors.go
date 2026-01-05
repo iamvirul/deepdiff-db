@@ -198,13 +198,13 @@ func (e *Error) Format(s fmt.State, verb rune) {
 	case 'v':
 		if s.Flag('+') {
 			// Detailed format
-			io.WriteString(s, e.DebugString())
+			_, _ = io.WriteString(s, e.DebugString())
 		} else {
 			// Standard format
-			io.WriteString(s, e.Error())
+			_, _ = io.WriteString(s, e.Error())
 		}
 	case 's':
-		io.WriteString(s, e.Error())
+		_, _ = io.WriteString(s, e.Error())
 	}
 }
 

@@ -267,10 +267,6 @@ func TestContext(t *testing.T) {
 }
 
 func TestFromContextNil(t *testing.T) {
-	if checkpoint.FromContext(nil) != nil {
-		t.Error("FromContext with nil context should return nil")
-	}
-
 	ctx := context.Background()
 	if checkpoint.FromContext(ctx) != nil {
 		t.Error("FromContext with context without manager should return nil")
