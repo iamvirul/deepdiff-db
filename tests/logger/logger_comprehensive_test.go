@@ -166,15 +166,15 @@ func TestGetMetrics_MultipleOperations(t *testing.T) {
 	ctx := context.Background()
 
 	// Record multiple operations
-	log.LogOperation(ctx, "op1", func() error {
+	_ = log.LogOperation(ctx, "op1", func() error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	})
-	log.LogOperation(ctx, "op2", func() error {
+	_ = log.LogOperation(ctx, "op2", func() error {
 		time.Sleep(5 * time.Millisecond)
 		return nil
 	})
-	log.LogOperation(ctx, "op1", func() error {
+	_ = log.LogOperation(ctx, "op1", func() error {
 		time.Sleep(5 * time.Millisecond)
 		return nil
 	})
@@ -214,11 +214,11 @@ func TestPrintMetricsSummary(t *testing.T) {
 	ctx := context.Background()
 
 	// Record some operations
-	log.LogOperation(ctx, "test_op1", func() error {
+	_ = log.LogOperation(ctx, "test_op1", func() error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	})
-	log.LogOperation(ctx, "test_op2", func() error {
+	_ = log.LogOperation(ctx, "test_op2", func() error {
 		time.Sleep(5 * time.Millisecond)
 		return nil
 	})
@@ -280,8 +280,8 @@ func TestWith_MetricsSharing(t *testing.T) {
 	enhancedLog := log.With("table", "users")
 
 	// Use both loggers
-	log.LogOperation(ctx, "op1", func() error { return nil })
-	enhancedLog.LogOperation(ctx, "op2", func() error { return nil })
+	_ = log.LogOperation(ctx, "op1", func() error { return nil })
+	_ = enhancedLog.LogOperation(ctx, "op2", func() error { return nil })
 
 	// Both should share the same metrics collector
 	metrics := log.GetMetrics()
@@ -329,7 +329,7 @@ func TestRecordMetric_Concurrent(t *testing.T) {
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func(id int) {
-			log.LogOperation(ctx, "concurrent_op", func() error {
+			_ = log.LogOperation(ctx, "concurrent_op", func() error {
 				time.Sleep(1 * time.Millisecond)
 				return nil
 			})

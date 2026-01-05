@@ -237,7 +237,7 @@ func TestToContext_NilContext(t *testing.T) {
 		Output:  io.Discard,
 	})
 
-	ctx := progress.ToContext(nil, mgr)
+	ctx := progress.ToContext(context.TODO(), mgr)
 	if ctx == nil {
 		t.Fatal("expected non-nil context")
 	}
@@ -249,14 +249,15 @@ func TestToContext_NilContext(t *testing.T) {
 }
 
 func TestFromContext_NilContext(t *testing.T) {
-	mgr := progress.FromContext(nil)
+	mgr := progress.FromContext(context.TODO())
 	if mgr != nil {
-		t.Error("expected nil manager from nil context")
+		t.Error("expected nil manager from context without manager")
 	}
 }
 
 func TestFromContext_WrongType(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "key", "value")
+	type contextKey string
+	ctx := context.WithValue(context.Background(), contextKey("key"), "value")
 	mgr := progress.FromContext(ctx)
 	if mgr != nil {
 		t.Error("expected nil manager for wrong type in context")

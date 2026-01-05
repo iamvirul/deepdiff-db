@@ -25,7 +25,7 @@ func TestManager_Save_ErrorPaths(t *testing.T) {
 	if err := os.MkdirAll(readOnlyDir, 0o555); err != nil {
 		t.Fatalf("failed to create read-only dir: %v", err)
 	}
-	defer os.Chmod(readOnlyDir, 0o755) // Restore for cleanup
+	defer func() { _ = os.Chmod(readOnlyDir, 0o755) }() // Restore for cleanup
 
 	readOnlyMgr := checkpoint.NewManager(readOnlyDir)
 	cfg := &config.Config{
@@ -263,7 +263,7 @@ func TestToContext_NilContext(t *testing.T) {
 	tmpDir := t.TempDir()
 	mgr := checkpoint.NewManager(tmpDir)
 
-	ctx := checkpoint.ToContext(nil, mgr)
+	ctx := checkpoint.ToContext(context.TODO(), mgr)
 	if ctx == nil {
 		t.Fatal("expected non-nil context")
 	}
@@ -275,14 +275,15 @@ func TestToContext_NilContext(t *testing.T) {
 }
 
 func TestFromContext_NilContext(t *testing.T) {
-	mgr := checkpoint.FromContext(nil)
+	mgr := checkpoint.FromContext(context.TODO())
 	if mgr != nil {
-		t.Error("expected nil manager from nil context")
+		t.Error("expected nil manager from context without manager")
 	}
 }
 
 func TestFromContext_WrongType(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "key", "value")
+	type contextKey string
+	ctx := context.WithValue(context.Background(), contextKey("key"), "value")
 	mgr := checkpoint.FromContext(ctx)
 	if mgr != nil {
 		t.Error("expected nil manager for wrong type in context")
