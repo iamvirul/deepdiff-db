@@ -6,7 +6,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -17,6 +19,7 @@ import (
 	htmlreport "github.com/iamvirul/deepdiff-db/internal/report/html"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
+	"github.com/iamvirul/deepdiff-db/pkg/logger"
 )
 
 // Version information - set via ldflags during build
@@ -26,6 +29,44 @@ var (
 	branch    = "unknown"  // Git branch
 	buildTime = "unknown"  // Build timestamp
 )
+
+// initializeLogger creates and configures a logger based on command-line flags.
+// It handles log level parsing, file output setup, and format selection.
+// Returns a configured logger ready for use throughout the application.
+func initializeLogger(verbose bool, logFile string, logLevelStr string) (*logger.Logger, io.Closer, error) {
+	// Parse log level
+	level := logger.ParseLevel(logLevelStr)
+
+	// If verbose mode, use debug level
+	if verbose {
+		level = slog.LevelDebug
+	}
+
+	// Open log file if specified
+	var fileOutput io.Writer
+	var fileCloser io.Closer
+	if logFile != "" {
+		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to open log file: %w", err)
+		}
+		fileOutput = f
+		fileCloser = f
+	}
+
+	// Create logger configuration
+	cfg := logger.Config{
+		Level:         level,
+		Format:        "text", // Could make this configurable with --log-format flag
+		Output:        os.Stdout,
+		FileOutput:    fileOutput,
+		WithSource:    verbose, // Include source location in verbose mode
+		EnableMetrics: true,    // Always enable metrics for performance tracking
+	}
+
+	log := logger.New(cfg)
+	return log, fileCloser, nil
+}
 
 // main is the CLI entry point for DeepDiff DB; it dispatches the requested subcommand and exits with a fatal log on error.
 func main() {
@@ -78,22 +119,50 @@ func run(args []string) error {
 func runCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	// Initialize logger
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	log.Info("starting configuration check")
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	ctx := context.Background()
+	log.Debug("configuration loaded", "config_path", *configPath)
+
+	ctx := logger.ToContext(context.Background(), log)
+
+	log.Info("connecting to production database",
+		logger.FieldDriver, cfg.Prod.Driver,
+		logger.FieldHost, cfg.Prod.Host,
+		logger.FieldPort, cfg.Prod.Port,
+		logger.FieldDatabase, cfg.Prod.Database)
 
 	prodDB, err := drivers.Open(ctx, cfg.Prod)
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
 	defer prodDB.Close()
+
+	log.Info("connecting to development database",
+		logger.FieldDriver, cfg.Dev.Driver,
+		logger.FieldHost, cfg.Dev.Host,
+		logger.FieldPort, cfg.Dev.Port,
+		logger.FieldDatabase, cfg.Dev.Database)
 
 	devDB, err := drivers.Open(ctx, cfg.Dev)
 	if err != nil {
@@ -105,6 +174,9 @@ func runCheck(args []string) error {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
 
+	log.Debug("output directory ready", logger.FieldPath, cfg.Output.Dir)
+
+	log.Info("checking primary keys on production database")
 	prodMissing, err := schema.CheckPrimaryKeys(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
 	if err != nil {
 		return fmt.Errorf("prod primary key check: %w", err)
@@ -113,6 +185,7 @@ func runCheck(args []string) error {
 		return fmt.Errorf("prod tables missing primary keys: %v", prodMissing)
 	}
 
+	log.Info("checking primary keys on development database")
 	devMissing, err := schema.CheckPrimaryKeys(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables)
 	if err != nil {
 		return fmt.Errorf("dev primary key check: %w", err)
@@ -121,6 +194,7 @@ func runCheck(args []string) error {
 		return fmt.Errorf("dev tables missing primary keys: %v", devMissing)
 	}
 
+	// Print summary to console
 	fmt.Println("Config loaded.")
 	fmt.Printf("Prod: %s:%d/%s\n", cfg.Prod.Host, cfg.Prod.Port, cfg.Prod.Database)
 	fmt.Printf("Dev : %s:%d/%s\n", cfg.Dev.Host, cfg.Dev.Port, cfg.Dev.Database)
@@ -128,6 +202,8 @@ func runCheck(args []string) error {
 	fmt.Printf("Ignore tables: %v\n", cfg.Ignore.Tables)
 	fmt.Printf("Ignore columns: %v\n", cfg.Ignore.Columns)
 	fmt.Println("Connections OK. Primary keys verified.")
+
+	log.Info("configuration check complete")
 	return nil
 }
 
@@ -266,17 +342,34 @@ func runGenPack(args []string) error {
 	fs := flag.NewFlagSet("gen-pack", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
 	generateHTML := fs.Bool("html", false, "Generate interactive HTML report")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	// Initialize logger
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	log.Info("starting migration pack generation")
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	ctx := context.Background()
+	log.Debug("configuration loaded", "config_path", *configPath)
 
+	ctx := logger.ToContext(context.Background(), log)
+
+	log.Info("opening database connections")
 	prodDB, err := drivers.Open(ctx, cfg.Prod)
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
@@ -294,6 +387,7 @@ func runGenPack(args []string) error {
 	}
 
 	// Schema diff first
+	log.Info("loading database schemas")
 	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
@@ -303,16 +397,19 @@ func runGenPack(args []string) error {
 		return fmt.Errorf("load dev schema: %w", err)
 	}
 
+	log.Info("comparing schemas", "prod_tables", len(prodSchema.Tables), "dev_tables", len(devSchema.Tables))
 	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 	if err := schema.WriteReports(schemaDiff, cfg.Output.Dir); err != nil {
 		return fmt.Errorf("write schema diff: %w", err)
 	}
 	if schemaDiff.HasDrift() {
+		log.Warn("schema drift detected", "modified_tables", len(schemaDiff.Tables))
 		fmt.Fprintf(os.Stderr, "Warning: schema drift detected; see %s and %s\n", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
 		fmt.Fprintf(os.Stderr, "Warning: continuing with pack generation. Only tables with matching schemas will be included.\n")
 	}
 
 	// Data diff
+	log.Info("starting table hashing")
 	ignoreColumn := content.IgnoreMatcher(cfg.Ignore.Columns)
 	prodHashes := make(map[string]map[string]string)
 	devHashes := make(map[string]map[string]string)
@@ -323,6 +420,7 @@ func runGenPack(args []string) error {
 			continue
 		}
 
+		log.Debug("hashing table", logger.FieldTable, name)
 		pHashes, err := content.HashTable(ctx, prodDB, cfg.Prod.Driver, prodTable, ignoreColumn)
 		if err != nil {
 			return fmt.Errorf("hash prod table %s: %w", name, err)
