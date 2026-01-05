@@ -235,6 +235,22 @@ func runFullDiff(args []string) error {
 
 	log.Info("starting full diff (schema + data)")
 
+	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	progressMgr := progress.NewManager(progress.Config{
+		Enabled:     !*verbose,
+		ShowMetrics: true,
+	})
+	defer func() {
+		progressMgr.Finish()
+		// Print metrics summary if available
+		if metrics := progressMgr.GetMetrics(); metrics != nil {
+			summary := metrics.Summary()
+			if summary != "" {
+				fmt.Println(summary)
+			}
+		}
+	}()
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -243,6 +259,7 @@ func runFullDiff(args []string) error {
 	log.Debug("configuration loaded", "config_path", *configPath)
 
 	ctx := logger.ToContext(context.Background(), log)
+	ctx = progress.ToContext(ctx, progressMgr)
 
 	log.Info("opening database connections")
 	prodDB, err := drivers.Open(ctx, cfg.Prod)
@@ -288,6 +305,22 @@ func runFullDiff(args []string) error {
 	prodHashes := make(map[string]map[string]string)
 	devHashes := make(map[string]map[string]string)
 
+	// Count tables to hash for progress tracking
+	tablesToHash := 0
+	for name := range prodSchema.Tables {
+		if _, ok := devSchema.Tables[name]; ok {
+			tablesToHash++
+		}
+	}
+
+	// Create progress bar for hashing if many tables (threshold: 5)
+	const progressThreshold = 5
+	var hashBar *progress.Bar
+	if progressMgr != nil && tablesToHash >= progressThreshold {
+		hashBar = progressMgr.StartBar(ctx, "Hashing tables", int64(tablesToHash*2)) // *2 for prod + dev
+		defer hashBar.Finish()
+	}
+
 	for name, prodTable := range prodSchema.Tables {
 		devTable, ok := devSchema.Tables[name]
 		if !ok {
@@ -298,9 +331,16 @@ func runFullDiff(args []string) error {
 		if err != nil {
 			return fmt.Errorf("hash prod table %s: %w", name, err)
 		}
+		if hashBar != nil {
+			hashBar.Add(1)
+		}
+
 		dHashes, err := content.HashTable(ctx, devDB, cfg.Dev.Driver, devTable, ignoreColumn)
 		if err != nil {
 			return fmt.Errorf("hash dev table %s: %w", name, err)
+		}
+		if hashBar != nil {
+			hashBar.Add(1)
 		}
 
 		prodHashes[name] = pHashes
@@ -638,6 +678,22 @@ func runApply(args []string) error {
 
 	log.Info("starting migration pack application")
 
+	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	progressMgr := progress.NewManager(progress.Config{
+		Enabled:     !*verbose,
+		ShowMetrics: true,
+	})
+	defer func() {
+		progressMgr.Finish()
+		// Print metrics summary if available
+		if metrics := progressMgr.GetMetrics(); metrics != nil {
+			summary := metrics.Summary()
+			if summary != "" {
+				fmt.Println(summary)
+			}
+		}
+	}()
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -646,6 +702,7 @@ func runApply(args []string) error {
 	log.Debug("configuration loaded", "config_path", *configPath)
 
 	ctx := logger.ToContext(context.Background(), log)
+	ctx = progress.ToContext(ctx, progressMgr)
 
 	// Apply to prod database
 	log.Info("connecting to target database", logger.FieldDatabase, cfg.Prod.Database)
@@ -988,6 +1045,22 @@ func runSchemaDiff(args []string) error {
 
 	log.Info("starting schema diff")
 
+	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	progressMgr := progress.NewManager(progress.Config{
+		Enabled:     !*verbose,
+		ShowMetrics: true,
+	})
+	defer func() {
+		progressMgr.Finish()
+		// Print metrics summary if available
+		if metrics := progressMgr.GetMetrics(); metrics != nil {
+			summary := metrics.Summary()
+			if summary != "" {
+				fmt.Println(summary)
+			}
+		}
+	}()
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -996,6 +1069,7 @@ func runSchemaDiff(args []string) error {
 	log.Debug("configuration loaded", "config_path", *configPath)
 
 	ctx := logger.ToContext(context.Background(), log)
+	ctx = progress.ToContext(ctx, progressMgr)
 
 	log.Info("opening database connections")
 	prodDB, err := drivers.Open(ctx, cfg.Prod)
@@ -1066,6 +1140,22 @@ func runSchemaMigrate(args []string) error {
 
 	log.Info("starting schema migration generation")
 
+	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	progressMgr := progress.NewManager(progress.Config{
+		Enabled:     !*verbose,
+		ShowMetrics: true,
+	})
+	defer func() {
+		progressMgr.Finish()
+		// Print metrics summary if available
+		if metrics := progressMgr.GetMetrics(); metrics != nil {
+			summary := metrics.Summary()
+			if summary != "" {
+				fmt.Println(summary)
+			}
+		}
+	}()
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -1074,6 +1164,7 @@ func runSchemaMigrate(args []string) error {
 	log.Debug("configuration loaded", "config_path", *configPath)
 
 	ctx := logger.ToContext(context.Background(), log)
+	ctx = progress.ToContext(ctx, progressMgr)
 
 	log.Info("opening database connections")
 	prodDB, err := drivers.Open(ctx, cfg.Prod)
