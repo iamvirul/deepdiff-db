@@ -126,3 +126,20 @@ func TestContextChaining(t *testing.T) {
 		t.Error("expected table field in output")
 	}
 }
+
+func TestSetDefaultOutput(t *testing.T) {
+	var buf bytes.Buffer
+	
+	// Set default output to our buffer
+	logger.SetDefaultOutput(&buf)
+	
+	// Get default logger (should use our output)
+	ctx := context.Background()
+	log := logger.FromContext(ctx)
+	
+	log.Info("test message")
+	
+	if !strings.Contains(buf.String(), "test message") {
+		t.Error("expected default logger to use SetDefaultOutput")
+	}
+}

@@ -70,6 +70,9 @@ func (b *Bar) Add(n int) error {
 		return nil
 	}
 	b.current += int64(n)
+	if b.pb == nil {
+		return nil // Disabled bar - only track metrics
+	}
 	return b.pb.Add(n)
 }
 
@@ -79,6 +82,9 @@ func (b *Bar) Set(n int64) error {
 		return nil
 	}
 	b.current = n
+	if b.pb == nil {
+		return nil // Disabled bar - only track metrics
+	}
 	return b.pb.Set64(n)
 }
 
@@ -86,6 +92,9 @@ func (b *Bar) Set(n int64) error {
 func (b *Bar) Describe(desc string) {
 	if b.completed {
 		return
+	}
+	if b.pb == nil {
+		return // Disabled bar
 	}
 	b.pb.Describe(desc)
 }
@@ -96,6 +105,9 @@ func (b *Bar) Finish() error {
 		return nil
 	}
 	b.completed = true
+	if b.pb == nil {
+		return nil // Disabled bar
+	}
 	return b.pb.Finish()
 }
 
