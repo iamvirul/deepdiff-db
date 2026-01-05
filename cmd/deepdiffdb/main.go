@@ -36,13 +36,21 @@ var (
 // initializeLogger creates and configures a logger based on command-line flags.
 // It handles log level parsing, file output setup, and format selection.
 // Returns a configured logger ready for use throughout the application.
-func initializeLogger(verbose bool, logFile string, logLevelStr string) (*logger.Logger, io.Closer, error) {
+func initializeLogger(verbose bool, logFile string, logLevelStr string, logFormat string) (*logger.Logger, io.Closer, error) {
 	// Parse log level
 	level := logger.ParseLevel(logLevelStr)
 
 	// If verbose mode, use debug level
 	if verbose {
 		level = slog.LevelDebug
+	}
+
+	// Validate log format
+	if logFormat == "" {
+		logFormat = "text"
+	}
+	if logFormat != "text" && logFormat != "json" {
+		return nil, nil, fmt.Errorf("invalid log format: %s (must be 'text' or 'json')", logFormat)
 	}
 
 	// Open log file if specified
@@ -60,7 +68,7 @@ func initializeLogger(verbose bool, logFile string, logLevelStr string) (*logger
 	// Create logger configuration
 	cfg := logger.Config{
 		Level:         level,
-		Format:        "text", // Could make this configurable with --log-format flag
+		Format:        logFormat,
 		Output:        os.Stdout,
 		FileOutput:    fileOutput,
 		WithSource:    verbose, // Include source location in verbose mode
@@ -144,12 +152,13 @@ func runCheck(args []string) error {
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	// Initialize logger
-	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel)
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
 	if err != nil {
 		return err
 	}
@@ -241,12 +250,13 @@ func runFullDiff(args []string) error {
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	// Initialize logger
-	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel)
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
 	if err != nil {
 		return err
 	}
@@ -430,12 +440,13 @@ func runGenPack(args []string) error {
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	// Initialize logger
-	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel)
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
 	if err != nil {
 		return err
 	}
@@ -759,10 +770,12 @@ func runApply(args []string) error {
 	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
 	packPath := fs.String("pack", "", "Path to migration pack SQL file (required)")
 	dryRun := fs.Bool("dry-run", false, "Validate SQL without executing")
+	resumeCheckpoint := fs.Bool("resume", false, "Resume from checkpoint if available")
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -772,7 +785,7 @@ func runApply(args []string) error {
 	}
 
 	// Initialize logger
-	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel)
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
 	if err != nil {
 		return err
 	}
@@ -781,6 +794,11 @@ func runApply(args []string) error {
 	}
 
 	log.Info("starting migration pack application")
+	
+	// Handle resume from checkpoint if requested
+	if *resumeCheckpoint {
+		log.Info("resume flag enabled - will attempt to resume from checkpoint if available")
+	}
 
 	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
 	progressMgr := progress.NewManager(progress.Config{
@@ -810,6 +828,13 @@ func runApply(args []string) error {
 	ctx := logger.ToContext(context.Background(), log)
 	ctx = progress.ToContext(ctx, progressMgr)
 	ctx = checkpoint.ToContext(ctx, checkpointMgr)
+
+	// Handle resume from checkpoint if requested
+	if *resumeCheckpoint && checkpointMgr.HasCheckpoint() {
+		log.Info("checkpoint found, will attempt to resume")
+	} else if *resumeCheckpoint {
+		log.Info("resume flag enabled but no checkpoint found - starting fresh")
+	}
 
 	// Cleanup checkpoint on success
 	defer func() {
@@ -862,12 +887,13 @@ func runResolveConflicts(args []string) error {
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	// Initialize logger
-	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel)
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
 	if err != nil {
 		return err
 	}
@@ -1147,12 +1173,13 @@ func runSchemaDiff(args []string) error {
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	// Initialize logger
-	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel)
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
 	if err != nil {
 		return err
 	}
@@ -1242,12 +1269,13 @@ func runSchemaMigrate(args []string) error {
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	// Initialize logger
-	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel)
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
 	if err != nil {
 		return err
 	}
@@ -1395,13 +1423,20 @@ Commands:
   schema-diff       Detect schema drift
   schema-migrate    Generate schema migration script
   diff              Full diff: schema + data (supports --html for interactive report)
-  gen-pack          Generate SQL migration pack (supports --html for interactive report)
-  apply             Apply migration pack
-  resolve-conflicts Interactively resolve pending conflicts
+  gen-pack          Generate SQL migration pack (supports --html, --resume)
+  apply             Apply migration pack (supports --resume)
+  resolve-conflicts Interactively resolve pending conflicts (supports --resume)
 
 Global Flags:
   -v, --version   Show version information
   -h, --help      Show this help message
+
+Common Flags (available on most commands):
+  --verbose       Enable verbose logging (DEBUG level)
+  --log-file      Write logs to file
+  --log-level     Log level: debug, info, warn, error
+  --log-format    Log format: text or json
+  --resume        Resume from checkpoint if available (gen-pack, apply)
 
 Use "%[1]s <command> -h" for flags specific to that command.
 `, exe)

@@ -32,6 +32,7 @@ func newBar(name string, total int64, output io.Writer) *Bar {
 		progressbar.OptionShowElapsedTimeOnFinish(),
 		progressbar.OptionSetRenderBlankState(true),
 		progressbar.OptionClearOnFinish(),
+		// ETA is shown by default in progressbar v3
 	)
 
 	return &Bar{

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/iamvirul/deepdiff-db/pkg/config"
+	"github.com/iamvirul/deepdiff-db/pkg/errors"
 )
 
 // Open returns a ready-to-use *sql.DB for the given database config and driver.
@@ -17,27 +18,41 @@ import (
 // parameters (connection max lifetime 5 minutes, max open connections 10, max idle connections 5),
 // and verifies connectivity by pinging the database with a 5-second timeout.
 // If the ping fails the opened connection is closed and an error containing the driver name is returned.
+// Open uses retry logic for transient connection errors.
 func Open(ctx context.Context, cfg config.DBConfig) (*sql.DB, error) {
 	driverName, dsn, err := BuildDSN(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	db, err := sql.Open(driverName, dsn)
+	var db *sql.DB
+	
+	// Retry connection with exponential backoff
+	retryCfg := errors.DefaultRetryConfig()
+	err = errors.Retry(ctx, retryCfg, func() error {
+		var openErr error
+		db, openErr = sql.Open(driverName, dsn)
+		if openErr != nil {
+			return errors.Wrap(openErr, errors.ErrConnectionFailed, fmt.Sprintf("open %s connection", driverName))
+		}
+
+		db.SetConnMaxLifetime(5 * time.Minute)
+		db.SetMaxOpenConns(10)
+		db.SetMaxIdleConns(5)
+
+		pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		if pingErr := db.PingContext(pingCtx); pingErr != nil {
+			_ = db.Close()
+			return errors.Wrap(pingErr, errors.ErrConnectionFailed, fmt.Sprintf("ping %s database", driverName))
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", driverName, err)
-	}
-
-	db.SetConnMaxLifetime(5 * time.Minute)
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
-
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	if err := db.PingContext(pingCtx); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("ping %s: %w", driverName, err)
+		return nil, err
 	}
 
 	return db, nil
