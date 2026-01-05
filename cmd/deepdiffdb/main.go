@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
+	"github.com/iamvirul/deepdiff-db/internal/checkpoint"
 	"github.com/iamvirul/deepdiff-db/internal/cli"
 	"github.com/iamvirul/deepdiff-db/internal/content"
 	"github.com/iamvirul/deepdiff-db/internal/content/resolve"
@@ -17,6 +21,8 @@ import (
 	htmlreport "github.com/iamvirul/deepdiff-db/internal/report/html"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
+	"github.com/iamvirul/deepdiff-db/pkg/logger"
+	"github.com/iamvirul/deepdiff-db/pkg/progress"
 )
 
 // Version information - set via ldflags during build
@@ -26,6 +32,73 @@ var (
 	branch    = "unknown"  // Git branch
 	buildTime = "unknown"  // Build timestamp
 )
+
+// initializeLogger creates and configures a logger based on command-line flags.
+// It handles log level parsing, file output setup, and format selection.
+// Returns a configured logger ready for use throughout the application.
+func initializeLogger(verbose bool, logFile string, logLevelStr string, logFormat string) (*logger.Logger, io.Closer, error) {
+	// Parse log level
+	level := logger.ParseLevel(logLevelStr)
+
+	// If verbose mode, use debug level
+	if verbose {
+		level = slog.LevelDebug
+	}
+
+	// Validate log format
+	if logFormat == "" {
+		logFormat = "text"
+	}
+	if logFormat != "text" && logFormat != "json" {
+		return nil, nil, fmt.Errorf("invalid log format: %s (must be 'text' or 'json')", logFormat)
+	}
+
+	// Open log file if specified
+	var fileOutput io.Writer
+	var fileCloser io.Closer
+	if logFile != "" {
+		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to open log file: %w", err)
+		}
+		fileOutput = f
+		fileCloser = f
+	}
+
+	// Create logger configuration
+	cfg := logger.Config{
+		Level:         level,
+		Format:        logFormat,
+		Output:        os.Stdout,
+		FileOutput:    fileOutput,
+		WithSource:    verbose, // Include source location in verbose mode
+		EnableMetrics: true,    // Always enable metrics for performance tracking
+	}
+
+	log := logger.New(cfg)
+	return log, fileCloser, nil
+}
+
+// openDatabaseWithSpinner opens a database connection with optional spinner for progress indication.
+// This is used for operations where connection time is unknown.
+func openDatabaseWithSpinner(ctx context.Context, cfg config.DBConfig, dbName string) (*sql.DB, error) {
+	progressMgr := progress.FromContext(ctx)
+	
+	var spinner *progress.Bar
+	if progressMgr != nil && progressMgr.IsEnabled() {
+		spinner = progressMgr.StartSpinner(ctx, fmt.Sprintf("Connecting to %s", dbName))
+		defer func() {
+			_ = spinner.Finish() // Ignore error - spinner is finishing anyway
+		}()
+	}
+	
+	db, err := drivers.Open(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	
+	return db, nil
+}
 
 // main is the CLI entry point for DeepDiff DB; it dispatches the requested subcommand and exits with a fatal log on error.
 func main() {
@@ -78,24 +151,53 @@ func run(args []string) error {
 func runCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	// Initialize logger
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	log.Info("starting configuration check")
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	ctx := context.Background()
+	log.Debug("configuration loaded", "config_path", *configPath)
 
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	ctx := logger.ToContext(context.Background(), log)
+
+	log.Info("connecting to production database",
+		logger.FieldDriver, cfg.Prod.Driver,
+		logger.FieldHost, cfg.Prod.Host,
+		logger.FieldPort, cfg.Prod.Port,
+		logger.FieldDatabase, cfg.Prod.Database)
+
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	log.Info("connecting to development database",
+		logger.FieldDriver, cfg.Dev.Driver,
+		logger.FieldHost, cfg.Dev.Host,
+		logger.FieldPort, cfg.Dev.Port,
+		logger.FieldDatabase, cfg.Dev.Database)
+
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
 	if err != nil {
 		return fmt.Errorf("dev connection failed: %w", err)
 	}
@@ -105,6 +207,9 @@ func runCheck(args []string) error {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
 
+	log.Debug("output directory ready", logger.FieldPath, cfg.Output.Dir)
+
+	log.Info("checking primary keys on production database")
 	prodMissing, err := schema.CheckPrimaryKeys(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
 	if err != nil {
 		return fmt.Errorf("prod primary key check: %w", err)
@@ -113,6 +218,7 @@ func runCheck(args []string) error {
 		return fmt.Errorf("prod tables missing primary keys: %v", prodMissing)
 	}
 
+	log.Info("checking primary keys on development database")
 	devMissing, err := schema.CheckPrimaryKeys(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables)
 	if err != nil {
 		return fmt.Errorf("dev primary key check: %w", err)
@@ -121,6 +227,7 @@ func runCheck(args []string) error {
 		return fmt.Errorf("dev tables missing primary keys: %v", devMissing)
 	}
 
+	// Print summary to console
 	fmt.Println("Config loaded.")
 	fmt.Printf("Prod: %s:%d/%s\n", cfg.Prod.Host, cfg.Prod.Port, cfg.Prod.Database)
 	fmt.Printf("Dev : %s:%d/%s\n", cfg.Dev.Host, cfg.Dev.Port, cfg.Dev.Database)
@@ -128,6 +235,8 @@ func runCheck(args []string) error {
 	fmt.Printf("Ignore tables: %v\n", cfg.Ignore.Tables)
 	fmt.Printf("Ignore columns: %v\n", cfg.Ignore.Columns)
 	fmt.Println("Connections OK. Primary keys verified.")
+
+	log.Info("configuration check complete")
 	return nil
 }
 
@@ -140,24 +249,59 @@ func runFullDiff(args []string) error {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
 	generateHTML := fs.Bool("html", false, "Generate interactive HTML report")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	// Initialize logger
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	log.Info("starting full diff (schema + data)")
+
+	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	progressMgr := progress.NewManager(progress.Config{
+		Enabled:     !*verbose,
+		ShowMetrics: true,
+	})
+	defer func() {
+		progressMgr.Finish()
+		// Print metrics summary if available
+		if metrics := progressMgr.GetMetrics(); metrics != nil {
+			summary := metrics.Summary()
+			if summary != "" {
+				fmt.Println(summary)
+			}
+		}
+	}()
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	ctx := context.Background()
+	log.Debug("configuration loaded", "config_path", *configPath)
 
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	ctx := logger.ToContext(context.Background(), log)
+	ctx = progress.ToContext(ctx, progressMgr)
+
+	log.Info("opening database connections")
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
 	if err != nil {
 		return fmt.Errorf("dev connection failed: %w", err)
 	}
@@ -168,6 +312,7 @@ func runFullDiff(args []string) error {
 	}
 
 	// Schema diff first
+	log.Info("loading database schemas")
 	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
@@ -177,18 +322,39 @@ func runFullDiff(args []string) error {
 		return fmt.Errorf("load dev schema: %w", err)
 	}
 
+	log.Info("comparing schemas")
 	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 	if err := schema.WriteReports(schemaDiff, cfg.Output.Dir); err != nil {
 		return fmt.Errorf("write schema diff: %w", err)
 	}
 	if schemaDiff.HasDrift() {
+		log.Warn("schema drift detected")
 		return fmt.Errorf("schema drift detected; see %s and %s", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
 	}
 
 	// Data diff
+	log.Info("starting data comparison")
 	ignoreColumn := content.IgnoreMatcher(cfg.Ignore.Columns)
 	prodHashes := make(map[string]map[string]string)
 	devHashes := make(map[string]map[string]string)
+
+	// Count tables to hash for progress tracking
+	tablesToHash := 0
+	for name := range prodSchema.Tables {
+		if _, ok := devSchema.Tables[name]; ok {
+			tablesToHash++
+		}
+	}
+
+	// Create progress bar for hashing if many tables (threshold: 5)
+	const progressThreshold = 5
+	var hashBar *progress.Bar
+	if progressMgr != nil && tablesToHash >= progressThreshold {
+		hashBar = progressMgr.StartBar(ctx, "Hashing tables", int64(tablesToHash*2)) // *2 for prod + dev
+		defer func() {
+			_ = hashBar.Finish() // Ignore error - bar is finishing anyway
+		}()
+	}
 
 	for name, prodTable := range prodSchema.Tables {
 		devTable, ok := devSchema.Tables[name]
@@ -200,9 +366,16 @@ func runFullDiff(args []string) error {
 		if err != nil {
 			return fmt.Errorf("hash prod table %s: %w", name, err)
 		}
+		if hashBar != nil {
+			_ = hashBar.Add(1) // Ignore error - progress update
+		}
+
 		dHashes, err := content.HashTable(ctx, devDB, cfg.Dev.Driver, devTable, ignoreColumn)
 		if err != nil {
 			return fmt.Errorf("hash dev table %s: %w", name, err)
+		}
+		if hashBar != nil {
+			_ = hashBar.Add(1) // Ignore error - progress update
 		}
 
 		prodHashes[name] = pHashes
@@ -222,6 +395,7 @@ func runFullDiff(args []string) error {
 		return fmt.Errorf("write content diff: %w", err)
 	}
 
+	log.Info("full diff complete", "tables_scanned", tablesScanned, "has_changes", dataDiff.HasChanges())
 	fmt.Println("Schema OK. Data diff complete.")
 	if dataDiff.HasChanges() {
 		fmt.Printf("Changes detected. See %s, %s, and %s\n", filepath.Join(cfg.Output.Dir, "content_diff.json"), filepath.Join(cfg.Output.Dir, "conflicts.json"), filepath.Join(cfg.Output.Dir, "summary.txt"))
@@ -266,24 +440,108 @@ func runGenPack(args []string) error {
 	fs := flag.NewFlagSet("gen-pack", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
 	generateHTML := fs.Bool("html", false, "Generate interactive HTML report")
+	resumeCheckpoint := fs.Bool("resume", false, "Resume from checkpoint if available")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	// Initialize logger
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	log.Info("starting migration pack generation")
+
+	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	progressMgr := progress.NewManager(progress.Config{
+		Enabled:     !*verbose,
+		ShowMetrics: true,
+	})
+	defer func() {
+		progressMgr.Finish()
+		// Print metrics summary if available
+		if metrics := progressMgr.GetMetrics(); metrics != nil {
+			summary := metrics.Summary()
+			if summary != "" {
+				fmt.Println(summary)
+			}
+		}
+	}()
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	ctx := context.Background()
+	log.Debug("configuration loaded", "config_path", *configPath)
 
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	// Initialize checkpoint manager
+	checkpointMgr := checkpoint.NewManager(cfg.Output.Dir)
+	ctx := logger.ToContext(context.Background(), log)
+	ctx = progress.ToContext(ctx, progressMgr)
+	ctx = checkpoint.ToContext(ctx, checkpointMgr)
+
+	// Handle resume from checkpoint
+	var checkpointState *checkpoint.State
+	if *resumeCheckpoint && checkpointMgr.HasCheckpoint() {
+		log.Info("checkpoint found, attempting to resume")
+		state, err := checkpointMgr.Load()
+		if err != nil {
+			return fmt.Errorf("load checkpoint: %w", err)
+		}
+		if state != nil {
+			// Validate checkpoint
+			if err := checkpoint.Validate(state, cfg, checkpoint.ResumeOptions{
+				ValidateConfig: true,
+			}); err != nil {
+				return fmt.Errorf("validate checkpoint: %w", err)
+			}
+			checkpointState = state
+			log.Info("resuming from checkpoint", "operation", state.Operation, "created_at", state.CreatedAt)
+		}
+	} else if !*resumeCheckpoint {
+		// Create new checkpoint state if not resuming
+		state, err := checkpoint.NewState(checkpoint.OperationTypeGeneratePack, cfg.Output.Dir, cfg)
+		if err != nil {
+			return fmt.Errorf("create checkpoint state: %w", err)
+		}
+		state.GeneratePackState = &checkpoint.GeneratePackState{
+			CompletedTables: []string{},
+			Statements:      []string{},
+		}
+		if err := checkpointMgr.Save(state); err != nil {
+			log.Warn("failed to create checkpoint", logger.FieldError, err.Error())
+		}
+		checkpointState = state
+	}
+
+	// Cleanup checkpoint on success
+	defer func() {
+		if checkpointMgr != nil && checkpointState != nil {
+			if err := checkpointMgr.Delete(); err != nil {
+				log.Warn("failed to cleanup checkpoint", logger.FieldError, err.Error())
+			} else {
+				log.Debug("checkpoint cleaned up successfully")
+			}
+		}
+	}()
+
+	log.Info("opening database connections")
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
 	if err != nil {
 		return fmt.Errorf("dev connection failed: %w", err)
 	}
@@ -294,6 +552,7 @@ func runGenPack(args []string) error {
 	}
 
 	// Schema diff first
+	log.Info("loading database schemas")
 	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
@@ -303,19 +562,41 @@ func runGenPack(args []string) error {
 		return fmt.Errorf("load dev schema: %w", err)
 	}
 
+	log.Info("comparing schemas", "prod_tables", len(prodSchema.Tables), "dev_tables", len(devSchema.Tables))
 	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 	if err := schema.WriteReports(schemaDiff, cfg.Output.Dir); err != nil {
 		return fmt.Errorf("write schema diff: %w", err)
 	}
 	if schemaDiff.HasDrift() {
+		log.Warn("schema drift detected", "modified_tables", len(schemaDiff.Tables))
 		fmt.Fprintf(os.Stderr, "Warning: schema drift detected; see %s and %s\n", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
 		fmt.Fprintf(os.Stderr, "Warning: continuing with pack generation. Only tables with matching schemas will be included.\n")
 	}
 
 	// Data diff
+	log.Info("starting table hashing")
 	ignoreColumn := content.IgnoreMatcher(cfg.Ignore.Columns)
 	prodHashes := make(map[string]map[string]string)
 	devHashes := make(map[string]map[string]string)
+
+	// Load existing hash results from checkpoint if resuming
+	// Note: We'll check completed tables and load hashes after hashing each table
+	completedTables := make(map[string]bool)
+	if checkpointState != nil && checkpointState.HashTableState != nil {
+		for _, tableName := range checkpointState.HashTableState.CompletedTables {
+			completedTables[tableName] = true
+		}
+		// Load existing hashes (they're stored per table, we'll use them if table is completed)
+		if checkpointState.HashTableState.Hashes != nil {
+			for tableName, hashes := range checkpointState.HashTableState.Hashes {
+				if completedTables[tableName] {
+					// If table is marked as completed, we have both prod and dev hashes
+					// For now, we'll re-hash to ensure consistency, but we could optimize this
+					log.Debug("found completed table in checkpoint", logger.FieldTable, tableName, "hash_count", len(hashes))
+				}
+			}
+		}
+	}
 
 	for name, prodTable := range prodSchema.Tables {
 		devTable, ok := devSchema.Tables[name]
@@ -323,16 +604,32 @@ func runGenPack(args []string) error {
 			continue
 		}
 
+		// Check if table is already hashed (resume logic)
+		if completedTables[name] {
+			// Table was completed in previous run - load from checkpoint
+			if checkpointState != nil && checkpointState.HashTableState != nil {
+				if hashes, ok := checkpointState.HashTableState.Hashes[name]; ok && len(hashes) > 0 {
+					// For now, we'll re-hash to ensure consistency since we don't track prod/dev separately
+					// In a future enhancement, we could optimize this by tracking them separately
+					log.Info("table was completed in checkpoint, re-hashing to ensure consistency", logger.FieldTable, name)
+				}
+			}
+		}
+
+		log.Debug("hashing table", logger.FieldTable, name)
+		
+		// Hash prod table
 		pHashes, err := content.HashTable(ctx, prodDB, cfg.Prod.Driver, prodTable, ignoreColumn)
 		if err != nil {
 			return fmt.Errorf("hash prod table %s: %w", name, err)
 		}
+		prodHashes[name] = pHashes
+
+		// Hash dev table
 		dHashes, err := content.HashTable(ctx, devDB, cfg.Dev.Driver, devTable, ignoreColumn)
 		if err != nil {
 			return fmt.Errorf("hash dev table %s: %w", name, err)
 		}
-
-		prodHashes[name] = pHashes
 		devHashes[name] = dHashes
 	}
 
@@ -477,7 +774,12 @@ func runApply(args []string) error {
 	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
 	packPath := fs.String("pack", "", "Path to migration pack SQL file (required)")
 	dryRun := fs.Bool("dry-run", false, "Validate SQL without executing")
+	resumeCheckpoint := fs.Bool("resume", false, "Resume from checkpoint if available")
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -486,33 +788,92 @@ func runApply(args []string) error {
 		return fmt.Errorf("--pack flag is required")
 	}
 
+	// Initialize logger
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	log.Info("starting migration pack application")
+	
+	// Handle resume from checkpoint if requested
+	if *resumeCheckpoint {
+		log.Info("resume flag enabled - will attempt to resume from checkpoint if available")
+	}
+
+	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	progressMgr := progress.NewManager(progress.Config{
+		Enabled:     !*verbose,
+		ShowMetrics: true,
+	})
+	defer func() {
+		progressMgr.Finish()
+		// Print metrics summary if available
+		if metrics := progressMgr.GetMetrics(); metrics != nil {
+			summary := metrics.Summary()
+			if summary != "" {
+				fmt.Println(summary)
+			}
+		}
+	}()
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	ctx := context.Background()
+	log.Debug("configuration loaded", "config_path", *configPath)
+
+	// Initialize checkpoint manager for apply command
+	checkpointMgr := checkpoint.NewManager(cfg.Output.Dir)
+	ctx := logger.ToContext(context.Background(), log)
+	ctx = progress.ToContext(ctx, progressMgr)
+	ctx = checkpoint.ToContext(ctx, checkpointMgr)
+
+	// Handle resume from checkpoint if requested
+	if *resumeCheckpoint && checkpointMgr.HasCheckpoint() {
+		log.Info("checkpoint found, will attempt to resume")
+	} else if *resumeCheckpoint {
+		log.Info("resume flag enabled but no checkpoint found - starting fresh")
+	}
+
+	// Cleanup checkpoint on success
+	defer func() {
+		if checkpointMgr != nil {
+			if err := checkpointMgr.Delete(); err != nil {
+				log.Warn("failed to cleanup checkpoint", logger.FieldError, err.Error())
+			}
+		}
+	}()
 
 	// Apply to prod database
-	targetDB, err := drivers.Open(ctx, cfg.Prod)
+	log.Info("connecting to target database", logger.FieldDatabase, cfg.Prod.Database)
+	targetDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "target")
 	if err != nil {
 		return fmt.Errorf("target connection failed: %w", err)
 	}
 	defer targetDB.Close()
 
 	if *dryRun {
+		log.Info("dry-run mode: validating migration pack", logger.FieldPath, *packPath)
 		fmt.Println("Dry-run mode: validating SQL...")
 		if err := content.ApplyPack(ctx, targetDB, *packPath, true); err != nil {
 			return fmt.Errorf("dry-run validation failed: %w", err)
 		}
+		log.Info("dry-run validation passed")
 		fmt.Println("Dry-run validation passed. SQL is valid.")
 		return nil
 	}
 
+	log.Info("applying migration pack", logger.FieldPath, *packPath)
 	fmt.Printf("Applying migration pack: %s\n", *packPath)
 	if err := content.ApplyPack(ctx, targetDB, *packPath, false); err != nil {
 		return fmt.Errorf("apply failed: %w", err)
 	}
+	log.Info("migration pack applied successfully")
 	fmt.Println("Migration pack applied successfully.")
 	return nil
 }
@@ -527,14 +888,31 @@ func runResolveConflicts(args []string) error {
 	resolutionsPath := fs.String("resolutions", "", "Path to resolutions.json for persistence (default: <output-dir>/resolutions.json)")
 	autoMode := fs.Bool("auto", false, "Apply configured strategies without prompts")
 	resumeMode := fs.Bool("resume", false, "Resume from existing resolutions file")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	// Initialize logger
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	log.Info("starting conflict resolution")
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	log.Debug("configuration loaded", "config_path", *configPath)
 
 	// Set default paths
 	if *conflictsPath == "" {
@@ -545,6 +923,7 @@ func runResolveConflicts(args []string) error {
 	}
 
 	// Load conflicts
+	log.Info("loading conflicts file", logger.FieldPath, *conflictsPath)
 	conflictsData, err := os.ReadFile(*conflictsPath)
 	if err != nil {
 		return fmt.Errorf("read conflicts file: %w", err)
@@ -556,9 +935,12 @@ func runResolveConflicts(args []string) error {
 	}
 
 	if !conflicts.HasConflicts() {
+		log.Info("no conflicts to resolve")
 		fmt.Println("No conflicts to resolve.")
 		return nil
 	}
+
+	log.Info("conflicts loaded", "total_conflicts", len(conflicts.Conflicts))
 
 	// Initialize resolutions
 	var resolutions []resolve.Resolution
@@ -589,6 +971,7 @@ func runResolveConflicts(args []string) error {
 
 	// Auto mode: apply configured strategies without prompts
 	if *autoMode {
+		log.Info("running in auto mode - applying configured strategies")
 		resolutions = resolve.ResolveConflicts(conflicts, cfg)
 		if err := resolve.SaveResolutions(resolutions, *resolutionsPath); err != nil {
 			return fmt.Errorf("save resolutions: %w", err)
@@ -597,11 +980,14 @@ func runResolveConflicts(args []string) error {
 		summary := resolve.BuildResolutionSummary(resolutions)
 		display := cli.NewDisplay()
 		display.PrintSummary(summary, *resolutionsPath)
+		log.Info("auto resolution complete", "resolved", summary.ResolvedCount, "unresolved", summary.UnresolvedCount)
 		return nil
 	}
 
 	// Interactive mode: connect to databases for row data
-	ctx := context.Background()
+	log.Info("running in interactive mode")
+	ctx := logger.ToContext(context.Background(), log)
+	// Note: No progress manager in interactive mode (conflicts with prompts)
 
 	prodDB, err := drivers.Open(ctx, cfg.Prod)
 	if err != nil {
@@ -757,6 +1143,7 @@ func runResolveConflicts(args []string) error {
 	// Final summary
 	summary := resolve.BuildResolutionSummary(resolutions)
 	display.PrintSummary(summary, *resolutionsPath)
+	log.Info("conflict resolution complete", "total", summary.TotalConflicts, "resolved", summary.ResolvedCount, "unresolved", summary.UnresolvedCount)
 
 	return nil
 }
@@ -787,29 +1174,65 @@ func countDecisionResolutions(resolutions []resolve.Resolution, decision resolve
 func runSchemaDiff(args []string) error {
 	fs := flag.NewFlagSet("schema-diff", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	// Initialize logger
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	log.Info("starting schema diff")
+
+	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	progressMgr := progress.NewManager(progress.Config{
+		Enabled:     !*verbose,
+		ShowMetrics: true,
+	})
+	defer func() {
+		progressMgr.Finish()
+		// Print metrics summary if available
+		if metrics := progressMgr.GetMetrics(); metrics != nil {
+			summary := metrics.Summary()
+			if summary != "" {
+				fmt.Println(summary)
+			}
+		}
+	}()
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	ctx := context.Background()
+	log.Debug("configuration loaded", "config_path", *configPath)
 
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	ctx := logger.ToContext(context.Background(), log)
+	ctx = progress.ToContext(ctx, progressMgr)
+
+	log.Info("opening database connections")
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
 	if err != nil {
 		return fmt.Errorf("dev connection failed: %w", err)
 	}
 	defer devDB.Close()
 
+	log.Info("loading database schemas")
 	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
@@ -819,6 +1242,7 @@ func runSchemaDiff(args []string) error {
 		return fmt.Errorf("load dev schema: %w", err)
 	}
 
+	log.Info("comparing schemas", "prod_tables", len(prodSchema.Tables), "dev_tables", len(devSchema.Tables))
 	diff := schema.DiffSchemas(prodSchema, devSchema)
 
 	if err := schema.WriteReports(diff, cfg.Output.Dir); err != nil {
@@ -826,9 +1250,11 @@ func runSchemaDiff(args []string) error {
 	}
 
 	if diff.HasDrift() {
+		log.Warn("schema drift detected")
 		return fmt.Errorf("schema drift detected; see %s and %s", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
 	}
 
+	log.Info("schema diff complete - no drift detected")
 	fmt.Println("Schema match confirmed. No drift detected.")
 	return nil
 }
@@ -844,24 +1270,59 @@ func runSchemaMigrate(args []string) error {
 	fs := flag.NewFlagSet("schema-migrate", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
 	dryRun := fs.Bool("dry-run", false, "Generate and validate migration without writing file")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	// Initialize logger
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	log.Info("starting schema migration generation")
+
+	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	progressMgr := progress.NewManager(progress.Config{
+		Enabled:     !*verbose,
+		ShowMetrics: true,
+	})
+	defer func() {
+		progressMgr.Finish()
+		// Print metrics summary if available
+		if metrics := progressMgr.GetMetrics(); metrics != nil {
+			summary := metrics.Summary()
+			if summary != "" {
+				fmt.Println(summary)
+			}
+		}
+	}()
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	ctx := context.Background()
+	log.Debug("configuration loaded", "config_path", *configPath)
 
-	prodDB, err := drivers.Open(ctx, cfg.Prod)
+	ctx := logger.ToContext(context.Background(), log)
+	ctx = progress.ToContext(ctx, progressMgr)
+
+	log.Info("opening database connections")
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
 	if err != nil {
 		return fmt.Errorf("prod connection failed: %w", err)
 	}
 	defer prodDB.Close()
 
-	devDB, err := drivers.Open(ctx, cfg.Dev)
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
 	if err != nil {
 		return fmt.Errorf("dev connection failed: %w", err)
 	}
@@ -872,6 +1333,7 @@ func runSchemaMigrate(args []string) error {
 	}
 
 	// Load schemas
+	log.Info("loading database schemas")
 	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
@@ -882,6 +1344,7 @@ func runSchemaMigrate(args []string) error {
 	}
 
 	// Compute schema diff
+	log.Info("comparing schemas and generating migration SQL")
 	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 
 	// Prepare migration options from config
@@ -914,6 +1377,7 @@ func runSchemaMigrate(args []string) error {
 	}
 
 	if !schemaDiff.HasDrift() {
+		log.Info("no schema changes detected")
 		fmt.Println("No schema changes detected. No migration file generated.")
 		return nil
 	}
@@ -924,6 +1388,7 @@ func runSchemaMigrate(args []string) error {
 		return fmt.Errorf("write migration file: %w", err)
 	}
 
+	log.Info("schema migration file generated", logger.FieldPath, migrationPath)
 	fmt.Printf("Schema migration generated: %s\n", migrationPath)
 	fmt.Printf("Changes detected:\n")
 	if len(schemaDiff.Tables) > 0 {
@@ -962,13 +1427,20 @@ Commands:
   schema-diff       Detect schema drift
   schema-migrate    Generate schema migration script
   diff              Full diff: schema + data (supports --html for interactive report)
-  gen-pack          Generate SQL migration pack (supports --html for interactive report)
-  apply             Apply migration pack
-  resolve-conflicts Interactively resolve pending conflicts
+  gen-pack          Generate SQL migration pack (supports --html, --resume)
+  apply             Apply migration pack (supports --resume)
+  resolve-conflicts Interactively resolve pending conflicts (supports --resume)
 
 Global Flags:
   -v, --version   Show version information
   -h, --help      Show this help message
+
+Common Flags (available on most commands):
+  --verbose       Enable verbose logging (DEBUG level)
+  --log-file      Write logs to file
+  --log-level     Log level: debug, info, warn, error
+  --log-format    Log format: text or json
+  --resume        Resume from checkpoint if available (gen-pack, apply)
 
 Use "%[1]s <command> -h" for flags specific to that command.
 `, exe)

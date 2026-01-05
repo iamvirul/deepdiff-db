@@ -9,7 +9,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/iamvirul/deepdiff-db/internal/checkpoint"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
+	"github.com/iamvirul/deepdiff-db/pkg/logger"
+	"github.com/iamvirul/deepdiff-db/pkg/progress"
 )
 
 // HashTable streams table rows and returns a map of PK composite key -> row hash.
@@ -26,6 +29,10 @@ import (
 // On failure HashTable returns an error for missing primary keys, no selectable columns, query or scan
 // errors, iteration errors, or when a primary key column is not present among the selected columns.
 func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table, ignoreFn func(table, column string) bool) (map[string]string, error) {
+	// Get logger and progress manager from context
+	log := logger.FromContext(ctx).WithTable(tbl.Name)
+	progressMgr := progress.FromContext(ctx)
+
 	if len(tbl.PrimaryKey) == 0 {
 		return nil, fmt.Errorf("table %s has no primary key", tbl.Name)
 	}
@@ -34,6 +41,15 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 	if len(cols) == 0 {
 		return nil, fmt.Errorf("no columns to hash for table %s", tbl.Name)
 	}
+
+	// Get row count for progress bar
+	rowCount, err := getRowCount(ctx, db, driver, tbl.Name)
+	if err != nil {
+		log.Warn("could not get row count for progress tracking", logger.FieldError, err.Error())
+		rowCount = 0
+	}
+
+	log.Debug("starting table hash", logger.FieldRowCount, rowCount, "columns", len(cols))
 
 	query := buildSelect(driver, tbl.Name, cols, tbl.PrimaryKey)
 
@@ -50,6 +66,20 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 	}
 
 	result := make(map[string]string)
+
+	// Create progress bar if row count is significant (threshold: 10,000)
+	const progressThreshold = 10000
+	var bar *progress.Bar
+	if progressMgr != nil && rowCount >= progressThreshold {
+		bar = progressMgr.StartBar(ctx, fmt.Sprintf("Hashing %s", tbl.Name), rowCount)
+		defer func() {
+			_ = bar.Finish() // Ignore error - bar is finishing anyway
+		}()
+	}
+
+	rowsProcessed := int64(0)
+	checkpointMgr := checkpoint.FromContext(ctx)
+	const checkpointInterval = 1000 // Save checkpoint every 1000 rows
 
 	for rows.Next() {
 		if err := rows.Scan(dest...); err != nil {
@@ -69,12 +99,92 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 
 		hash := hashRow(cols, values)
 		result[key] = hash
+
+		rowsProcessed++
+		if bar != nil {
+			_ = bar.Add(1) // Ignore error - progress update
+		}
+
+		// Checkpoint every N rows for large tables
+		if checkpointMgr != nil && rowsProcessed%checkpointInterval == 0 {
+			if err := checkpointMgr.Update(func(s *checkpoint.State) error {
+				if s.HashTableState == nil {
+					s.HashTableState = &checkpoint.HashTableState{
+						Hashes: make(map[string]map[string]string),
+					}
+				}
+				s.HashTableState.CurrentTable = tbl.Name
+				s.HashTableState.CurrentRowCount = rowsProcessed
+				// Save partial results
+				if s.HashTableState.Hashes[tbl.Name] == nil {
+					s.HashTableState.Hashes[tbl.Name] = make(map[string]string)
+				}
+				// Copy current results
+				for k, v := range result {
+					s.HashTableState.Hashes[tbl.Name][k] = v
+				}
+				return nil
+			}); err != nil {
+				log.Warn("failed to save checkpoint", logger.FieldError, err.Error())
+			}
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate rows: %w", err)
 	}
 
+	log.Info("table hashing complete",
+		logger.FieldRowCount, rowsProcessed,
+		"unique_keys", len(result))
+
+	// Save completed table to checkpoint
+	if checkpointMgr != nil {
+		if err := checkpointMgr.Update(func(s *checkpoint.State) error {
+			if s.HashTableState == nil {
+				s.HashTableState = &checkpoint.HashTableState{
+					Hashes:          make(map[string]map[string]string),
+					CompletedTables: []string{},
+				}
+			}
+			// Mark table as completed
+			found := false
+			for _, t := range s.HashTableState.CompletedTables {
+				if t == tbl.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				s.HashTableState.CompletedTables = append(s.HashTableState.CompletedTables, tbl.Name)
+			}
+			// Save final results (use table name as key - caller will distinguish prod/dev)
+			if s.HashTableState.Hashes[tbl.Name] == nil {
+				s.HashTableState.Hashes[tbl.Name] = make(map[string]string)
+			}
+			for k, v := range result {
+				s.HashTableState.Hashes[tbl.Name][k] = v
+			}
+			s.HashTableState.CurrentTable = "" // Clear current table
+			s.HashTableState.CurrentRowCount = 0
+			return nil
+		}); err != nil {
+			log.Warn("failed to save checkpoint", logger.FieldError, err.Error())
+		}
+	}
+
 	return result, nil
+}
+
+// getRowCount returns the approximate row count for a table.
+// Returns 0 if count cannot be determined.
+func getRowCount(ctx context.Context, db *sql.DB, driver, table string) (int64, error) {
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", quoteIdent(driver, table))
+	var count int64
+	err := db.QueryRowContext(ctx, query).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 // orderedColumns returns an ordered list of column names for hashing.

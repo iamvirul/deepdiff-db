@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/iamvirul/deepdiff-db/internal/checkpoint"
+	"github.com/iamvirul/deepdiff-db/pkg/logger"
+	"github.com/iamvirul/deepdiff-db/pkg/progress"
 )
 
 // ApplyPack executes a SQL migration pack file against the target database.
@@ -17,55 +21,153 @@ import (
 // is rolled back. Returns an error if the pack file cannot be read or is empty, or if beginning or committing
 // the transaction fails.
 func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) error {
+	// Get logger, progress manager, and checkpoint manager from context
+	log := logger.FromContext(ctx).WithOperation("apply_pack")
+	progressMgr := progress.FromContext(ctx)
+	checkpointMgr := checkpoint.FromContext(ctx)
+
+	mode := "applying"
+	if dryRun {
+		mode = "validating"
+	}
+	log.Info(mode+" migration pack", "pack_path", packPath)
+
 	data, err := os.ReadFile(packPath)
 	if err != nil {
+		log.Error("failed to read pack file", logger.FieldError, err.Error(), "path", packPath)
 		return fmt.Errorf("read pack file: %w", err)
 	}
 
 	sqlText := strings.TrimSpace(string(data))
 	if sqlText == "" {
+		log.Error("pack file is empty", "path", packPath)
 		return fmt.Errorf("pack file is empty")
+	}
+
+	statements := SplitStatements(sqlText)
+	log.Debug("parsed SQL statements", "count", len(statements))
+
+	// Check for resume from checkpoint
+	startIndex := 0
+	if checkpointMgr != nil && !dryRun {
+		state, err := checkpointMgr.Load()
+		if err == nil && state != nil && state.ApplyPackState != nil {
+			if state.ApplyPackState.PackPath == packPath && state.ApplyPackState.ExecutedStatements > 0 {
+				startIndex = state.ApplyPackState.ExecutedStatements
+				log.Info("resuming pack application", 
+					"executed_statements", startIndex,
+					"total_statements", len(statements))
+			}
+		}
 	}
 
 	if dryRun {
 		// Validate SQL syntax by preparing statements
-		statements := SplitStatements(sqlText)
+		log.Info("validating migration pack statements")
+
+		// Create progress bar for validation if many statements
+		const progressThreshold = 100
+		var bar *progress.Bar
+		if progressMgr != nil && len(statements) >= progressThreshold {
+			bar = progressMgr.StartBar(ctx, "Validating pack", int64(len(statements)))
+			defer func() {
+				_ = bar.Finish() // Ignore error - bar is finishing anyway
+			}()
+		}
+
 		for i, stmt := range statements {
 			if strings.TrimSpace(stmt) == "" {
 				continue
 			}
 			prepared, err := db.PrepareContext(ctx, stmt)
 			if err != nil {
+				log.Error("validation failed", "statement_index", i+1, logger.FieldError, err.Error())
 				return fmt.Errorf("dry-run validation failed at statement %d: %w", i+1, err)
 			}
 			prepared.Close()
+			if bar != nil {
+				_ = bar.Add(1) // Ignore error - progress update
+			}
 		}
+		log.Info("migration pack validation successful", "statements_validated", len(statements))
 		return nil
 	}
 
 	// Execute in a transaction
+	log.Info("beginning transaction for migration pack execution")
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
+		log.Error("failed to begin transaction", logger.FieldError, err.Error())
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback() // Ignore rollback errors (transaction may already be committed)
 	}()
 
-	statements := SplitStatements(sqlText)
-	for i, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
+	// Create progress bar for execution if many statements
+	const progressThreshold = 100
+	var bar *progress.Bar
+	if progressMgr != nil && len(statements) >= progressThreshold {
+		bar = progressMgr.StartBar(ctx, "Applying pack", int64(len(statements)))
+		defer func() {
+			_ = bar.Finish() // Ignore error - bar is finishing anyway
+		}()
+	}
+
+	executedCount := startIndex
+	const checkpointBatchSize = 100 // Save checkpoint every 100 statements
+	
+	// Skip already executed statements (resume logic)
+	for i := 0; i < startIndex && i < len(statements); i++ {
+		if bar != nil {
+			_ = bar.Add(1) // Ignore error - progress update
+		}
+	}
+	
+	for i := startIndex; i < len(statements); i++ {
+		stmt := strings.TrimSpace(statements[i])
 		if stmt == "" {
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			log.Error("statement execution failed",
+				"statement_index", i+1,
+				logger.FieldError, err.Error(),
+				"executed_statements", executedCount)
 			return fmt.Errorf("execute statement %d: %w", i+1, err)
+		}
+		executedCount++
+		if bar != nil {
+			_ = bar.Add(1) // Ignore error - progress update
+		}
+
+		// Checkpoint every N statements
+		if checkpointMgr != nil && executedCount%checkpointBatchSize == 0 {
+			if err := checkpointMgr.Update(func(s *checkpoint.State) error {
+				if s.ApplyPackState == nil {
+					s.ApplyPackState = &checkpoint.ApplyPackState{
+						PackPath: packPath,
+					}
+				}
+				s.ApplyPackState.ExecutedStatements = executedCount
+				s.ApplyPackState.TotalStatements = len(statements)
+				return nil
+			}); err != nil {
+				log.Warn("failed to save checkpoint", logger.FieldError, err.Error())
+			}
 		}
 	}
 
+	log.Debug("committing transaction", "statements_executed", executedCount)
 	if err := tx.Commit(); err != nil {
+		log.Error("failed to commit transaction",
+			logger.FieldError, err.Error(),
+			"statements_executed", executedCount)
 		return fmt.Errorf("commit transaction: %w", err)
 	}
+
+	log.Info("migration pack applied successfully",
+		"statements_executed", executedCount)
 
 	return nil
 }

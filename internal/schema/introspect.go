@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/iamvirul/deepdiff-db/pkg/logger"
+	"github.com/iamvirul/deepdiff-db/pkg/progress"
 )
 
 // LoadSchema loads table and column metadata for the specified SQL driver into a Schema,
@@ -13,6 +16,12 @@ import (
 // Supported drivers: "mysql", "postgres"/"postgresql", and "sqlite"; the database parameter is used for MySQL queries.
 // Returns an error if the driver is unsupported or if any database query or row scanning fails.
 func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string, ignoreTables []string) (*Schema, error) {
+	// Get logger and progress manager from context
+	log := logger.FromContext(ctx).WithDatabase(driver, database)
+	progressMgr := progress.FromContext(ctx)
+
+	log.Info("loading database schema", "ignored_tables", len(ignoreTables))
+
 	driver = strings.ToLower(driver)
 	ignore := make(map[string]struct{}, len(ignoreTables))
 	for _, t := range ignoreTables {
@@ -22,6 +31,7 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 	s := &Schema{Tables: make(map[string]Table)}
 	switch driver {
 	case "mysql":
+		log.Debug("querying MySQL information_schema for columns and primary keys")
 		rows, err := db.QueryContext(ctx, `
 			SELECT c.table_name,
 			       c.column_name,
@@ -49,7 +59,9 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 		if err := scanColumns(rows, s, ignore); err != nil {
 			return nil, err
 		}
+		log.Debug("loaded table and column metadata", "tables", len(s.Tables))
 	case "postgres", "postgresql":
+		log.Debug("querying PostgreSQL information_schema for columns and primary keys")
 		rows, err := db.QueryContext(ctx, `
 			SELECT c.table_name,
 			       c.column_name,
@@ -80,11 +92,25 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 		if err := scanColumns(rows, s, ignore); err != nil {
 			return nil, err
 		}
+		log.Debug("loaded table and column metadata", "tables", len(s.Tables))
 	case "sqlite":
+		log.Debug("querying SQLite schema metadata")
 		tables, err := listSqliteTables(ctx, db, ignore)
 		if err != nil {
 			return nil, err
 		}
+		log.Debug("found tables", "count", len(tables))
+
+		// Create progress bar for many tables (threshold: 10)
+		const progressThreshold = 10
+		var bar *progress.Bar
+		if progressMgr != nil && len(tables) >= progressThreshold {
+			bar = progressMgr.StartBar(ctx, "Loading schema", int64(len(tables)))
+			defer func() {
+				_ = bar.Finish() // Ignore error - bar is finishing anyway
+			}()
+		}
+
 		for _, tbl := range tables {
 			cols, pk, err := listSqliteColumns(ctx, db, tbl)
 			if err != nil {
@@ -95,20 +121,36 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 				Columns:    cols,
 				PrimaryKey: pk,
 			}
+			if bar != nil {
+				_ = bar.Add(1) // Ignore error - progress update
+			}
 		}
+		log.Debug("loaded table and column metadata", "tables", len(s.Tables))
 	default:
 		return nil, fmt.Errorf("schema load unsupported driver: %s", driver)
 	}
 
 	// Load indexes for all tables
+	log.Debug("loading indexes")
 	if err := loadIndexes(ctx, db, driver, database, s); err != nil {
 		return nil, fmt.Errorf("load indexes: %w", err)
 	}
 
 	// Load foreign keys for all tables
+	log.Debug("loading foreign keys")
 	if err := loadForeignKeys(ctx, db, driver, database, s); err != nil {
 		return nil, fmt.Errorf("load foreign keys: %w", err)
 	}
+
+	// Calculate total columns
+	totalColumns := 0
+	for _, tbl := range s.Tables {
+		totalColumns += len(tbl.Columns)
+	}
+
+	log.Info("schema loaded successfully",
+		"tables", len(s.Tables),
+		"columns", totalColumns)
 
 	return s, nil
 }

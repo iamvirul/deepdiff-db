@@ -4,14 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/iamvirul/deepdiff-db/internal/checkpoint"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
+	"github.com/iamvirul/deepdiff-db/pkg/logger"
+	"github.com/iamvirul/deepdiff-db/pkg/progress"
 )
 
 const (
@@ -38,12 +40,61 @@ const (
 // Errors are returned if a table lacks a primary key, if row fetching or WHERE-clause construction fails,
 // or if writing the output file fails.
 func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devDatabase string, prodSchema, devSchema *schema.Schema, schemaDiff schema.DiffResult, diff DataDiff, ignoreFn func(table, column string) bool, outDir string) (string, error) {
+	// Get logger, progress manager, and checkpoint manager from context
+	log := logger.FromContext(ctx).WithOperation("generate_pack")
+	progressMgr := progress.FromContext(ctx)
+	checkpointMgr := checkpoint.FromContext(ctx)
+
+	// Count total changes for logging and progress
+	totalChanges := 0
+	totalOperations := 0
+	for _, td := range diff.Tables {
+		totalChanges += len(td.Added) + len(td.Removed) + len(td.Updated)
+		// Count operations: updated rows require 2 operations (delete + insert)
+		totalOperations += len(td.Added) + len(td.Removed) + (len(td.Updated) * 2)
+	}
+	log.Info("generating migration pack",
+		"tables_with_changes", len(diff.Tables),
+		"total_row_changes", totalChanges)
+
+	// Create progress bar if we have many operations (threshold: 10,000)
+	const progressThreshold = 10000
+	var bar *progress.Bar
+	if progressMgr != nil && totalOperations >= progressThreshold {
+		bar = progressMgr.StartBar(ctx, "Generating pack", int64(totalOperations))
+		defer func() {
+			_ = bar.Finish() // Ignore error - bar is finishing anyway
+		}()
+	}
+
 	var stmts []string
-	stmts = append(stmts, "BEGIN;")
 	
-	// Disable foreign key checks for MySQL to allow out-of-order operations
-	if prodDriver == "mysql" {
-		stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 0;")
+	// Load existing statements from checkpoint if resuming
+	completedTablesMap := make(map[string]bool)
+	if checkpointMgr != nil {
+		state, err := checkpointMgr.Load()
+		if err == nil && state != nil && state.GeneratePackState != nil {
+			// Load existing statements
+			stmts = append(stmts, state.GeneratePackState.Statements...)
+			// Track completed tables
+			for _, tableName := range state.GeneratePackState.CompletedTables {
+				completedTablesMap[tableName] = true
+			}
+			if len(stmts) > 0 {
+				log.Info("resuming pack generation", "existing_statements", len(stmts), "completed_tables", len(completedTablesMap))
+			}
+		}
+	}
+	
+	// Initialize statements if empty (new run)
+	if len(stmts) == 0 {
+		stmts = append(stmts, "BEGIN;")
+
+		// Disable foreign key checks for MySQL to allow out-of-order operations
+		if prodDriver == "mysql" {
+			stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 0;")
+			log.Debug("disabled foreign key checks for MySQL")
+		}
 	}
 
 	// Generate ALTER TABLE statements for columns missing in prod
@@ -113,6 +164,13 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 		if len(td.Added)+len(td.Removed)+len(td.Updated) == 0 {
 			continue
 		}
+		
+		// Skip if table is already completed (resume logic)
+		if completedTablesMap[td.Table] {
+			log.Debug("skipping already processed table", "table", td.Table)
+			continue
+		}
+		
 		devTbl, ok := devSchema.Tables[td.Table]
 		if !ok {
 			continue
@@ -136,6 +194,9 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 				return "", fmt.Errorf("table %s delete where: %w", devTbl.Name, err)
 			}
 			stmts = append(stmts, fmt.Sprintf("DELETE FROM %s WHERE %s;", quoteIdent(prodDriver, devTbl.Name), where))
+			if bar != nil {
+				_ = bar.Add(1) // Ignore error - progress update
+			}
 		}
 
 		// Inserts (for added) and re-inserts (for updated)
@@ -157,12 +218,49 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 				strings.Join(colsQuoted, ", "),
 				strings.Join(valLiterals, ", "),
 			))
+			if bar != nil {
+				_ = bar.Add(1) // Ignore error - progress update
+			}
+		}
+
+		// Checkpoint after each table is processed
+		if checkpointMgr != nil {
+			if err := checkpointMgr.Update(func(s *checkpoint.State) error {
+				if s.GeneratePackState == nil {
+					s.GeneratePackState = &checkpoint.GeneratePackState{
+						CompletedTables: []string{},
+						Statements:      []string{},
+					}
+				}
+				// Mark table as completed
+				found := false
+				for _, t := range s.GeneratePackState.CompletedTables {
+					if t == td.Table {
+						found = true
+						break
+					}
+				}
+				if !found {
+					s.GeneratePackState.CompletedTables = append(s.GeneratePackState.CompletedTables, td.Table)
+				}
+				// Update statements
+				s.GeneratePackState.Statements = stmts
+				return nil
+			}); err != nil {
+				log.Warn("failed to save checkpoint", logger.FieldError, err.Error(), "table", td.Table)
+			}
 		}
 	}
 
 	// Generate UPDATE statements for new columns AFTER INSERT
 	// (INSERT statements don't include new columns, so we need to update them after insertion)
 	for tableName, columnsToAdd := range tableColumnsToUpdate {
+		// Skip if table is already completed (resume logic)
+		if completedTablesMap[tableName] {
+			log.Debug("skipping update statements for already processed table", "table", tableName)
+			continue
+		}
+		
 		devTbl, ok := devSchema.Tables[tableName]
 		if !ok {
 			continue
@@ -178,7 +276,7 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 			}
 		}
 		
-		updateStmts, err := generateUpdateStatementsForNewColumns(ctx, devDB, prodDriver, tableName, devTbl, columnsToAdd, rowsToSkipUpdate, ignoreFn)
+		updateStmts, err := generateUpdateStatementsForNewColumns(ctx, log, devDB, prodDriver, tableName, devTbl, columnsToAdd, rowsToSkipUpdate, ignoreFn)
 		if err != nil {
 			return "", fmt.Errorf("generate update statements for %s: %w", tableName, err)
 		}
@@ -194,8 +292,14 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 
 	packPath := filepath.Join(outDir, "migration_pack.sql")
 	if err := writeFile(packPath, strings.Join(stmts, "\n")); err != nil {
+		log.Error("failed to write migration pack", logger.FieldError, err.Error(), "path", packPath)
 		return "", err
 	}
+
+	log.Info("migration pack generated successfully",
+		"path", packPath,
+		"total_statements", len(stmts))
+
 	return packPath, nil
 }
 
@@ -467,7 +571,8 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 // generateUpdateStatementsForNewColumns generates batched UPDATE statements to set values for newly added columns
 // from the dev database. It uses CASE expressions to batch multiple rows into single UPDATE statements for efficiency.
 // Rows in skipKeys will be skipped (they'll be updated via DELETE/INSERT).
-func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, driver, tableName string, devTbl schema.Table, newColumns []string, skipKeys map[string]bool, ignoreFn func(table, column string) bool) ([]string, error) {
+func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logger, devDB *sql.DB, driver, tableName string, devTbl schema.Table, newColumns []string, skipKeys map[string]bool, ignoreFn func(table, column string) bool) ([]string, error) {
+	log = log.WithTable(tableName)
 	if len(devTbl.PrimaryKey) == 0 {
 		return nil, fmt.Errorf("table %s lacks primary key", tableName)
 	}
@@ -581,7 +686,9 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 		
 		// Log progress for large datasets
 		if totalRows >= progressLogThreshold {
-			log.Printf("Generated batch %d for table %s (%d rows processed)", len(stmts), tableName, totalRows)
+			log.Debug("generated batch for update statements",
+				"batch_number", len(stmts),
+				"rows_processed", totalRows)
 		}
 		
 		batch = batch[:0] // Clear batch but keep capacity
@@ -721,7 +828,9 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, devDB *sql.DB, d
 	
 	// Final progress log if we processed many rows
 	if totalRows >= progressLogThreshold {
-		log.Printf("Completed table %s: %d total rows processed in %d batches", tableName, totalRows, len(stmts))
+		log.Info("completed update statements for new columns",
+			logger.FieldRowCount, totalRows,
+			"batches", len(stmts))
 	}
 	
 	return stmts, nil
