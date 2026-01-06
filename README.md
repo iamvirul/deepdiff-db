@@ -50,7 +50,35 @@ DeepDiff DB makes the entire process deterministic, reviewable, and safe by:
 
 ## Installation
 
-### Option 1: Download Precompiled Binaries (Recommended)
+### Option 1: Homebrew (macOS and Linux - Recommended)
+
+Install using Homebrew tap:
+
+```bash
+# Tap the repository
+brew tap iamvirul/deepdiff-db
+
+# Install deepdiff-db
+brew install deepdiff-db
+```
+
+Or install in one command:
+
+```bash
+brew install iamvirul/deepdiff-db/deepdiff-db
+```
+
+**Upgrade to latest version:**
+```bash
+brew upgrade deepdiff-db
+```
+
+**Install development version:**
+```bash
+brew install --HEAD iamvirul/deepdiff-db/deepdiff-db
+```
+
+### Option 2: Download Precompiled Binaries
 
 Precompiled binaries are available for the following platforms:
 
@@ -79,7 +107,7 @@ sudo mv deepdiffdb-darwin-arm64 /usr/local/bin/deepdiffdb
 # Download deepdiffdb-windows-amd64.exe and place in your PATH
 ```
 
-### Option 2: Build from Source
+### Option 3: Build from Source
 
 **Using Go install:**
 ```bash
@@ -120,7 +148,9 @@ export PATH="$HOME/bin:$PATH"  # Add to ~/.zshrc or ~/.bashrc
 
 See [scripts/README.md](scripts/README.md) for detailed build options, examples, and troubleshooting.
 
-### Option 3: Build All Platform Binaries
+**Note:** For Homebrew tap maintainers, see [HOMEBREW_TAP.md](HOMEBREW_TAP.md) for instructions on updating the formula.
+
+### Option 4: Build All Platform Binaries
 
 For maintainers who need to build binaries for all platforms:
 
