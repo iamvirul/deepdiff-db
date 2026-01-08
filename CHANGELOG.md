@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-01-08
+
+### Added
+- **Homebrew Tap Support**
+  - Introduced `deepdiff-db.rb` Homebrew formula.
+  - Added GitHub Actions workflow (`update-homebrew-formula.yml`) for automated formula updates on release.
+  - Provided `HOMEBREW_TAP.md` with detailed usage and maintenance guidelines.
+  - Updated `README.md` with Homebrew installation instructions.
+
 ## [0.6] - 2026-01-06
 
 ### Added
@@ -241,7 +250,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.6...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/iamvirul/deepdiff-db/compare/v0.6...v0.6.1
 [0.6]: https://github.com/iamvirul/deepdiff-db/compare/v0.5...v0.6
 [0.5]: https://github.com/iamvirul/deepdiff-db/compare/v0.4...v0.5
 [0.4]: https://github.com/iamvirul/deepdiff-db/compare/v0.3...v0.4
