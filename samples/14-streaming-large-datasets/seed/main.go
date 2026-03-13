@@ -164,9 +164,14 @@ func seedAuditLogs(db *sql.DB, rng *rand.Rand, n int) {
 
 // bulkInsert inserts n rows into table, committing every txSize rows.
 func bulkInsert(db *sql.DB, n, txSize int, table, cols string, row func(i int) []any) {
-	// Enable WAL + relaxed sync for fast inserts.
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA synchronous=NORMAL")
+	// Enable WAL + relaxed sync for fast inserts. Errors here are non-fatal;
+	// inserts will still succeed, just potentially slower.
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		log.Printf("warn: WAL pragma on %s: %v", table, err)
+	}
+	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		log.Printf("warn: synchronous pragma on %s: %v", table, err)
+	}
 
 	// Count placeholders from cols.
 	count := 1
@@ -179,20 +184,38 @@ func bulkInsert(db *sql.DB, n, txSize int, table, cols string, row func(i int) [
 	for i := 1; i < count; i++ {
 		ph += ",?"
 	}
-	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, cols, ph)
+	insertSQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, cols, ph)
 
-	tx, _ := db.Begin()
-	stmt, _ := tx.Prepare(sql)
+	tx, err := db.Begin()
+	if err != nil {
+		log.Fatalf("begin tx for %s: %v", table, err)
+	}
+	stmt, err := tx.Prepare(insertSQL)
+	if err != nil {
+		log.Fatalf("prepare stmt for %s: %v", table, err)
+	}
 	for i := 1; i <= n; i++ {
-		stmt.Exec(row(i)...)
+		if _, err := stmt.Exec(row(i)...); err != nil {
+			log.Fatalf("insert row %d into %s: %v", i, table, err)
+		}
 		if i%txSize == 0 {
-			tx.Commit()
-			tx, _ = db.Begin()
-			stmt, _ = tx.Prepare(sql)
+			if err := tx.Commit(); err != nil {
+				log.Fatalf("commit tx for %s at row %d: %v", table, i, err)
+			}
+			tx, err = db.Begin()
+			if err != nil {
+				log.Fatalf("begin tx for %s: %v", table, err)
+			}
+			stmt, err = tx.Prepare(insertSQL)
+			if err != nil {
+				log.Fatalf("prepare stmt for %s: %v", table, err)
+			}
 			log.Printf("  %s: %d / %d", table, i, n)
 		}
 	}
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		log.Fatalf("final commit for %s: %v", table, err)
+	}
 	log.Printf("  %s: %d / %d (done)", table, n, n)
 }
 
@@ -225,10 +248,12 @@ func mutateDev(dev *sql.DB, rng *rand.Rand, oRows, pRows int) {
 	ts := time.Now().UTC().Format(time.RFC3339)
 	for i := 0; i < 3; i++ {
 		id := oRows + 1 + i
-		dev.Exec(`INSERT INTO orders (id,customer_id,product_id,quantity,amount,status,created_at,updated_at)
-			VALUES (?,?,?,?,?,?,?,?)`,
+		if _, err := dev.Exec(
+			`INSERT INTO orders (id,customer_id,product_id,quantity,amount,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`,
 			id, rng.Intn(50_000)+1, rng.Intn(10_000)+1, 1, 99.99, "pending", ts, ts,
-		)
+		); err != nil {
+			log.Printf("warn: insert new dev order %d: %v", id, err)
+		}
 	}
 
 	log.Println("  10 order amounts changed, 5 product prices changed, 3 new orders in dev")
