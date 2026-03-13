@@ -46,3 +46,18 @@ conflict_resolution:
     # Example: Require manual review for orders
     # - table: "orders"
     #   strategy: "manual"
+
+# Performance settings for large-dataset operations (optional)
+# Tune these when comparing tables with millions of rows.
+performance:
+  # Number of rows fetched per keyset-paginated query during table hashing.
+  # Lower values reduce peak memory usage; higher values reduce round-trips.
+  # Set to 0 to load the entire table in one query (default behaviour pre-v0.7).
+  # Default: 10000
+  # hash_batch_size: 10000
+
+  # Maximum number of tables hashed concurrently.
+  # Increasing this can cut wall-clock time on multi-core hosts but uses more
+  # database connections and memory in parallel.
+  # Default: 1 (sequential — safest for all environments)
+  # max_parallel_tables: 1

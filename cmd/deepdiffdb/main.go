@@ -12,6 +12,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/iamvirul/deepdiff-db/internal/checkpoint"
 	"github.com/iamvirul/deepdiff-db/internal/cli"
@@ -108,7 +112,75 @@ func main() {
 }
 
 // run dispatches CLI subcommands based on the first element of args.
-// 
+// hashTablesParallel hashes all tables in parallel, bounded by maxParallel goroutines.
+//
+// It spawns one goroutine per table and uses a semaphore to cap concurrency at
+// maxParallel. Results are written into the returned map under a mutex so callers
+// receive a fully-populated map[tableName]map[pkKey]hash on success.
+//
+// If any goroutine fails, the errgroup cancels the shared context and returns the
+// first error encountered. Partial results are not returned on error.
+func hashTablesParallel(
+	ctx context.Context,
+	tables map[string]schema.Table,
+	db *sql.DB,
+	driver string,
+	ignoreFn func(string, string) bool,
+	batchSize, maxParallel int,
+) (map[string]map[string]string, error) {
+	if maxParallel <= 0 {
+		maxParallel = 1
+	}
+
+	results := make(map[string]map[string]string, len(tables))
+	var mu sync.Mutex
+
+	sem := semaphore.NewWeighted(int64(maxParallel))
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	for name, tbl := range tables {
+		name, tbl := name, tbl // capture loop vars
+		eg.Go(func() error {
+			if err := sem.Acquire(egCtx, 1); err != nil {
+				return err // context cancelled
+			}
+			defer sem.Release(1)
+
+			hashes, err := content.HashTable(egCtx, db, driver, tbl, ignoreFn, batchSize)
+			if err != nil {
+				return fmt.Errorf("hash table %s: %w", name, err)
+			}
+
+			mu.Lock()
+			results[name] = hashes
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+// resolveParallel returns maxParallel from flagVal when > 0, otherwise from cfg.
+func resolveParallel(flagVal int, cfg int) int {
+	if flagVal > 0 {
+		return flagVal
+	}
+	return cfg
+}
+
+// resolveBatchSize returns batchSize from flagVal when > 0, otherwise from cfg.
+func resolveBatchSize(flagVal int, cfg int) int {
+	if flagVal > 0 {
+		return flagVal
+	}
+	return cfg
+}
+
+//
 // It invokes the corresponding command handler with the remaining arguments,
 // prints usage and returns an error when no command is provided or when the
 // command is unknown, and prints usage without error for help flags.
@@ -249,6 +321,8 @@ func runFullDiff(args []string) error {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
 	generateHTML := fs.Bool("html", false, "Generate interactive HTML report")
+	batchSizeFlag := fs.Int("batch-size", 0, "Rows per keyset-paginated query (0 = use config default)")
+	parallelFlag := fs.Int("parallel", 0, "Max tables hashed concurrently (0 = use config default)")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
@@ -335,61 +409,36 @@ func runFullDiff(args []string) error {
 	// Data diff
 	log.Info("starting data comparison")
 	ignoreColumn := content.IgnoreMatcher(cfg.Ignore.Columns)
-	prodHashes := make(map[string]map[string]string)
-	devHashes := make(map[string]map[string]string)
 
-	// Count tables to hash for progress tracking
-	tablesToHash := 0
-	for name := range prodSchema.Tables {
-		if _, ok := devSchema.Tables[name]; ok {
-			tablesToHash++
-		}
-	}
+	batchSize := resolveBatchSize(*batchSizeFlag, cfg.Performance.HashBatchSize)
+	maxParallel := resolveParallel(*parallelFlag, cfg.Performance.MaxParallelTables)
+	log.Debug("hashing parameters", "batch_size", batchSize, "max_parallel", maxParallel)
 
-	// Create progress bar for hashing if many tables (threshold: 5)
-	const progressThreshold = 5
-	var hashBar *progress.Bar
-	if progressMgr != nil && tablesToHash >= progressThreshold {
-		hashBar = progressMgr.StartBar(ctx, "Hashing tables", int64(tablesToHash*2)) // *2 for prod + dev
-		defer func() {
-			_ = hashBar.Finish() // Ignore error - bar is finishing anyway
-		}()
-	}
-
+	// Build the set of shared tables (exist in both prod and dev).
+	sharedProdTables := make(map[string]schema.Table)
+	sharedDevTables := make(map[string]schema.Table)
 	for name, prodTable := range prodSchema.Tables {
-		devTable, ok := devSchema.Tables[name]
-		if !ok {
-			continue
+		if devTable, ok := devSchema.Tables[name]; ok {
+			sharedProdTables[name] = prodTable
+			sharedDevTables[name] = devTable
 		}
+	}
 
-		pHashes, err := content.HashTable(ctx, prodDB, cfg.Prod.Driver, prodTable, ignoreColumn)
-		if err != nil {
-			return fmt.Errorf("hash prod table %s: %w", name, err)
-		}
-		if hashBar != nil {
-			_ = hashBar.Add(1) // Ignore error - progress update
-		}
+	log.Info("hashing production tables", "count", len(sharedProdTables))
+	prodHashes, err := hashTablesParallel(ctx, sharedProdTables, prodDB, cfg.Prod.Driver, ignoreColumn, batchSize, maxParallel)
+	if err != nil {
+		return fmt.Errorf("hash prod tables: %w", err)
+	}
 
-		dHashes, err := content.HashTable(ctx, devDB, cfg.Dev.Driver, devTable, ignoreColumn)
-		if err != nil {
-			return fmt.Errorf("hash dev table %s: %w", name, err)
-		}
-		if hashBar != nil {
-			_ = hashBar.Add(1) // Ignore error - progress update
-		}
-
-		prodHashes[name] = pHashes
-		devHashes[name] = dHashes
+	log.Info("hashing development tables", "count", len(sharedDevTables))
+	devHashes, err := hashTablesParallel(ctx, sharedDevTables, devDB, cfg.Dev.Driver, ignoreColumn, batchSize, maxParallel)
+	if err != nil {
+		return fmt.Errorf("hash dev tables: %w", err)
 	}
 
 	dataDiff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
 
-	tablesScanned := 0
-	for name := range prodSchema.Tables {
-		if _, ok := devSchema.Tables[name]; ok {
-			tablesScanned++
-		}
-	}
+	tablesScanned := len(sharedProdTables)
 
 	if err := content.WriteReportsWithInfo(dataDiff, conflicts, cfg.Output.Dir, "OK", tablesScanned, ""); err != nil {
 		return fmt.Errorf("write content diff: %w", err)
@@ -441,6 +490,8 @@ func runGenPack(args []string) error {
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
 	generateHTML := fs.Bool("html", false, "Generate interactive HTML report")
 	resumeCheckpoint := fs.Bool("resume", false, "Resume from checkpoint if available")
+	batchSizeFlag := fs.Int("batch-size", 0, "Rows per keyset-paginated query (0 = use config default)")
+	parallelFlag := fs.Int("parallel", 0, "Max tables hashed concurrently (0 = use config default)")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
@@ -576,71 +627,36 @@ func runGenPack(args []string) error {
 	// Data diff
 	log.Info("starting table hashing")
 	ignoreColumn := content.IgnoreMatcher(cfg.Ignore.Columns)
-	prodHashes := make(map[string]map[string]string)
-	devHashes := make(map[string]map[string]string)
 
-	// Load existing hash results from checkpoint if resuming
-	// Note: We'll check completed tables and load hashes after hashing each table
-	completedTables := make(map[string]bool)
-	if checkpointState != nil && checkpointState.HashTableState != nil {
-		for _, tableName := range checkpointState.HashTableState.CompletedTables {
-			completedTables[tableName] = true
-		}
-		// Load existing hashes (they're stored per table, we'll use them if table is completed)
-		if checkpointState.HashTableState.Hashes != nil {
-			for tableName, hashes := range checkpointState.HashTableState.Hashes {
-				if completedTables[tableName] {
-					// If table is marked as completed, we have both prod and dev hashes
-					// For now, we'll re-hash to ensure consistency, but we could optimize this
-					log.Debug("found completed table in checkpoint", logger.FieldTable, tableName, "hash_count", len(hashes))
-				}
-			}
+	batchSize := resolveBatchSize(*batchSizeFlag, cfg.Performance.HashBatchSize)
+	maxParallel := resolveParallel(*parallelFlag, cfg.Performance.MaxParallelTables)
+	log.Debug("hashing parameters", "batch_size", batchSize, "max_parallel", maxParallel)
+
+	// Build the set of shared tables.
+	sharedProdTables := make(map[string]schema.Table)
+	sharedDevTables := make(map[string]schema.Table)
+	for name, prodTable := range prodSchema.Tables {
+		if devTable, ok := devSchema.Tables[name]; ok {
+			sharedProdTables[name] = prodTable
+			sharedDevTables[name] = devTable
 		}
 	}
 
-	for name, prodTable := range prodSchema.Tables {
-		devTable, ok := devSchema.Tables[name]
-		if !ok {
-			continue
-		}
+	log.Info("hashing production tables", "count", len(sharedProdTables))
+	prodHashes, err := hashTablesParallel(ctx, sharedProdTables, prodDB, cfg.Prod.Driver, ignoreColumn, batchSize, maxParallel)
+	if err != nil {
+		return fmt.Errorf("hash prod tables: %w", err)
+	}
 
-		// Check if table is already hashed (resume logic)
-		if completedTables[name] {
-			// Table was completed in previous run - load from checkpoint
-			if checkpointState != nil && checkpointState.HashTableState != nil {
-				if hashes, ok := checkpointState.HashTableState.Hashes[name]; ok && len(hashes) > 0 {
-					// For now, we'll re-hash to ensure consistency since we don't track prod/dev separately
-					// In a future enhancement, we could optimize this by tracking them separately
-					log.Info("table was completed in checkpoint, re-hashing to ensure consistency", logger.FieldTable, name)
-				}
-			}
-		}
-
-		log.Debug("hashing table", logger.FieldTable, name)
-		
-		// Hash prod table
-		pHashes, err := content.HashTable(ctx, prodDB, cfg.Prod.Driver, prodTable, ignoreColumn)
-		if err != nil {
-			return fmt.Errorf("hash prod table %s: %w", name, err)
-		}
-		prodHashes[name] = pHashes
-
-		// Hash dev table
-		dHashes, err := content.HashTable(ctx, devDB, cfg.Dev.Driver, devTable, ignoreColumn)
-		if err != nil {
-			return fmt.Errorf("hash dev table %s: %w", name, err)
-		}
-		devHashes[name] = dHashes
+	log.Info("hashing development tables", "count", len(sharedDevTables))
+	devHashes, err := hashTablesParallel(ctx, sharedDevTables, devDB, cfg.Dev.Driver, ignoreColumn, batchSize, maxParallel)
+	if err != nil {
+		return fmt.Errorf("hash dev tables: %w", err)
 	}
 
 	dataDiff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
 
-	tablesScanned := 0
-	for name := range prodSchema.Tables {
-		if _, ok := devSchema.Tables[name]; ok {
-			tablesScanned++
-		}
-	}
+	tablesScanned := len(sharedProdTables)
 
 	// Apply conflict resolution if conflicts exist
 	var resolutions []resolve.Resolution
@@ -1441,6 +1457,8 @@ Common Flags (available on most commands):
   --log-level     Log level: debug, info, warn, error
   --log-format    Log format: text or json
   --resume        Resume from checkpoint if available (gen-pack, apply)
+  --batch-size    Rows per paginated query, 0 = config default (diff, gen-pack)
+  --parallel      Max tables hashed concurrently, 0 = config default (diff, gen-pack)
 
 Use "%[1]s <command> -h" for flags specific to that command.
 `, exe)

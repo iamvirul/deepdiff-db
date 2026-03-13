@@ -609,25 +609,6 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 	rowCount := 0
 	totalRows := 0
 	
-	// Helper to build cursor-based WHERE clause for pagination
-	buildCursorWhere := func(lastPKValues []any) string {
-		if len(lastPKValues) == 0 {
-			return ""
-		}
-		// For composite keys, use lexicographic comparison: (pk1 > v1) OR (pk1 = v1 AND pk2 > v2) OR ...
-		// For single key, just: pk1 > v1
-		var conditions []string
-		for i := 0; i < len(devTbl.PrimaryKey); i++ {
-			var parts []string
-			for j := 0; j < i; j++ {
-				parts = append(parts, fmt.Sprintf("%s = %s", quoteIdent(driver, devTbl.PrimaryKey[j]), literal(lastPKValues[j])))
-			}
-			parts = append(parts, fmt.Sprintf("%s > %s", quoteIdent(driver, devTbl.PrimaryKey[i]), literal(lastPKValues[i])))
-			conditions = append(conditions, "("+strings.Join(parts, " AND ")+")")
-		}
-		return "WHERE " + strings.Join(conditions, " OR ")
-	}
-	
 	// Helper to flush current batch
 	flushBatch := func() error {
 		if len(batch) == 0 {
@@ -696,16 +677,8 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 		return nil
 	}
 	
-	// Process rows using cursor-based pagination to avoid loading all rows into memory
-	quotedCols := make([]string, len(allCols))
-	for i, c := range allCols {
-		quotedCols[i] = quoteIdent(driver, c)
-	}
-	quotedPK := make([]string, len(devTbl.PrimaryKey))
-	for i, c := range devTbl.PrimaryKey {
-		quotedPK[i] = quoteIdent(driver, c)
-	}
-	
+	// Process rows using cursor-based pagination (BuildCursorQuery) to avoid
+	// loading all rows into memory at once.
 	dest := make([]any, len(allCols))
 	for i := range dest {
 		var holder any
@@ -713,23 +686,9 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 	}
 	
 	var lastPKValues []any // Track last primary key for cursor-based pagination
-	
+
 	for {
-		// Build query with cursor-based pagination
-		baseQuery := fmt.Sprintf("SELECT %s FROM %s",
-			strings.Join(quotedCols, ", "),
-			quoteIdent(driver, tableName),
-		)
-		orderBy := " ORDER BY " + strings.Join(quotedPK, ", ")
-		limit := fmt.Sprintf(" LIMIT %d", queryPageSize)
-		
-		var query string
-		if len(lastPKValues) > 0 {
-			cursorWhere := buildCursorWhere(lastPKValues)
-			query = baseQuery + " " + cursorWhere + orderBy + limit
-		} else {
-			query = baseQuery + orderBy + limit
-		}
+		query := BuildCursorQuery(driver, tableName, allCols, devTbl.PrimaryKey, queryPageSize, lastPKValues)
 		
 		rows, err := devDB.QueryContext(ctx, query)
 		if err != nil {

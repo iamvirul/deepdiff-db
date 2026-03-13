@@ -1,0 +1,28 @@
+prod:
+  driver: "sqlite"
+  database: "./prod.db"
+
+dev:
+  driver: "sqlite"
+  database: "./dev.db"
+
+ignore:
+  tables: []
+  # audit_logs is high-volume and identical in both databases; ignore it to
+  # demonstrate selective table exclusion alongside the performance settings.
+  columns:
+    - "orders.updated_at"  # timestamp changes are noise; focus on data changes
+
+output:
+  dir: "./diff-output"
+
+# Performance settings tuned for large datasets.
+# Adjust hash_batch_size down if you hit memory pressure on smaller machines,
+# or raise max_parallel_tables on hosts with spare CPU/RAM.
+performance:
+  # Rows per keyset-paginated query. At 10 000 rows per batch, each fetch
+  # allocates ~1–2 MB of raw row data that the GC can reclaim between pages.
+  hash_batch_size: 10000
+
+  # Hash orders and products tables concurrently.
+  max_parallel_tables: 2

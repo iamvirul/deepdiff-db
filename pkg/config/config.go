@@ -23,6 +23,19 @@ type Config struct {
 	Output             OutputConfig             `yaml:"output"`
 	Migration          MigrationConfig          `yaml:"migration"`
 	ConflictResolution ConflictResolutionConfig `yaml:"conflict_resolution"`
+	Performance        PerformanceConfig        `yaml:"performance"`
+}
+
+// PerformanceConfig controls resource usage during large-dataset operations.
+type PerformanceConfig struct {
+	// HashBatchSize is the number of rows fetched per keyset-paginated query during
+	// table hashing. Set to 0 to disable batching (load all rows in one query).
+	// Default: 10000.
+	HashBatchSize int `yaml:"hash_batch_size"`
+
+	// MaxParallelTables is the maximum number of tables hashed concurrently.
+	// Default: 1 (sequential, safe for all environments).
+	MaxParallelTables int `yaml:"max_parallel_tables"`
 }
 
 // DBConfig represents connection details for a single database.
@@ -126,6 +139,14 @@ func Load(path string) (*Config, error) {
 		cfg.ConflictResolution.DefaultStrategy = StrategyManual
 	}
 
+	// Apply performance defaults
+	if cfg.Performance.HashBatchSize == 0 {
+		cfg.Performance.HashBatchSize = 10000
+	}
+	if cfg.Performance.MaxParallelTables == 0 {
+		cfg.Performance.MaxParallelTables = 1
+	}
+
 	return &cfg, nil
 }
 
@@ -139,6 +160,19 @@ func (c *Config) Validate() error {
 	}
 	if err := c.ConflictResolution.validate(); err != nil {
 		return err
+	}
+	if err := c.Performance.validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *PerformanceConfig) validate() error {
+	if p.HashBatchSize < 0 {
+		return fmt.Errorf("performance.hash_batch_size must be >= 0")
+	}
+	if p.MaxParallelTables < 0 {
+		return fmt.Errorf("performance.max_parallel_tables must be >= 0")
 	}
 	return nil
 }

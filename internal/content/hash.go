@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -16,20 +17,26 @@ import (
 )
 
 // HashTable streams table rows and returns a map of PK composite key -> row hash.
-// HashTable streams all rows of the specified table and returns a map keyed by the table's composite
-// primary key to a SHA-256 hash of each row's column values.
 //
-// HashTable requires the table to have a primary key; primary key columns are always included first
-// (in the order specified by tbl.PrimaryKey). The optional ignoreFn may exclude non-primary-key
-// columns; if no columns remain to hash after applying ignoreFn, HashTable returns an error.
-// The SELECT is constructed with driver-appropriate identifier quoting and ordered by the primary key.
-// The returned map uses a composite key formed by joining primary key column values with "|" and maps
-// that key to the hex-encoded SHA-256 hash of the row's "col=value" representation.
+// When batchSize > 0 the table is processed using keyset-paginated queries
+// (LIMIT batchSize per round-trip). This bounds per-batch heap allocations so
+// the Go GC can reclaim intermediate row data between pages. The accumulated
+// result map is still O(n) in the number of rows, which is unavoidable for an
+// in-memory diff; for tables that genuinely exhaust available memory consider
+// reducing batchSize or increasing the host's RAM.
 //
-// On failure HashTable returns an error for missing primary keys, no selectable columns, query or scan
-// errors, iteration errors, or when a primary key column is not present among the selected columns.
-func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table, ignoreFn func(table, column string) bool) (map[string]string, error) {
-	// Get logger and progress manager from context
+// When batchSize <= 0 the original single-query behaviour is used (full
+// backward compatibility).
+//
+// HashTable requires the table to have a primary key; primary key columns are
+// always included first (in the order specified by tbl.PrimaryKey). The optional
+// ignoreFn may exclude non-primary-key columns; if no columns remain to hash
+// after applying ignoreFn, HashTable returns an error.
+//
+// The returned map uses a composite key formed by joining primary key column
+// values with "|" and maps that key to the hex-encoded SHA-256 hash of the
+// row's "col=value" representation.
+func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table, ignoreFn func(table, column string) bool, batchSize int) (map[string]string, error) {
 	log := logger.FromContext(ctx).WithTable(tbl.Name)
 	progressMgr := progress.FromContext(ctx)
 
@@ -42,102 +49,43 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 		return nil, fmt.Errorf("no columns to hash for table %s", tbl.Name)
 	}
 
-	// Get row count for progress bar
 	rowCount, err := getRowCount(ctx, db, driver, tbl.Name)
 	if err != nil {
 		log.Warn("could not get row count for progress tracking", logger.FieldError, err.Error())
 		rowCount = 0
 	}
 
-	log.Debug("starting table hash", logger.FieldRowCount, rowCount, "columns", len(cols))
-
-	query := buildSelect(driver, tbl.Name, cols, tbl.PrimaryKey)
-
-	rows, err := db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("query rows: %w", err)
-	}
-	defer rows.Close()
-
-	dest := make([]any, len(cols))
-	for i := range dest {
-		var holder any
-		dest[i] = &holder
-	}
+	log.Debug("starting table hash", logger.FieldRowCount, rowCount, "columns", len(cols), "batch_size", batchSize)
 
 	result := make(map[string]string)
 
-	// Create progress bar if row count is significant (threshold: 10,000)
+	// Progress bar shown for tables whose row count meets the threshold.
 	const progressThreshold = 10000
 	var bar *progress.Bar
 	if progressMgr != nil && rowCount >= progressThreshold {
 		bar = progressMgr.StartBar(ctx, fmt.Sprintf("Hashing %s", tbl.Name), rowCount)
 		defer func() {
-			_ = bar.Finish() // Ignore error - bar is finishing anyway
+			_ = bar.Finish()
 		}()
 	}
 
-	rowsProcessed := int64(0)
 	checkpointMgr := checkpoint.FromContext(ctx)
-	const checkpointInterval = 1000 // Save checkpoint every 1000 rows
 
-	for rows.Next() {
-		if err := rows.Scan(dest...); err != nil {
-			return nil, fmt.Errorf("scan row: %w", err)
-		}
-
-		// deref values
-		values := make([]any, len(cols))
-		for i, v := range dest {
-			values[i] = *(v.(*any))
-		}
-
-		key, err := buildKey(cols, values, tbl.PrimaryKey)
-		if err != nil {
+	if batchSize > 0 {
+		if err := hashTableBatched(ctx, db, driver, tbl, cols, batchSize, bar, checkpointMgr, log, result); err != nil {
 			return nil, err
 		}
-
-		hash := hashRow(cols, values)
-		result[key] = hash
-
-		rowsProcessed++
-		if bar != nil {
-			_ = bar.Add(1) // Ignore error - progress update
+	} else {
+		if err := hashTableFull(ctx, db, driver, tbl, cols, bar, checkpointMgr, log, result); err != nil {
+			return nil, err
 		}
-
-		// Checkpoint every N rows for large tables
-		if checkpointMgr != nil && rowsProcessed%checkpointInterval == 0 {
-			if err := checkpointMgr.Update(func(s *checkpoint.State) error {
-				if s.HashTableState == nil {
-					s.HashTableState = &checkpoint.HashTableState{
-						Hashes: make(map[string]map[string]string),
-					}
-				}
-				s.HashTableState.CurrentTable = tbl.Name
-				s.HashTableState.CurrentRowCount = rowsProcessed
-				// Save partial results
-				if s.HashTableState.Hashes[tbl.Name] == nil {
-					s.HashTableState.Hashes[tbl.Name] = make(map[string]string)
-				}
-				// Copy current results
-				for k, v := range result {
-					s.HashTableState.Hashes[tbl.Name][k] = v
-				}
-				return nil
-			}); err != nil {
-				log.Warn("failed to save checkpoint", logger.FieldError, err.Error())
-			}
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows: %w", err)
 	}
 
 	log.Info("table hashing complete",
-		logger.FieldRowCount, rowsProcessed,
+		logger.FieldRowCount, int64(len(result)),
 		"unique_keys", len(result))
 
-	// Save completed table to checkpoint
+	// Mark table as completed in checkpoint.
 	if checkpointMgr != nil {
 		if err := checkpointMgr.Update(func(s *checkpoint.State) error {
 			if s.HashTableState == nil {
@@ -146,7 +94,6 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 					CompletedTables: []string{},
 				}
 			}
-			// Mark table as completed
 			found := false
 			for _, t := range s.HashTableState.CompletedTables {
 				if t == tbl.Name {
@@ -157,22 +104,210 @@ func HashTable(ctx context.Context, db *sql.DB, driver string, tbl schema.Table,
 			if !found {
 				s.HashTableState.CompletedTables = append(s.HashTableState.CompletedTables, tbl.Name)
 			}
-			// Save final results (use table name as key - caller will distinguish prod/dev)
 			if s.HashTableState.Hashes[tbl.Name] == nil {
 				s.HashTableState.Hashes[tbl.Name] = make(map[string]string)
 			}
 			for k, v := range result {
 				s.HashTableState.Hashes[tbl.Name][k] = v
 			}
-			s.HashTableState.CurrentTable = "" // Clear current table
+			s.HashTableState.CurrentTable = ""
 			s.HashTableState.CurrentRowCount = 0
 			return nil
 		}); err != nil {
-			log.Warn("failed to save checkpoint", logger.FieldError, err.Error())
+			log.Warn("failed to save final checkpoint", logger.FieldError, err.Error())
 		}
 	}
 
 	return result, nil
+}
+
+// hashTableBatched processes rows using keyset pagination (LIMIT batchSize per
+// query). Between batches the Go runtime GC is hinted to reclaim per-batch
+// allocations. Memory statistics are logged at debug level after each batch.
+func hashTableBatched(
+	ctx context.Context,
+	db *sql.DB,
+	driver string,
+	tbl schema.Table,
+	cols []string,
+	batchSize int,
+	bar *progress.Bar,
+	checkpointMgr *checkpoint.Manager,
+	log *logger.Logger,
+	result map[string]string,
+) error {
+	dest := make([]any, len(cols))
+	for i := range dest {
+		var holder any
+		dest[i] = &holder
+	}
+
+	var lastPKValues []any
+	batchNum := 0
+
+	for {
+		query := BuildCursorQuery(driver, tbl.Name, cols, tbl.PrimaryKey, batchSize, lastPKValues)
+
+		rows, err := db.QueryContext(ctx, query)
+		if err != nil {
+			return fmt.Errorf("query rows (batch %d): %w", batchNum+1, err)
+		}
+
+		pageCount := 0
+		for rows.Next() {
+			if err := rows.Scan(dest...); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan row: %w", err)
+			}
+
+			values := make([]any, len(cols))
+			for i, v := range dest {
+				values[i] = *(v.(*any))
+			}
+
+			key, err := buildKey(cols, values, tbl.PrimaryKey)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			result[key] = hashRow(cols, values)
+
+			// Track last PK values for the next cursor page.
+			pkVals := make([]any, len(tbl.PrimaryKey))
+			for i, pkCol := range tbl.PrimaryKey {
+				for ci, c := range cols {
+					if c == pkCol {
+						pkVals[i] = values[ci]
+						break
+					}
+				}
+			}
+			lastPKValues = pkVals
+
+			pageCount++
+			if bar != nil {
+				_ = bar.Add(1)
+			}
+		}
+
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return fmt.Errorf("iterate rows: %w", err)
+		}
+		rows.Close()
+
+		batchNum++
+
+		// Checkpoint and memory stats at every batch boundary.
+		saveHashBatchCheckpoint(checkpointMgr, log, tbl, result, int64(len(result)))
+		logBatchMemory(log, tbl.Name, batchNum, len(result))
+
+		// Hint the GC so per-batch allocations can be reclaimed before the next page.
+		runtime.GC()
+
+		// Fewer rows than batchSize means this was the last page.
+		if pageCount < batchSize {
+			break
+		}
+	}
+
+	return nil
+}
+
+// hashTableFull is the original single-query path, kept for batchSize <= 0.
+func hashTableFull(
+	ctx context.Context,
+	db *sql.DB,
+	driver string,
+	tbl schema.Table,
+	cols []string,
+	bar *progress.Bar,
+	checkpointMgr *checkpoint.Manager,
+	log *logger.Logger,
+	result map[string]string,
+) error {
+	query := buildSelect(driver, tbl.Name, cols, tbl.PrimaryKey)
+
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("query rows: %w", err)
+	}
+	defer rows.Close()
+
+	dest := make([]any, len(cols))
+	for i := range dest {
+		var holder any
+		dest[i] = &holder
+	}
+
+	rowsProcessed := int64(0)
+	const checkpointInterval = 1000
+
+	for rows.Next() {
+		if err := rows.Scan(dest...); err != nil {
+			return fmt.Errorf("scan row: %w", err)
+		}
+
+		values := make([]any, len(cols))
+		for i, v := range dest {
+			values[i] = *(v.(*any))
+		}
+
+		key, err := buildKey(cols, values, tbl.PrimaryKey)
+		if err != nil {
+			return err
+		}
+		result[key] = hashRow(cols, values)
+
+		rowsProcessed++
+		if bar != nil {
+			_ = bar.Add(1)
+		}
+
+		if checkpointMgr != nil && rowsProcessed%checkpointInterval == 0 {
+			saveHashBatchCheckpoint(checkpointMgr, log, tbl, result, rowsProcessed)
+		}
+	}
+
+	return rows.Err()
+}
+
+// saveHashBatchCheckpoint persists a partial snapshot of result to the checkpoint.
+func saveHashBatchCheckpoint(mgr *checkpoint.Manager, log *logger.Logger, tbl schema.Table, result map[string]string, rowsProcessed int64) {
+	if mgr == nil {
+		return
+	}
+	if err := mgr.Update(func(s *checkpoint.State) error {
+		if s.HashTableState == nil {
+			s.HashTableState = &checkpoint.HashTableState{
+				Hashes: make(map[string]map[string]string),
+			}
+		}
+		s.HashTableState.CurrentTable = tbl.Name
+		s.HashTableState.CurrentRowCount = rowsProcessed
+		if s.HashTableState.Hashes[tbl.Name] == nil {
+			s.HashTableState.Hashes[tbl.Name] = make(map[string]string)
+		}
+		for k, v := range result {
+			s.HashTableState.Hashes[tbl.Name][k] = v
+		}
+		return nil
+	}); err != nil {
+		log.Warn("failed to save batch checkpoint", logger.FieldError, err.Error())
+	}
+}
+
+// logBatchMemory emits a debug log with current heap allocation statistics.
+func logBatchMemory(log *logger.Logger, table string, batchNum, totalRows int) {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	allocMB := float64(ms.Alloc) / (1024 * 1024)
+	log.Debug("batch complete",
+		"table", table,
+		"batch", batchNum,
+		"total_rows_hashed", totalRows,
+		"alloc_mb", fmt.Sprintf("%.1f", allocMB),
+	)
 }
 
 // getRowCount returns the approximate row count for a table.
@@ -193,7 +328,6 @@ func getRowCount(ctx context.Context, db *sql.DB, driver, table string) (int64, 
 // ignoreFn(tbl.Name, column) returns true. If ignoreFn is nil, no non-primary columns are excluded.
 func orderedColumns(tbl schema.Table, ignoreFn func(table, column string) bool) []string {
 	var cols []string
-	// Ensure primary keys first (and always included)
 	cols = append(cols, tbl.PrimaryKey...)
 	var nonPK []string
 	for name := range tbl.Columns {
