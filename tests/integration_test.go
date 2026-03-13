@@ -108,12 +108,12 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 			continue
 		}
 
-		pHashes, err := content.HashTable(ctx, prodDB, "sqlite", prodTable, ignoreColumn)
+		pHashes, err := content.HashTable(ctx, prodDB, "sqlite", prodTable, ignoreColumn, 0)
 		if err != nil {
 			t.Fatalf("failed to hash prod table %s: %v", name, err)
 		}
 
-		dHashes, err := content.HashTable(ctx, devDB, "sqlite", devTable, ignoreColumn)
+		dHashes, err := content.HashTable(ctx, devDB, "sqlite", devTable, ignoreColumn, 0)
 		if err != nil {
 			t.Fatalf("failed to hash dev table %s: %v", name, err)
 		}
@@ -197,12 +197,12 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	}
 
 	// Verify prod database matches dev
-	prodHashesAfter, err := content.HashTable(ctx, prodDB, "sqlite", prodSchema.Tables["users"], ignoreColumn)
+	prodHashesAfter, err := content.HashTable(ctx, prodDB, "sqlite", prodSchema.Tables["users"], ignoreColumn, 0)
 	if err != nil {
 		t.Fatalf("failed to hash prod table after apply: %v", err)
 	}
 
-	devHashesAfter, err := content.HashTable(ctx, devDB, "sqlite", devSchema.Tables["users"], ignoreColumn)
+	devHashesAfter, err := content.HashTable(ctx, devDB, "sqlite", devSchema.Tables["users"], ignoreColumn, 0)
 	if err != nil {
 		t.Fatalf("failed to hash dev table: %v", err)
 	}

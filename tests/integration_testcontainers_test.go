@@ -317,12 +317,12 @@ output:
 				continue
 			}
 
-			pHashes, err := content.HashTable(ctx, prodDB, "mysql", prodTable, ignoreColumn)
+			pHashes, err := content.HashTable(ctx, prodDB, "mysql", prodTable, ignoreColumn, 0)
 			if err != nil {
 				t.Fatalf("failed to hash prod table %s: %v", name, err)
 			}
 
-			dHashes, err := content.HashTable(ctx, devDB, "mysql", devTable, ignoreColumn)
+			dHashes, err := content.HashTable(ctx, devDB, "mysql", devTable, ignoreColumn, 0)
 			if err != nil {
 				t.Fatalf("failed to hash dev table %s: %v", name, err)
 			}
@@ -416,12 +416,12 @@ output:
 				continue
 			}
 
-			pHashes, err := content.HashTable(ctx, prodDB, "mysql", prodTable, ignoreColumn)
+			pHashes, err := content.HashTable(ctx, prodDB, "mysql", prodTable, ignoreColumn, 0)
 			if err != nil {
 				t.Fatalf("failed to hash prod table %s: %v", name, err)
 			}
 
-			dHashes, err := content.HashTable(ctx, devDB, "mysql", devTable, ignoreColumn)
+			dHashes, err := content.HashTable(ctx, devDB, "mysql", devTable, ignoreColumn, 0)
 			if err != nil {
 				t.Fatalf("failed to hash dev table %s: %v", name, err)
 			}
@@ -504,12 +504,12 @@ output:
 				continue
 			}
 
-			pHashes, err := content.HashTable(ctx, prodDB, "mysql", prodTable, ignoreColumn)
+			pHashes, err := content.HashTable(ctx, prodDB, "mysql", prodTable, ignoreColumn, 0)
 			if err != nil {
 				t.Fatalf("failed to hash prod table %s: %v", name, err)
 			}
 
-			dHashes, err := content.HashTable(ctx, devDB, "mysql", devTable, ignoreColumn)
+			dHashes, err := content.HashTable(ctx, devDB, "mysql", devTable, ignoreColumn, 0)
 			if err != nil {
 				t.Fatalf("failed to hash dev table %s: %v", name, err)
 			}
@@ -553,12 +553,12 @@ output:
 		}
 
 		// Verify prod database matches dev after migration
-		prodHashesAfter, err := content.HashTable(ctx, prodDB, "mysql", prodSchema.Tables["users"], ignoreColumn)
+		prodHashesAfter, err := content.HashTable(ctx, prodDB, "mysql", prodSchema.Tables["users"], ignoreColumn, 0)
 		if err != nil {
 			t.Fatalf("failed to hash prod users after apply: %v", err)
 		}
 
-		devHashesAfter, err := content.HashTable(ctx, devDB, "mysql", devSchema.Tables["users"], ignoreColumn)
+		devHashesAfter, err := content.HashTable(ctx, devDB, "mysql", devSchema.Tables["users"], ignoreColumn, 0)
 		if err != nil {
 			t.Fatalf("failed to hash dev users: %v", err)
 		}
@@ -776,12 +776,12 @@ func TestIntegration_PostgreSQL_FullWorkflow(t *testing.T) {
 			continue
 		}
 
-		pHashes, err := content.HashTable(ctx, prodDB, "postgres", prodTable, ignoreColumn)
+		pHashes, err := content.HashTable(ctx, prodDB, "postgres", prodTable, ignoreColumn, 0)
 		if err != nil {
 			t.Fatalf("failed to hash prod table %s: %v", name, err)
 		}
 
-		dHashes, err := content.HashTable(ctx, devDB, "postgres", devTable, ignoreColumn)
+		dHashes, err := content.HashTable(ctx, devDB, "postgres", devTable, ignoreColumn, 0)
 		if err != nil {
 			t.Fatalf("failed to hash dev table %s: %v", name, err)
 		}
@@ -859,12 +859,12 @@ func TestIntegration_PostgreSQL_FullWorkflow(t *testing.T) {
 	}
 
 	// Verify data matches after migration
-	prodHashesAfter, err := content.HashTable(ctx, prodDB, "postgres", prodSchema.Tables["products"], ignoreColumn)
+	prodHashesAfter, err := content.HashTable(ctx, prodDB, "postgres", prodSchema.Tables["products"], ignoreColumn, 0)
 	if err != nil {
 		t.Fatalf("failed to hash prod products after apply: %v", err)
 	}
 
-	devHashesAfter, err := content.HashTable(ctx, devDB, "postgres", devSchema.Tables["products"], ignoreColumn)
+	devHashesAfter, err := content.HashTable(ctx, devDB, "postgres", devSchema.Tables["products"], ignoreColumn, 0)
 	if err != nil {
 		t.Fatalf("failed to hash dev products: %v", err)
 	}
@@ -977,12 +977,12 @@ func TestIntegration_AllReportsGenerated(t *testing.T) {
 			continue
 		}
 
-		pHashes, err := content.HashTable(ctx, prodDB, "sqlite", prodTable, ignoreColumn)
+		pHashes, err := content.HashTable(ctx, prodDB, "sqlite", prodTable, ignoreColumn, 0)
 		if err != nil {
 			t.Fatalf("failed to hash prod table %s: %v", name, err)
 		}
 
-		dHashes, err := content.HashTable(ctx, devDB, "sqlite", devTable, ignoreColumn)
+		dHashes, err := content.HashTable(ctx, devDB, "sqlite", devTable, ignoreColumn, 0)
 		if err != nil {
 			t.Fatalf("failed to hash dev table %s: %v", name, err)
 		}

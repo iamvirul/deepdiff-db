@@ -1,0 +1,14 @@
+# Generated SQLite databases (created by 'make seed' or 'make seed-small')
+prod.db
+prod.db-wal
+prod.db-shm
+dev.db
+dev.db-wal
+dev.db-shm
+
+# Generated diff reports and migration packs
+diff-output/*.json
+diff-output/*.txt
+diff-output/*.sql
+diff-output/*.zip
+diff-output/*.html
