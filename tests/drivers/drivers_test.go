@@ -186,3 +186,90 @@ func containsMiddle(s, substr string) bool {
 	return false
 }
 
+
+func TestBuildDSN_MSSQL(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         config.DBConfig
+		wantDriver  string
+		wantDSNHas  []string
+		wantDSNNot  []string
+	}{
+		{
+			name: "mssql with port",
+			cfg: config.DBConfig{
+				Driver:   "mssql",
+				Host:     "sqlserver.example.com",
+				Port:     1433,
+				User:     "sa",
+				Password: "StrongP@ss1word!",
+				Database: "mydb",
+			},
+			wantDriver: "sqlserver",
+			wantDSNHas: []string{
+				"sqlserver://",
+				"sqlserver.example.com:1433",
+				"database=mydb",
+			},
+		},
+		{
+			name: "mssql without port defaults to no port in DSN",
+			cfg: config.DBConfig{
+				Driver:   "mssql",
+				Host:     "sqlserver.example.com",
+				Port:     0,
+				User:     "sa",
+				Password: "pass",
+				Database: "mydb",
+			},
+			wantDriver: "sqlserver",
+			wantDSNHas: []string{
+				"sqlserver://",
+				"sqlserver.example.com",
+				"database=mydb",
+			},
+			// Port 0 means omit port — no colon+number after host
+			wantDSNNot: []string{":0"},
+		},
+		{
+			name: "mssql URL-encodes credentials with special chars",
+			cfg: config.DBConfig{
+				Driver:   "mssql",
+				Host:     "localhost",
+				Port:     1433,
+				User:     "user@domain",
+				Password: "p@ss w0rd+1",
+				Database: "test db",
+			},
+			wantDriver: "sqlserver",
+			wantDSNHas: []string{
+				"sqlserver://",
+				"localhost:1433",
+			},
+			// Raw special chars must not appear unencoded in the DSN
+			wantDSNNot: []string{"p@ss w0rd+1", " "},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			driver, dsn, err := drivers.BuildDSN(tt.cfg)
+			if err != nil {
+				t.Fatalf("BuildDSN returned unexpected error: %v", err)
+			}
+			if driver != tt.wantDriver {
+				t.Errorf("driver = %q, want %q", driver, tt.wantDriver)
+			}
+			for _, want := range tt.wantDSNHas {
+				if !containsMiddle(dsn, want) {
+					t.Errorf("DSN %q does not contain %q", dsn, want)
+				}
+			}
+			for _, notWant := range tt.wantDSNNot {
+				if containsMiddle(dsn, notWant) {
+					t.Errorf("DSN %q should not contain %q", dsn, notWant)
+				}
+			}
+		})
+	}
+}

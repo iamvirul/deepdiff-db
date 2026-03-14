@@ -1283,3 +1283,365 @@ func TestGenerateMigration_CreateAndDropTables(t *testing.T) {
 func strPtr(s string) *string {
 	return &s
 }
+
+// ---------------------------------------------------------------------------
+// MSSQL-specific migration tests
+// ---------------------------------------------------------------------------
+
+func TestGenerateMigration_MSSQL(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "orders",
+				Columns: map[string]schema.Column{
+					"id":         {Name: "id", DataType: "INT", IsNullable: false},
+					"customer":   {Name: "customer", DataType: "NVARCHAR(100)", IsNullable: false},
+					"total":      {Name: "total", DataType: "DECIMAL(10,2)", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+		RemovedTables: []string{"legacy_log"},
+		Tables: []schema.TableDiff{
+			{
+				Name:           "users",
+				HasDifferences: true,
+				AddedColumns: []schema.Column{
+					{Name: "phone", DataType: "NVARCHAR(20)", IsNullable: true},
+					{Name: "score", DataType: "INT", IsNullable: false},
+				},
+				RemovedColumns: []schema.Column{
+					{Name: "old_code", DataType: "INT", IsNullable: true},
+				},
+				ModifiedColumns: []schema.ColumnDiff{
+					{
+						Column:           "name",
+						TypeMismatch:     true,
+						DevType:          "NVARCHAR(200)",
+						ProdType:         "NVARCHAR(100)",
+						NullableMismatch: false,
+						DevNullable:      boolPtr(false),
+						ProdNullable:     boolPtr(false),
+					},
+				},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mssql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	// MSSQL transaction syntax
+	if !strings.Contains(sql, "BEGIN;") {
+		t.Error("Expected migration to start with BEGIN;")
+	}
+	if !strings.Contains(sql, "COMMIT;") {
+		t.Error("Expected migration to end with COMMIT;")
+	}
+
+	// CREATE TABLE uses square-bracket quoting
+	if !strings.Contains(sql, "CREATE TABLE [orders]") {
+		t.Errorf("Expected CREATE TABLE [orders], got:\n%s", sql)
+	}
+	if !strings.Contains(sql, "[id] INT NOT NULL") {
+		t.Error("Expected [id] column with square-bracket quoting")
+	}
+	if !strings.Contains(sql, "PRIMARY KEY ([id])") {
+		t.Error("Expected PRIMARY KEY with square-bracket quoting")
+	}
+
+	// DROP TABLE is commented
+	if !strings.Contains(sql, "-- DROP TABLE [legacy_log];") {
+		t.Errorf("Expected commented DROP TABLE [legacy_log], got:\n%s", sql)
+	}
+
+	// ADD column (no COLUMN keyword for MSSQL)
+	if !strings.Contains(sql, "ALTER TABLE [users] ADD [phone] NVARCHAR(20) NULL;") {
+		t.Errorf("Expected ADD without COLUMN keyword, got:\n%s", sql)
+	}
+	// NOT NULL without default → commented with guidance
+	if !strings.Contains(sql, "-- ALTER TABLE [users] ADD [score] INT NOT NULL;") {
+		t.Errorf("Expected commented NOT NULL ADD, got:\n%s", sql)
+	}
+
+	// DROP COLUMN is commented
+	if !strings.Contains(sql, "-- ALTER TABLE [users] DROP COLUMN [old_code];") {
+		t.Errorf("Expected commented DROP COLUMN [old_code], got:\n%s", sql)
+	}
+
+	// MODIFY uses ALTER COLUMN (not MODIFY COLUMN)
+	if !strings.Contains(sql, "ALTER TABLE [users] ALTER COLUMN [name] NVARCHAR(200) NOT NULL;") {
+		t.Errorf("Expected ALTER COLUMN syntax, got:\n%s", sql)
+	}
+}
+
+func TestQuoteIdentifier_MSSQL(t *testing.T) {
+	tests := []struct {
+		name       string
+		diff       schema.DiffResult
+		wantHas    []string
+		wantNotHas []string
+	}{
+		{
+			name: "simple identifier gets square brackets",
+			diff: schema.DiffResult{
+				Tables: []schema.TableDiff{
+					{
+						Name:           "users",
+						HasDifferences: true,
+						AddedColumns: []schema.Column{
+							{Name: "email", DataType: "NVARCHAR(255)", IsNullable: true},
+						},
+					},
+				},
+			},
+			wantHas: []string{
+				"ALTER TABLE [users] ADD [email] NVARCHAR(255) NULL;",
+			},
+			wantNotHas: []string{"`users`", `"users"`},
+		},
+		{
+			name: "drop column uses square brackets",
+			diff: schema.DiffResult{
+				Tables: []schema.TableDiff{
+					{
+						Name:           "products",
+						HasDifferences: true,
+						RemovedColumns: []schema.Column{
+							{Name: "old_price", DataType: "DECIMAL(10,2)", IsNullable: true},
+						},
+					},
+				},
+			},
+			wantHas: []string{
+				"-- ALTER TABLE [products] DROP COLUMN [old_price];",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sql, err := schema.GenerateMigration(tt.diff, "mssql", nil)
+			if err != nil {
+				t.Fatalf("GenerateMigration error: %v", err)
+			}
+			for _, want := range tt.wantHas {
+				if !strings.Contains(sql, want) {
+					t.Errorf("expected %q in output, got:\n%s", want, sql)
+				}
+			}
+			for _, notWant := range tt.wantNotHas {
+				if strings.Contains(sql, notWant) {
+					t.Errorf("unexpected %q in output, got:\n%s", notWant, sql)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateMigration_MSSQL_ModifyColumn(t *testing.T) {
+	tests := []struct {
+		name    string
+		colDiff schema.ColumnDiff
+		wantHas []string
+	}{
+		{
+			name: "type change only",
+			colDiff: schema.ColumnDiff{
+				Column:       "description",
+				TypeMismatch: true,
+				DevType:      "NVARCHAR(MAX)",
+				ProdType:     "VARCHAR(255)",
+				DevNullable:  boolPtr(true),
+				ProdNullable: boolPtr(false),
+			},
+			wantHas: []string{
+				"ALTER TABLE [t] ALTER COLUMN [description] NVARCHAR(MAX) NULL;",
+			},
+		},
+		{
+			name: "nullable change only",
+			colDiff: schema.ColumnDiff{
+				Column:           "active",
+				NullableMismatch: true,
+				DevNullable:      boolPtr(false),
+				ProdNullable:     boolPtr(true),
+				DevType:          "BIT",
+			},
+			wantHas: []string{
+				"ALTER TABLE [t] ALTER COLUMN [active] BIT NOT NULL;",
+			},
+		},
+		{
+			name: "default change emits comment",
+			colDiff: schema.ColumnDiff{
+				Column:          "status",
+				DefaultMismatch: true,
+				DevDefault:      strPtr("'active'"),
+			},
+			wantHas: []string{
+				"-- MSSQL: to change DEFAULT on t.status",
+				"-- ALTER TABLE [t] ADD DEFAULT 'active' FOR [status];",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diff := schema.DiffResult{
+				Tables: []schema.TableDiff{
+					{
+						Name:            "t",
+						HasDifferences:  true,
+						ModifiedColumns: []schema.ColumnDiff{tt.colDiff},
+					},
+				},
+			}
+			sql, err := schema.GenerateMigration(diff, "mssql", nil)
+			if err != nil {
+				t.Fatalf("GenerateMigration error: %v", err)
+			}
+			for _, want := range tt.wantHas {
+				if !strings.Contains(sql, want) {
+					t.Errorf("expected %q in output, got:\n%s", want, sql)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateMigration_MSSQL_DropIndex(t *testing.T) {
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "products",
+				HasDifferences: true,
+				RemovedIndexes: []schema.Index{
+					{Name: "idx_products_sku", Columns: []string{"sku"}, IsUnique: false},
+					{Name: "uq_products_code", Columns: []string{"code"}, IsUnique: true},
+				},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mssql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration error: %v", err)
+	}
+
+	// MSSQL DROP INDEX requires table name: DROP INDEX idx ON table
+	if !strings.Contains(sql, "DROP INDEX [idx_products_sku] ON [products];") {
+		t.Errorf("expected DROP INDEX with table name, got:\n%s", sql)
+	}
+	if !strings.Contains(sql, "DROP INDEX [uq_products_code] ON [products];") {
+		t.Errorf("expected DROP INDEX for unique index, got:\n%s", sql)
+	}
+}
+
+func TestGenerateMigration_MSSQL_DropForeignKey(t *testing.T) {
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "orders",
+				HasDifferences: true,
+				RemovedForeignKeys: []schema.ForeignKey{
+					{
+						Name:              "fk_orders_customer",
+						Columns:           []string{"customer_id"},
+						ReferencedTable:   "customers",
+						ReferencedColumns: []string{"id"},
+					},
+				},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mssql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration error: %v", err)
+	}
+
+	// MSSQL uses DROP CONSTRAINT (not DROP FOREIGN KEY)
+	if !strings.Contains(sql, "ALTER TABLE [orders] DROP CONSTRAINT [fk_orders_customer];") {
+		t.Errorf("expected DROP CONSTRAINT syntax, got:\n%s", sql)
+	}
+	if strings.Contains(sql, "ALTER TABLE [orders] DROP FOREIGN KEY") {
+		t.Errorf("MSSQL should not use DROP FOREIGN KEY, got:\n%s", sql)
+	}
+}
+
+func TestGenerateMigration_MSSQL_ModifyPrimaryKey(t *testing.T) {
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "items",
+				HasDifferences: true,
+				PrimaryKeyDiff: &schema.PrimaryKeyDiff{
+					ProdColumns: []string{"id"},
+					DevColumns:  []string{"id", "tenant_id"},
+				},
+			},
+		},
+	}
+
+	cfg := &schema.MigrationOptions{AllowModifyPrimaryKey: true}
+	sql, err := schema.GenerateMigration(diff, "mssql", cfg)
+	if err != nil {
+		t.Fatalf("GenerateMigration error: %v", err)
+	}
+
+	// Drop uses PK_tablename convention
+	if !strings.Contains(sql, "ALTER TABLE [items] DROP CONSTRAINT PK_items;") {
+		t.Errorf("expected DROP CONSTRAINT PK_items, got:\n%s", sql)
+	}
+	// Add new PK
+	if !strings.Contains(sql, "ALTER TABLE [items] ADD PRIMARY KEY ([id], [tenant_id]);") {
+		t.Errorf("expected ADD PRIMARY KEY with new columns, got:\n%s", sql)
+	}
+	// Should include note about constraint name
+	if !strings.Contains(sql, "-- NOTE: Replace 'PK_tablename'") {
+		t.Errorf("expected placeholder note, got:\n%s", sql)
+	}
+}
+
+func TestGenerateCreateTable_MSSQL(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "sessions",
+				Columns: map[string]schema.Column{
+					"id":         {Name: "id", DataType: "UNIQUEIDENTIFIER", IsNullable: false},
+					"user_id":    {Name: "user_id", DataType: "INT", IsNullable: false},
+					"created_at": {Name: "created_at", DataType: "DATETIME2", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+				Indexes: map[string]schema.Index{
+					"idx_sessions_user": {Name: "idx_sessions_user", Columns: []string{"user_id"}, IsUnique: false},
+				},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "mssql", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration error: %v", err)
+	}
+
+	// MSSQL CREATE TABLE syntax
+	if !strings.Contains(sql, "CREATE TABLE [sessions]") {
+		t.Errorf("expected CREATE TABLE [sessions], got:\n%s", sql)
+	}
+	if !strings.Contains(sql, "[id] UNIQUEIDENTIFIER NOT NULL") {
+		t.Errorf("expected [id] column, got:\n%s", sql)
+	}
+	// No ENGINE=InnoDB for MSSQL
+	if strings.Contains(sql, "ENGINE=InnoDB") {
+		t.Errorf("MSSQL should not include ENGINE=InnoDB, got:\n%s", sql)
+	}
+	// Index creation uses square brackets
+	if !strings.Contains(sql, "CREATE INDEX [idx_sessions_user] ON [sessions] ([user_id])") {
+		t.Errorf("expected CREATE INDEX with square brackets, got:\n%s", sql)
+	}
+}
