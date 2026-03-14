@@ -1,0 +1,52 @@
+# Spins up two independent SQL Server 2022 instances — one for production data
+# and one for development data — to demonstrate MSSQL support in DeepDiff DB.
+#
+# Both containers must accept the EULA and use a strong SA password that meets
+# the SQL Server complexity requirements (upper + lower + digit + special, ≥ 8 chars).
+
+services:
+  mssql-prod:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "StrongP@ss1word!"
+      MSSQL_PID: "Express"
+    ports:
+      - "1433:1433"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'StrongP@ss1word!' -C -Q 'SELECT 1' || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - mssql-prod-data:/var/opt/mssql
+
+  mssql-dev:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "StrongP@ss1word!"
+      MSSQL_PID: "Express"
+    ports:
+      - "1434:1433"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'StrongP@ss1word!' -C -Q 'SELECT 1' || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - mssql-dev-data:/var/opt/mssql
+
+volumes:
+  mssql-prod-data:
+  mssql-dev-data:

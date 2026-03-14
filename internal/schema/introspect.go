@@ -126,6 +126,51 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 			}
 		}
 		log.Debug("loaded table and column metadata", "tables", len(s.Tables))
+	case "mssql":
+		log.Debug("querying MSSQL information_schema for columns and primary keys")
+		rows, err := db.QueryContext(ctx, `
+			SELECT
+				c.TABLE_NAME,
+				c.COLUMN_NAME,
+				CASE
+					WHEN c.CHARACTER_MAXIMUM_LENGTH IS NOT NULL
+						AND c.DATA_TYPE IN ('char','nchar','varchar','nvarchar','binary','varbinary')
+					THEN c.DATA_TYPE + '(' +
+						CASE WHEN c.CHARACTER_MAXIMUM_LENGTH = -1 THEN 'max'
+						     ELSE CAST(c.CHARACTER_MAXIMUM_LENGTH AS NVARCHAR(10))
+						END + ')'
+					WHEN c.NUMERIC_PRECISION IS NOT NULL AND c.NUMERIC_SCALE IS NOT NULL
+						AND c.DATA_TYPE IN ('decimal','numeric')
+					THEN c.DATA_TYPE + '(' + CAST(c.NUMERIC_PRECISION AS NVARCHAR(10))
+					     + ',' + CAST(c.NUMERIC_SCALE AS NVARCHAR(10)) + ')'
+					ELSE c.DATA_TYPE
+				END AS data_type,
+				c.IS_NULLABLE,
+				c.COLUMN_DEFAULT,
+				kcu.ORDINAL_POSITION AS pk_ordinal
+			FROM INFORMATION_SCHEMA.COLUMNS c
+			LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+				ON kcu.TABLE_SCHEMA = c.TABLE_SCHEMA
+				AND kcu.TABLE_NAME  = c.TABLE_NAME
+				AND kcu.COLUMN_NAME = c.COLUMN_NAME
+				AND EXISTS (
+					SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+					WHERE tc.TABLE_SCHEMA     = kcu.TABLE_SCHEMA
+					  AND tc.TABLE_NAME       = kcu.TABLE_NAME
+					  AND tc.CONSTRAINT_NAME  = kcu.CONSTRAINT_NAME
+					  AND tc.CONSTRAINT_TYPE  = 'PRIMARY KEY'
+				)
+			WHERE c.TABLE_SCHEMA = SCHEMA_NAME()
+			ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION
+		`)
+		if err != nil {
+			return nil, fmt.Errorf("mssql columns: %w", err)
+		}
+		defer rows.Close()
+		if err := scanColumns(rows, s, ignore); err != nil {
+			return nil, err
+		}
+		log.Debug("loaded table and column metadata", "tables", len(s.Tables))
 	default:
 		return nil, fmt.Errorf("schema load unsupported driver: %s", driver)
 	}
@@ -338,6 +383,8 @@ func loadIndexes(ctx context.Context, db *sql.DB, driver string, database string
 		return loadPostgreSQLIndexes(ctx, db, s)
 	case "sqlite":
 		return loadSQLiteIndexes(ctx, db, s)
+	case "mssql":
+		return loadMSSQLIndexes(ctx, db, s)
 	default:
 		return fmt.Errorf("index introspection unsupported for driver: %s", driver)
 	}
@@ -578,6 +625,8 @@ func loadForeignKeys(ctx context.Context, db *sql.DB, driver string, database st
 		return loadPostgreSQLForeignKeys(ctx, db, s)
 	case "sqlite":
 		return loadSQLiteForeignKeys(ctx, db, s)
+	case "mssql":
+		return loadMSSQLForeignKeys(ctx, db, s)
 	default:
 		return fmt.Errorf("foreign key introspection unsupported for driver: %s", driver)
 	}
@@ -852,4 +901,166 @@ func containsString(slice []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// loadMSSQLIndexes queries sys.indexes and sys.index_columns to load non-primary-key
+// index metadata for all tables in the schema.
+func loadMSSQLIndexes(ctx context.Context, db *sql.DB, s *Schema) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT
+			t.name          AS table_name,
+			i.name          AS index_name,
+			c.name          AS column_name,
+			ic.key_ordinal  AS seq_in_index,
+			CAST(i.is_unique AS INT) AS is_unique
+		FROM sys.indexes i
+		JOIN sys.tables  t  ON t.object_id = i.object_id
+		JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+		JOIN sys.columns c  ON c.object_id = i.object_id AND c.column_id = ic.column_id
+		WHERE i.is_primary_key = 0
+		  AND i.type_desc <> 'HEAP'
+		  AND SCHEMA_NAME(t.schema_id) = SCHEMA_NAME()
+		  AND ic.is_included_column = 0
+		ORDER BY t.name, i.name, ic.key_ordinal
+	`)
+	if err != nil {
+		return fmt.Errorf("mssql indexes: %w", err)
+	}
+	defer rows.Close()
+
+	type indexEntry struct {
+		tableName  string
+		indexName  string
+		columnName string
+		seqInIndex int
+		isUnique   int
+	}
+	var entries []indexEntry
+	for rows.Next() {
+		var e indexEntry
+		if err := rows.Scan(&e.tableName, &e.indexName, &e.columnName, &e.seqInIndex, &e.isUnique); err != nil {
+			return fmt.Errorf("scan mssql index: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	indexMap := make(map[string]map[string]*Index)
+	for _, e := range entries {
+		if _, ok := s.Tables[e.tableName]; !ok {
+			continue
+		}
+		if indexMap[e.tableName] == nil {
+			indexMap[e.tableName] = make(map[string]*Index)
+		}
+		if indexMap[e.tableName][e.indexName] == nil {
+			indexMap[e.tableName][e.indexName] = &Index{
+				Name:     e.indexName,
+				Columns:  []string{},
+				IsUnique: e.isUnique == 1,
+			}
+		}
+		indexMap[e.tableName][e.indexName].Columns = append(indexMap[e.tableName][e.indexName].Columns, e.columnName)
+	}
+
+	for tableName, indexes := range indexMap {
+		t := s.Tables[tableName]
+		if t.Indexes == nil {
+			t.Indexes = make(map[string]Index)
+		}
+		for indexName, idx := range indexes {
+			t.Indexes[indexName] = *idx
+		}
+		s.Tables[tableName] = t
+	}
+	return nil
+}
+
+// loadMSSQLForeignKeys queries INFORMATION_SCHEMA views to load foreign key metadata
+// for all tables in the schema.
+func loadMSSQLForeignKeys(ctx context.Context, db *sql.DB, s *Schema) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT
+			fk_cols.TABLE_NAME        AS table_name,
+			rc.CONSTRAINT_NAME        AS constraint_name,
+			fk_cols.COLUMN_NAME       AS column_name,
+			fk_cols.ORDINAL_POSITION  AS ordinal_position,
+			pk_cols.TABLE_NAME        AS referenced_table_name,
+			pk_cols.COLUMN_NAME       AS referenced_column_name,
+			rc.DELETE_RULE            AS delete_rule,
+			rc.UPDATE_RULE            AS update_rule
+		FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+		JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE fk_cols
+			ON fk_cols.CONSTRAINT_NAME   = rc.CONSTRAINT_NAME
+			AND fk_cols.TABLE_SCHEMA     = rc.CONSTRAINT_SCHEMA
+		JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE pk_cols
+			ON pk_cols.CONSTRAINT_NAME   = rc.UNIQUE_CONSTRAINT_NAME
+			AND pk_cols.TABLE_SCHEMA     = rc.UNIQUE_CONSTRAINT_SCHEMA
+			AND pk_cols.ORDINAL_POSITION = fk_cols.ORDINAL_POSITION
+		WHERE rc.CONSTRAINT_SCHEMA = SCHEMA_NAME()
+		ORDER BY fk_cols.TABLE_NAME, rc.CONSTRAINT_NAME, fk_cols.ORDINAL_POSITION
+	`)
+	if err != nil {
+		return fmt.Errorf("mssql foreign keys: %w", err)
+	}
+	defer rows.Close()
+
+	type fkEntry struct {
+		tableName        string
+		constraintName   string
+		columnName       string
+		ordinalPosition  int
+		referencedTable  string
+		referencedColumn string
+		deleteRule       string
+		updateRule       string
+	}
+	var entries []fkEntry
+	for rows.Next() {
+		var e fkEntry
+		if err := rows.Scan(&e.tableName, &e.constraintName, &e.columnName, &e.ordinalPosition,
+			&e.referencedTable, &e.referencedColumn, &e.deleteRule, &e.updateRule); err != nil {
+			return fmt.Errorf("scan mssql foreign key: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	fkMap := make(map[string]map[string]*ForeignKey)
+	for _, e := range entries {
+		if _, ok := s.Tables[e.tableName]; !ok {
+			continue
+		}
+		if fkMap[e.tableName] == nil {
+			fkMap[e.tableName] = make(map[string]*ForeignKey)
+		}
+		if fkMap[e.tableName][e.constraintName] == nil {
+			fkMap[e.tableName][e.constraintName] = &ForeignKey{
+				Name:              e.constraintName,
+				Columns:           []string{},
+				ReferencedTable:   e.referencedTable,
+				ReferencedColumns: []string{},
+				OnDelete:          e.deleteRule,
+				OnUpdate:          e.updateRule,
+			}
+		}
+		fkMap[e.tableName][e.constraintName].Columns = append(fkMap[e.tableName][e.constraintName].Columns, e.columnName)
+		fkMap[e.tableName][e.constraintName].ReferencedColumns = append(fkMap[e.tableName][e.constraintName].ReferencedColumns, e.referencedColumn)
+	}
+
+	for tableName, fks := range fkMap {
+		t := s.Tables[tableName]
+		if t.ForeignKeys == nil {
+			t.ForeignKeys = make(map[string]ForeignKey)
+		}
+		for fkName, fk := range fks {
+			t.ForeignKeys[fkName] = *fk
+		}
+		s.Tables[tableName] = t
+	}
+	return nil
 }

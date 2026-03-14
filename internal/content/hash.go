@@ -373,15 +373,16 @@ func buildSelect(driver, table string, cols []string, pk []string) string {
 }
 
 // quoteIdent returns the SQL identifier quoted according to the target driver.
-// For "mysql" it wraps the identifier in backticks (`ident`); for "postgres" and
-// "postgresql" it wraps the identifier in double quotes ("ident"); for any other
-// driver it returns the identifier unchanged.
+// MySQL uses backticks, PostgreSQL and SQLite use double-quotes, MSSQL uses square brackets.
+// Unknown drivers are returned unquoted.
 func quoteIdent(driver, ident string) string {
 	switch driver {
 	case "mysql":
 		return "`" + ident + "`"
 	case "postgres", "postgresql":
 		return `"` + ident + `"`
+	case "mssql":
+		return "[" + ident + "]"
 	default:
 		return ident
 	}

@@ -1,0 +1,49 @@
+run:
+  # golangci-lint is compiled from source via install-mode: goinstall in CI
+  # using Go 1.25, so it can type-check modules that declare go 1.25.x.
+  timeout: 5m
+
+linters:
+  enable-all: false
+  # Use golangci-lint's default linter set; explicitly disable linters that
+  # produce excessive noise or require Go 1.25-specific analysis.
+  disable:
+    - depguard
+    - exhaustruct
+    - gochecknoglobals
+    - nlreturn
+    - wsl
+    - paralleltest
+    - testpackage
+    - godox
+
+linters-settings:
+  errcheck:
+    # Type assertions in this codebase use the &holder SQL scan pattern where
+    # the assertion is guaranteed to succeed. Enabling this produces false
+    # positives on every sql.Rows.Scan destination dereference.
+    check-type-assertions: false
+    check-blank: false
+  govet:
+    enable-all: false
+    # shadow: disabled — flags every `if err := ...; err != nil` block which is
+    # idiomatic Go. Produces 40+ false positives across the codebase with zero
+    # real bugs caught.
+  gofmt:
+    simplify: true
+
+issues:
+  exclude-rules:
+    # Test files get relaxed rules
+    - path: "_test\\.go"
+      linters:
+        - errcheck
+        - gosec
+        - gocritic
+    # Seed/tooling binaries get relaxed rules
+    - path: "cmd/"
+      linters:
+        - forbidigo
+  # Don't fail on warnings from generated or vendor code
+  exclude-dirs:
+    - vendor

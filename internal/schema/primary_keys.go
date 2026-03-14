@@ -58,6 +58,18 @@ func CheckPrimaryKeys(ctx context.Context, db *sql.DB, driver string, database s
 			WHERE type='table'
 			  AND name NOT LIKE 'sqlite_%'
 		`)
+	case "mssql":
+		// Return all user tables in the current schema that lack a primary key constraint.
+		rows, err = db.QueryContext(ctx, `
+			SELECT t.name AS table_name
+			FROM sys.tables t
+			WHERE SCHEMA_NAME(t.schema_id) = SCHEMA_NAME()
+			  AND NOT EXISTS (
+			    SELECT 1 FROM sys.key_constraints kc
+			    WHERE kc.parent_object_id = t.object_id
+			      AND kc.type = 'PK'
+			  )
+		`)
 	default:
 		return nil, fmt.Errorf("pk check unsupported for driver: %s", driver)
 	}

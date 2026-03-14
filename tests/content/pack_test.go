@@ -1245,3 +1245,110 @@ func TestGeneratePack_BuildAlterTableSQLite(t *testing.T) {
 	}
 }
 
+
+func TestGeneratePack_MSSQLDriver(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	// Use SQLite as the backing store — pack.go reads data via the DB handle
+	// regardless of the driver label. The driver label only affects SQL generation
+	// (quoting, transaction syntax, FK control).
+	devDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dev database: %v", err)
+	}
+	defer devDB.Close()
+
+	_, err = devDB.ExecContext(ctx, `
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			email TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+	_, err = devDB.ExecContext(ctx, `
+		INSERT INTO users (id, name, email) VALUES
+		(1, 'Alice', 'alice@example.com'),
+		(2, 'Bob', 'bob@example.com')
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert data: %v", err)
+	}
+
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"users": {
+				Name: "users",
+				Columns: map[string]schema.Column{
+					"id":    {Name: "id", DataType: "integer", IsNullable: false},
+					"name":  {Name: "name", DataType: "text", IsNullable: false},
+					"email": {Name: "email", DataType: "text", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+	prodSchema := devSchema
+
+	diff := content.DataDiff{
+		Tables: []content.TableDataDiff{
+			{
+				Table: "users",
+				Added: []string{"1", "2"},
+			},
+		},
+	}
+
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+	packPath, err := content.GeneratePack(ctx, "mssql", devDB, "", prodSchema, devSchema, schemaDiff, diff, nil, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack with mssql driver failed: %v", err)
+	}
+
+	packContent, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatalf("failed to read pack file: %v", err)
+	}
+	sqlText := string(packContent)
+
+	// MSSQL uses BEGIN TRANSACTION / COMMIT TRANSACTION (not BEGIN / COMMIT)
+	if !strings.Contains(sqlText, "BEGIN TRANSACTION;") {
+		t.Errorf("MSSQL pack should use BEGIN TRANSACTION;, got:\n%s", sqlText)
+	}
+	if !strings.Contains(sqlText, "COMMIT TRANSACTION;") {
+		t.Errorf("MSSQL pack should use COMMIT TRANSACTION;, got:\n%s", sqlText)
+	}
+	if strings.Contains(sqlText, "\nBEGIN;\n") {
+		t.Errorf("MSSQL pack must not use plain BEGIN;, got:\n%s", sqlText)
+	}
+
+	// MSSQL FK control uses sp_msforeachtable
+	if !strings.Contains(sqlText, "sp_msforeachtable") {
+		t.Errorf("MSSQL pack should use sp_msforeachtable for FK control, got:\n%s", sqlText)
+	}
+	if !strings.Contains(sqlText, "NOCHECK CONSTRAINT ALL") {
+		t.Errorf("MSSQL pack should disable constraints with NOCHECK CONSTRAINT ALL, got:\n%s", sqlText)
+	}
+	if !strings.Contains(sqlText, "WITH CHECK CHECK CONSTRAINT ALL") {
+		t.Errorf("MSSQL pack should re-enable constraints with WITH CHECK CHECK CONSTRAINT ALL, got:\n%s", sqlText)
+	}
+
+	// Must not contain MySQL/PostgreSQL FK syntax
+	if strings.Contains(sqlText, "FOREIGN_KEY_CHECKS") {
+		t.Errorf("MSSQL pack should not contain FOREIGN_KEY_CHECKS, got:\n%s", sqlText)
+	}
+
+	// MSSQL uses square-bracket quoting for table names
+	if !strings.Contains(sqlText, "[users]") {
+		t.Errorf("MSSQL pack should use square-bracket quoting, got:\n%s", sqlText)
+	}
+
+	// Verify INSERT statements are present
+	if !strings.Contains(sqlText, "INSERT INTO") {
+		t.Errorf("pack should contain INSERT statements, got:\n%s", sqlText)
+	}
+}
+

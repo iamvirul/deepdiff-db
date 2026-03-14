@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.23', '1.24']
+        go-version: ['1.24', '1.25']
     
     steps:
       - name: Checkout code
@@ -41,7 +41,7 @@ jobs:
         continue-on-error: false
 
       - name: Merge coverage files
-        if: matrix.go-version == '1.24'
+        if: matrix.go-version == '1.25'
         run: |
           # Merge coverage files using go tool cover
           echo "mode: atomic" > coverage.txt
@@ -49,7 +49,7 @@ jobs:
         continue-on-error: false
 
       - name: Verify coverage file exists
-        if: matrix.go-version == '1.24'
+        if: matrix.go-version == '1.25'
         run: |
           if [ ! -f coverage.txt ]; then
             echo "Error: coverage.txt not found"
@@ -59,7 +59,7 @@ jobs:
           head -5 coverage.txt
 
       - name: Upload coverage artifact for merging
-        if: matrix.go-version == '1.24'
+        if: matrix.go-version == '1.25'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-unit-${{ github.run_id }}
@@ -78,7 +78,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache-dependency-path: go.sum
 
       - name: Verify dependencies
@@ -89,7 +89,7 @@ jobs:
 
       - name: Run testcontainers integration tests
         run: |
-          go test -v -timeout=20m -coverprofile=coverage-integration.txt -covermode=atomic -coverpkg=./internal/...,./pkg/... ./tests -run 'TestIntegration_MySQL_FullWorkflow|TestIntegration_PostgreSQL_FullWorkflow|TestIntegration_AllReportsGenerated'
+          go test -v -timeout=30m -coverprofile=coverage-integration.txt -covermode=atomic -coverpkg=./internal/...,./pkg/... ./tests -run 'TestIntegration_MySQL_FullWorkflow|TestIntegration_PostgreSQL_FullWorkflow|TestIntegration_MSSQL_FullWorkflow|TestIntegration_AllReportsGenerated'
         continue-on-error: false
 
       - name: Verify integration coverage file exists
@@ -130,7 +130,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache-dependency-path: go.sum
 
       - name: Download unit test coverage artifact
@@ -173,13 +173,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache-dependency-path: go.sum
 
       - name: Run linter
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.64.8
+          install-mode: goinstall
           args: --timeout=5m --out-format=colored-line-number
 
   build:
@@ -194,7 +195,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache-dependency-path: go.sum
 
       - name: Download dependencies

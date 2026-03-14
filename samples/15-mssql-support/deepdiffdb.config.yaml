@@ -1,0 +1,37 @@
+prod:
+  driver: "mssql"
+  host: "127.0.0.1"
+  port: 1433
+  user: "sa"
+  password: "StrongP@ss1word!"
+  database: "prod_db"
+
+dev:
+  driver: "mssql"
+  host: "127.0.0.1"
+  port: 1434
+  user: "sa"
+  password: "StrongP@ss1word!"
+  database: "dev_db"
+
+ignore:
+  tables: []
+  columns:
+    # Exclude timestamp columns so that minor clock drift between containers
+    # does not generate false-positive content differences.
+    - "*.ordered_at"
+    - "*.created_at"
+
+output:
+  dir: "./diff-output"
+
+migration:
+  allow_drop_column: false       # require explicit opt-in for destructive ops
+  allow_drop_table: false
+  allow_drop_index: false
+  allow_drop_foreign_key: false
+  allow_modify_primary_key: false
+  confirm_destructive: false
+
+conflict_resolution:
+  default_strategy: "manual"

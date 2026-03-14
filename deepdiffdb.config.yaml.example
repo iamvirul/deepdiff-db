@@ -1,5 +1,5 @@
 prod:
-  driver: "postgres"
+  driver: "postgres"       # Supported: mysql | postgres | postgresql | sqlite | mssql
   host: "127.0.0.1"
   port: 5432
   user: "postgres"
@@ -13,6 +13,27 @@ dev:
   user: "postgres"
   password: "password"
   database: "dev_db"
+
+# ─────────────────────────────────────────────────────────
+# Microsoft SQL Server example (driver: mssql)
+# Requires SQL Server 2017+ (or Azure SQL Database)
+# Port is optional — defaults to 1433 when omitted.
+# ─────────────────────────────────────────────────────────
+# prod:
+#   driver: "mssql"
+#   host: "127.0.0.1"
+#   port: 1433           # optional; omit to use default 1433
+#   user: "sa"
+#   password: "StrongP@ss1word!"
+#   database: "prod_db"
+#
+# dev:
+#   driver: "mssql"
+#   host: "127.0.0.1"
+#   port: 1434
+#   user: "sa"
+#   password: "StrongP@ss1word!"
+#   database: "dev_db"
 
 ignore:
   tables:

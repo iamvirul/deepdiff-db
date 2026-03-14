@@ -88,12 +88,20 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 	
 	// Initialize statements if empty (new run)
 	if len(stmts) == 0 {
-		stmts = append(stmts, "BEGIN;")
+		beginStmt := "BEGIN;"
+		if prodDriver == "mssql" {
+			beginStmt = "BEGIN TRANSACTION;"
+		}
+		stmts = append(stmts, beginStmt)
 
-		// Disable foreign key checks for MySQL to allow out-of-order operations
-		if prodDriver == "mysql" {
+		// Disable foreign key checks to allow out-of-order DML operations.
+		switch prodDriver {
+		case "mysql":
 			stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 0;")
 			log.Debug("disabled foreign key checks for MySQL")
+		case "mssql":
+			stmts = append(stmts, "EXEC sp_msforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';")
+			log.Debug("disabled foreign key constraints for MSSQL")
 		}
 	}
 
@@ -283,12 +291,19 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 		stmts = append(stmts, updateStmts...)
 	}
 
-	// Re-enable foreign key checks for MySQL
-	if prodDriver == "mysql" {
+	// Re-enable foreign key checks.
+	switch prodDriver {
+	case "mysql":
 		stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 1;")
+	case "mssql":
+		stmts = append(stmts, "EXEC sp_msforeachtable 'ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL';")
 	}
 
-	stmts = append(stmts, "COMMIT;")
+	commitStmt := "COMMIT;"
+	if prodDriver == "mssql" {
+		commitStmt = "COMMIT TRANSACTION;"
+	}
+	stmts = append(stmts, commitStmt)
 
 	packPath := filepath.Join(outDir, "migration_pack.sql")
 	if err := writeFile(packPath, strings.Join(stmts, "\n")); err != nil {
@@ -563,6 +578,37 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 		}
 		return "", fmt.Errorf("column %s not found in table %s", columnName, tableName)
 		
+	case "mssql":
+		// Query sys.columns joined with sys.types to reconstruct the full type definition,
+		// including length (max_length), precision, and scale.
+		var fullType string
+		err := devDB.QueryRowContext(ctx, `
+			SELECT
+				CASE
+					WHEN t.name IN ('char','nchar','varchar','nvarchar','binary','varbinary') THEN
+						t.name + '(' +
+						CASE WHEN c.max_length = -1 THEN 'max'
+						     WHEN t.name IN ('nchar','nvarchar') THEN CAST(c.max_length / 2 AS NVARCHAR(10))
+						     ELSE CAST(c.max_length AS NVARCHAR(10))
+						END + ')'
+					WHEN t.name IN ('decimal','numeric') THEN
+						t.name + '(' + CAST(c.precision AS NVARCHAR(10)) + ',' + CAST(c.scale AS NVARCHAR(10)) + ')'
+					WHEN t.name IN ('datetime2','datetimeoffset','time') THEN
+						t.name + '(' + CAST(c.scale AS NVARCHAR(10)) + ')'
+					ELSE t.name
+				END AS full_type
+			FROM sys.columns c
+			JOIN sys.types t ON t.user_type_id = c.user_type_id
+			JOIN sys.tables tbl ON tbl.object_id = c.object_id
+			WHERE tbl.name = @p1
+			  AND c.name   = @p2
+			  AND SCHEMA_NAME(tbl.schema_id) = SCHEMA_NAME()
+		`, tableName, columnName).Scan(&fullType)
+		if err != nil {
+			return "", fmt.Errorf("mssql column type for %s.%s: %w", tableName, columnName, err)
+		}
+		return fullType, nil
+
 	default:
 		return "", fmt.Errorf("unsupported driver: %s", driver)
 	}
@@ -815,6 +861,9 @@ func buildAlterTableAddColumn(driver, tableName, columnName, fullType string, is
 	case "postgres", "postgresql":
 		// PostgreSQL: ALTER TABLE table ADD COLUMN col TYPE [NOT NULL]
 		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s;", tableNameQuoted, colDef)
+	case "mssql":
+		// MSSQL: ALTER TABLE table ADD col TYPE [NOT NULL] — no COLUMN keyword.
+		return fmt.Sprintf("ALTER TABLE %s ADD %s;", tableNameQuoted, colDef)
 	case "sqlite":
 		// SQLite: ALTER TABLE table ADD COLUMN col TYPE [NOT NULL]
 		// Note: SQLite has limited ALTER TABLE support, but ADD COLUMN is supported

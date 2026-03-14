@@ -73,7 +73,7 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 
 	// Validate driver
 	switch driver {
-	case "mysql", "postgres", "postgresql", "sqlite":
+	case "mysql", "postgres", "postgresql", "sqlite", "mssql":
 	default:
 		return "", fmt.Errorf("unsupported driver: %s", driver)
 	}
@@ -319,6 +319,15 @@ func generateAddColumn(tableName string, col Column, driver string) (string, err
 		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s %s%s;", quotedTable, quotedCol, col.DataType, nullClause, defaultClause), nil
 	case "postgres", "postgresql":
 		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s %s%s;", quotedTable, quotedCol, col.DataType, nullClause, defaultClause), nil
+	case "mssql":
+		// MSSQL uses ADD (no COLUMN keyword) and supports NOT NULL with a default value.
+		// If NOT NULL without a default, adding requires a default or a two-step migration.
+		if !col.IsNullable && col.DefaultValue == nil {
+			return fmt.Sprintf(
+				"-- ALTER TABLE %s ADD %s %s NOT NULL; -- MSSQL: NOT NULL column requires DEFAULT or a two-step migration",
+				quotedTable, quotedCol, col.DataType), nil
+		}
+		return fmt.Sprintf("ALTER TABLE %s ADD %s %s %s%s;", quotedTable, quotedCol, col.DataType, nullClause, defaultClause), nil
 	case "sqlite":
 		// SQLite doesn't support NOT NULL in ADD COLUMN without a default value
 		if col.IsNullable {
@@ -342,6 +351,8 @@ func generateDropColumn(tableName string, col Column, driver string) (string, er
 	case "mysql":
 		return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s;", quotedTable, quotedCol), nil
 	case "postgres", "postgresql":
+		return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s;", quotedTable, quotedCol), nil
+	case "mssql":
 		return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s;", quotedTable, quotedCol), nil
 	case "sqlite":
 		return fmt.Sprintf("-- SQLite does not support DROP COLUMN directly. Manual migration required for table %s column %s", tableName, col.Name), nil
@@ -427,6 +438,39 @@ func generateModifyColumn(tableName string, colDiff ColumnDiff, driver string) (
 
 		return strings.Join(stmts, "\n"), nil
 
+	case "mssql":
+		// MSSQL uses ALTER COLUMN for type and nullable changes.
+		// DEFAULT changes require a separate constraint approach; emit a comment for those.
+		var stmts []string
+
+		if colDiff.TypeMismatch || colDiff.NullableMismatch {
+			dataType := colDiff.DevType
+			if dataType == "" {
+				dataType = colDiff.ProdType
+			}
+			var nullable *bool
+			if colDiff.DevNullable != nil {
+				nullable = colDiff.DevNullable
+			} else if colDiff.ProdNullable != nil {
+				nullable = colDiff.ProdNullable
+			}
+			nullClause := "NOT NULL"
+			if nullable != nil && *nullable {
+				nullClause = "NULL"
+			}
+			stmts = append(stmts, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s %s %s;", quotedTable, quotedCol, dataType, nullClause))
+		}
+
+		if colDiff.DefaultMismatch {
+			// MSSQL requires DROP CONSTRAINT + ADD CONSTRAINT to change a DEFAULT.
+			stmts = append(stmts, fmt.Sprintf("-- MSSQL: to change DEFAULT on %s.%s, drop the existing default constraint then add a new one.", tableName, colDiff.Column))
+			if colDiff.DevDefault != nil {
+				stmts = append(stmts, fmt.Sprintf("-- ALTER TABLE %s ADD DEFAULT %s FOR %s;", quotedTable, *colDiff.DevDefault, quotedCol))
+			}
+		}
+
+		return strings.Join(stmts, "\n"), nil
+
 	case "sqlite":
 		return fmt.Sprintf("-- SQLite does not support MODIFY COLUMN. Manual migration required for table %s column %s", tableName, colDiff.Column), nil
 
@@ -451,6 +495,12 @@ func quoteIdentifier(identifier string, driver string) string {
 		quoteChar = "\""
 		escapeQuote = func(s string) string {
 			return strings.ReplaceAll(s, "\"", "\"\"")
+		}
+	case "mssql":
+		// MSSQL uses square-bracket quoting; a literal ] inside an identifier is escaped as ]].
+		quoteChar = ""
+		escapeQuote = func(s string) string {
+			return "[" + strings.ReplaceAll(s, "]", "]]") + "]"
 		}
 	default:
 		// Unknown driver - return identifier as-is
@@ -497,6 +547,10 @@ func generateDropIndex(tableName string, idx Index, driver string) string {
 
 	switch driver {
 	case "mysql":
+		quotedTable := quoteIdentifier(tableName, driver)
+		return fmt.Sprintf("DROP INDEX %s ON %s;", quotedIndex, quotedTable)
+	case "mssql":
+		// MSSQL requires the table name: DROP INDEX index ON table
 		quotedTable := quoteIdentifier(tableName, driver)
 		return fmt.Sprintf("DROP INDEX %s ON %s;", quotedIndex, quotedTable)
 	case "postgres", "postgresql", "sqlite":
@@ -656,6 +710,9 @@ func generateDropForeignKey(tableName string, fk ForeignKey, driver string) stri
 		return fmt.Sprintf("ALTER TABLE %s DROP FOREIGN KEY %s;", quotedTable, quotedFK)
 	case "postgres", "postgresql":
 		return fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT %s;", quotedTable, quotedFK)
+	case "mssql":
+		// MSSQL uses DROP CONSTRAINT (same as PostgreSQL) for foreign keys.
+		return fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT %s;", quotedTable, quotedFK)
 	case "sqlite":
 		return fmt.Sprintf("-- SQLite limitation: Cannot drop foreign key %s. Table recreation required.", fk.Name)
 	default:
@@ -711,6 +768,27 @@ func generateModifyPrimaryKey(tableName string, pkDiff *PrimaryKeyDiff, driver s
 			stmts = append(stmts, fmt.Sprintf("-- Current primary key: (%s)", strings.Join(pkDiff.ProdColumns, ", ")))
 			stmts = append(stmts, fmt.Sprintf("-- New primary key: (%s)", strings.Join(pkDiff.DevColumns, ", ")))
 			stmts = append(stmts, "-- NOTE: Replace 'tablename_pkey' with actual constraint name if different")
+			stmts = append(stmts, dropStmt)
+		}
+		if len(pkDiff.DevColumns) > 0 {
+			stmts = append(stmts, addStmt)
+		}
+
+	case "mssql":
+		// MSSQL: DROP CONSTRAINT pk_name, then ADD PRIMARY KEY.
+		// We use PK_tablename as the conventional constraint name placeholder.
+		dropStmt := fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT PK_%s;", quotedTable, tableName)
+		addStmt := fmt.Sprintf("ALTER TABLE %s ADD PRIMARY KEY (%s);", quotedTable, newColList)
+
+		if !allowModify {
+			dropStmt = "-- " + dropStmt
+			addStmt = "-- " + addStmt
+		}
+
+		if len(pkDiff.ProdColumns) > 0 {
+			stmts = append(stmts, fmt.Sprintf("-- Current primary key: (%s)", strings.Join(pkDiff.ProdColumns, ", ")))
+			stmts = append(stmts, fmt.Sprintf("-- New primary key: (%s)", strings.Join(pkDiff.DevColumns, ", ")))
+			stmts = append(stmts, "-- NOTE: Replace 'PK_tablename' with the actual constraint name if different")
 			stmts = append(stmts, dropStmt)
 		}
 		if len(pkDiff.DevColumns) > 0 {
