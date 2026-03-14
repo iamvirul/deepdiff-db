@@ -1,4 +1,4 @@
-.PHONY: up down seed diff diff-schema diff-content gen-pack clean help wait-healthy
+.PHONY: up down seed diff gen-pack clean help wait-healthy
 
 DEEPDIFFDB ?= deepdiffdb
 CONFIG     := deepdiffdb.config.yaml
@@ -18,22 +18,16 @@ wait-healthy: ## Block until both containers pass their health checks
 	@echo "Both containers are healthy."
 
 seed: up ## Initialise prod and dev databases (drops and recreates tables)
-	docker compose exec -T mssql-prod /opt/mssql-tools18/bin/sqlcmd \
-	    -S localhost -U sa -P 'StrongP@ss1word!' -C \
-	    -i /dev/stdin < init-scripts/01-prod-schema.sql
-	docker compose exec -T mssql-dev /opt/mssql-tools18/bin/sqlcmd \
-	    -S localhost -U sa -P 'StrongP@ss1word!' -C \
-	    -i /dev/stdin < init-scripts/02-dev-schema.sql
+	docker cp init-scripts/01-prod-schema.sql $$(docker compose ps -q mssql-prod):/tmp/01-prod-schema.sql
+	docker exec $$(docker compose ps -q mssql-prod) bash -c \
+	    '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${SA_PASSWORD}" -C -i /tmp/01-prod-schema.sql'
+	docker cp init-scripts/02-dev-schema.sql $$(docker compose ps -q mssql-dev):/tmp/02-dev-schema.sql
+	docker exec $$(docker compose ps -q mssql-dev) bash -c \
+	    '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${SA_PASSWORD}" -C -i /tmp/02-dev-schema.sql'
 	@echo "Databases seeded."
 
 diff: ## Run full diff (schema + content)
 	$(DEEPDIFFDB) diff --config $(CONFIG)
-
-diff-schema: ## Run schema-only diff
-	$(DEEPDIFFDB) diff --config $(CONFIG) --skip-content
-
-diff-content: ## Run content-only diff
-	$(DEEPDIFFDB) diff --config $(CONFIG) --skip-schema
 
 gen-pack: ## Generate a migration pack
 	$(DEEPDIFFDB) gen-pack --config $(CONFIG)

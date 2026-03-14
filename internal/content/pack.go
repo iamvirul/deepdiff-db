@@ -88,7 +88,11 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 	
 	// Initialize statements if empty (new run)
 	if len(stmts) == 0 {
-		stmts = append(stmts, "BEGIN;")
+		beginStmt := "BEGIN;"
+		if prodDriver == "mssql" {
+			beginStmt = "BEGIN TRANSACTION;"
+		}
+		stmts = append(stmts, beginStmt)
 
 		// Disable foreign key checks to allow out-of-order DML operations.
 		switch prodDriver {
@@ -295,7 +299,11 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 		stmts = append(stmts, "EXEC sp_msforeachtable 'ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL';")
 	}
 
-	stmts = append(stmts, "COMMIT;")
+	commitStmt := "COMMIT;"
+	if prodDriver == "mssql" {
+		commitStmt = "COMMIT TRANSACTION;"
+	}
+	stmts = append(stmts, commitStmt)
 
 	packPath := filepath.Join(outDir, "migration_pack.sql")
 	if err := writeFile(packPath, strings.Join(stmts, "\n")); err != nil {
