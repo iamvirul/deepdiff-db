@@ -8,7 +8,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v0.7
+## Current Status: v0.8
 
 **Last Release:** 2026-03-14
 
@@ -16,7 +16,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 - Schema drift detection and standalone schema migration (`schema-migrate`)
 - Row-level data comparison with SHA-256 hashing
 - Migration pack generation and transactional apply mode
-- MySQL, PostgreSQL, and SQLite support
+- MySQL, PostgreSQL, SQLite, and **Microsoft SQL Server** support
 - Conflict detection with `ours`/`theirs`/`manual` resolution strategies
 - Interactive `resolve-conflicts` command with `--auto` and `--resume` flags
 - Per-table conflict resolution strategies with `resolutions.json` persistence
@@ -119,17 +119,18 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### v0.8: MSSQL Support
-**Target Date:** Next Saturday
+### ~~v0.8: MSSQL Support~~ ✅ Released 2026-03-14
 
-**Features:**
-- Microsoft SQL Server driver support
-- MSSQL-specific schema introspection
-- MSSQL-specific SQL generation
-- Transaction handling for MSSQL
-- Testing with MSSQL 2019+ versions
+**Features delivered:**
+- Microsoft SQL Server driver (`github.com/microsoft/go-mssqldb`)
+- Schema introspection via `INFORMATION_SCHEMA` + `sys.*` catalog views
+- MSSQL-compatible SQL generation (square-bracket quoting, `ALTER COLUMN`, `DROP INDEX … ON …`)
+- FK control via `sp_msforeachtable` in pack application
+- `OFFSET/FETCH` pagination (no `LIMIT`)
+- Integration tests with SQL Server 2022 (testcontainers)
+- Sample 15: MSSQL Support
 
-**Impact:** Expands database support to enterprise SQL Server users
+**Impact:** Enterprise SQL Server users can now use DeepDiff DB in production
 
 ---
 
@@ -213,10 +214,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 - ~~HTML Report Viewer~~ (v0.5)
 - ~~Enhanced Error Handling & Logging~~ (v0.6)
 - ~~Streaming Support for Large Datasets~~ (v0.7)
+- ~~MSSQL Support~~ (v0.8)
 - Documentation & Production Readiness
-
-### Medium Priority (Should Have)
-- MSSQL Support
 
 ### Low Priority (Nice to Have)
 - Oracle Support (can be post-v1.0)

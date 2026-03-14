@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8] - 2026-03-14
+
+### Added
+- **Microsoft SQL Server Support** (issue #13)
+  - New driver: `driver: "mssql"` in `deepdiffdb.config.yaml`; maps to `github.com/microsoft/go-mssqldb` (`sqlserver://` DSN)
+  - Schema introspection via `INFORMATION_SCHEMA.COLUMNS`, `sys.indexes`, `sys.index_columns`, `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`, and `sys.key_constraints`
+  - Square-bracket identifier quoting: `[table]`, `[column]`, with `]]` escaping for literal `]`
+  - `OFFSET 0 ROWS FETCH NEXT n ROWS ONLY` pagination (MSSQL has no `LIMIT` clause)
+  - MSSQL-compatible `ALTER TABLE` generation: `ADD` (no `COLUMN` keyword), `ALTER COLUMN`, `DROP CONSTRAINT`, `DROP INDEX … ON …`
+  - FK control during pack application via `sp_msforeachtable`: `NOCHECK CONSTRAINT ALL` / `WITH CHECK CHECK CONSTRAINT ALL`
+  - Full type reconstruction: `varchar(max)`, `decimal(10,2)`, `nvarchar(255)` with `nchar`/`nvarchar` half-length correction (MSSQL stores byte-length)
+  - `CheckPrimaryKeys` extended with MSSQL case querying `sys.tables` / `sys.key_constraints`
+  - Port is optional for MSSQL (defaults to SQL Server standard 1433)
+  - Integration test `TestIntegration_MSSQL_FullWorkflow` using testcontainers + `mcr.microsoft.com/mssql/server:2022-latest`
+- **Sample 15: MSSQL Support** (`samples/15-mssql-support/`)
+  - Docker Compose with two SQL Server 2022 Express containers (prod on 1433, dev on 1434)
+  - Init SQL scripts with deliberate schema drift: new columns, nullability changes, new indexes, FK relationships
+  - Seed data with deliberate data drift: price updates, status changes, new rows
+  - Makefile targets: `up`, `seed`, `diff`, `diff-schema`, `diff-content`, `gen-pack`, `down`, `clean`
+
+### Changed
+- `pkg/config/config.go`: `mssql` added to valid driver list; port validation skipped for MSSQL (optional)
+- `internal/drivers/drivers.go`: MSSQL DSN builder added (`sqlserver://user:pass@host:port?database=db`)
+- `internal/content/hash.go` / `cursor.go`: MSSQL identifier quoting and `OFFSET/FETCH` pagination
+- `internal/content/pack.go`: MSSQL FK disable/enable, column type introspection, `ALTER TABLE ADD` syntax
+- `deepdiffdb.config.yaml.example`: Commented MSSQL connection example added
+
 ## [0.7] - 2026-03-14
 
 ### Added
