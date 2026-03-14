@@ -1206,11 +1206,12 @@ func TestIntegration_MSSQL_FullWorkflow(t *testing.T) {
 		}
 
 		packStr := string(packContent)
-		if !strings.Contains(packStr, "BEGIN;") {
-			t.Error("pack should start with BEGIN;")
+		// MSSQL uses BEGIN TRANSACTION / COMMIT TRANSACTION (not bare BEGIN/COMMIT).
+		if !strings.Contains(packStr, "BEGIN TRANSACTION;") {
+			t.Errorf("pack should contain BEGIN TRANSACTION;, got:\n%s", packStr)
 		}
-		if !strings.Contains(packStr, "COMMIT;") {
-			t.Error("pack should end with COMMIT;")
+		if !strings.Contains(packStr, "COMMIT TRANSACTION;") {
+			t.Errorf("pack should contain COMMIT TRANSACTION;, got:\n%s", packStr)
 		}
 		// MSSQL uses square-bracket quoting.
 		if !strings.Contains(packStr, "[users]") && !strings.Contains(packStr, "[orders]") {

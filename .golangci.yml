@@ -1,10 +1,6 @@
 run:
-  # Target Go 1.24 for analysis so golangci-lint v1.x (built with Go 1.24)
-  # can lint a module whose go.mod declares go 1.25.x.
-  # Without this, golangci-lint refuses with:
-  #   "the Go language version (go1.24) used to build golangci-lint is
-  #    lower than the targeted Go version (1.25.x)"
-  go: "1.24"
+  # golangci-lint is compiled from source via install-mode: goinstall in CI
+  # using Go 1.25, so it can type-check modules that declare go 1.25.x.
   timeout: 5m
 
 linters:
