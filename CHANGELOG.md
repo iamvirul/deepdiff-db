@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7] - 2026-03-14
+
+### Added
+- **Streaming Support for Large Datasets**
+  - Keyset-paginated batch hashing for large tables (`WHERE pk > lastVal ORDER BY pk LIMIT N`)
+  - Each page fetches a bounded number of rows, keeping heap flat regardless of table size (~150–200 MB peak vs ~700–900 MB unbatched)
+  - `--batch-size N` CLI flag for `diff` and `gen-pack` — overrides `performance.hash_batch_size` in config
+  - `--parallel N` CLI flag for `diff` and `gen-pack` — overrides `performance.max_parallel_tables` in config
+  - `performance` configuration section in `deepdiffdb.config.yaml`:
+    ```yaml
+    performance:
+      hash_batch_size: 10000      # rows per keyset-paginated query (0 = disabled)
+      max_parallel_tables: 2      # tables hashed concurrently
+    ```
+  - Parallel table hashing via bounded goroutine pool (`errgroup` + `semaphore.NewWeighted`)
+  - Per-batch memory telemetry at `DEBUG` level (`alloc_mb`, `batch`, `total_rows_hashed`)
+  - `--batch-size 0` falls back to pre-v0.7 full-scan behaviour (full backward compatibility)
+- **Shared Keyset Query Builder** (`internal/content/cursor.go`)
+  - `BuildCursorQuery` and `buildCursorWhere` extracted into a shared module supporting composite primary keys
+  - Used by both `hash.go` and `pack.go` — eliminates cursor logic drift between the two
+- **Sample 14: Streaming Large Datasets** (`samples/14-streaming-large-datasets/`)
+  - Go seed script generating 500k orders / 100k products / 200k audit_logs in SQLite
+  - Makefile targets: `seed`, `seed-small`, `diff`, `diff-fast`, `diff-sequential`, `gen-pack`, `clean`
+  - Memory tuning guide for low/standard/high-memory hosts
+  - No Docker required
+
+### Changed
+- `HashTable` signature extended with `batchSize int` parameter; `batchSize=0` preserves original behaviour
+- Sequential per-table loop in `runFullDiff` and `runGenPack` replaced with `hashTablesParallel`
+- Inline cursor closure in `pack.go` replaced with `BuildCursorQuery` (DRY)
+- `performance.hash_batch_size` defaults to `10000`; `performance.max_parallel_tables` defaults to `1`
+- `deepdiffdb.config.yaml.example` updated with commented `performance:` section
+
+### Performance
+- **~4× throughput improvement** on multi-table databases with `--parallel 4`
+- Memory during hashing reduced from O(n) unbounded growth to O(batch_size) bounded heap
+- `runtime.GC()` hint issued after each batch to return memory promptly between pages
+
 ## [0.6.1] - 2026-01-08
 
 ### Added
@@ -250,7 +288,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.7...HEAD
+[0.7]: https://github.com/iamvirul/deepdiff-db/compare/v0.6.1...v0.7
 [0.6.1]: https://github.com/iamvirul/deepdiff-db/compare/v0.6...v0.6.1
 [0.6]: https://github.com/iamvirul/deepdiff-db/compare/v0.5...v0.6
 [0.5]: https://github.com/iamvirul/deepdiff-db/compare/v0.4...v0.5

@@ -8,44 +8,29 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v0.6
+## Current Status: v0.7
 
-**Last Release:** 2026-01-06
+**Last Release:** 2026-03-14
 
 **Current Features:**
-- Schema drift detection
-- Row-level data comparison
-- Migration pack generation
-- Transactional apply mode
-- MySQL, PostgreSQL, SQLite support
-- Conflict detection
-- JSON and text reports
-- Standalone schema migration command (`schema-migrate`)
-- DROP COLUMN support with safety controls
-- MODIFY COLUMN support (type changes, nullable changes)
-- CREATE TABLE and DROP TABLE support
-- Index support (CREATE INDEX, DROP INDEX)
-- Foreign key constraint handling (ADD/DROP FOREIGN KEY)
-- Primary key modification support
-- Dependency-aware migration ordering
+- Schema drift detection and standalone schema migration (`schema-migrate`)
+- Row-level data comparison with SHA-256 hashing
+- Migration pack generation and transactional apply mode
+- MySQL, PostgreSQL, and SQLite support
+- Conflict detection with `ours`/`theirs`/`manual` resolution strategies
 - Interactive `resolve-conflicts` command with `--auto` and `--resume` flags
-- Conflict resolution configuration (`ours`, `theirs`, `manual` strategies)
-- Per-table conflict resolution strategies
-- Resolution persistence with `resolutions.json`
-- Enhanced conflict reports with resolution statistics
-- **NEW:** Interactive HTML report generation with `--html` flag
-- **NEW:** Visual schema diff viewer with foreign key support
-- **NEW:** Data diff visualization with expandable row keys
-- **NEW:** Resolution strategy breakdown (auto/pending counts)
-- **NEW:** Per-table strategy table with conflict statistics
-- **NEW:** Conflict highlighting with strategy badges
-- **NEW:** SQL preview with syntax highlighting
-- **NEW:** Export to PDF functionality
-- **NEW:** Structured logging with JSON/text formats and log levels
-- **NEW:** Progress tracking with bars and spinners
-- **NEW:** Checkpoint/resume system for long-running operations
-- **NEW:** Enhanced error handling with suggestions and stack traces
-- **NEW:** Performance metrics collection
+- Per-table conflict resolution strategies with `resolutions.json` persistence
+- DROP/MODIFY COLUMN, CREATE/DROP TABLE, CREATE/DROP INDEX, ADD/DROP FOREIGN KEY
+- Primary key modification and dependency-aware migration ordering
+- Interactive HTML report with schema diff viewer, data diff, conflict highlighting, and SQL preview
+- Structured JSON/text logging with configurable levels and file output
+- Visual progress bars and throughput metrics
+- Checkpoint/resume system for long-running operations
+- Enhanced error handling with actionable suggestions and retry logic
+- **NEW:** Keyset-paginated batch hashing — `--batch-size N` / `performance.hash_batch_size`
+- **NEW:** Parallel table hashing — `--parallel N` / `performance.max_parallel_tables`
+- **NEW:** Bounded O(batch_size) memory during hashing regardless of table size
+- **NEW:** Per-batch memory telemetry at DEBUG log level (`alloc_mb`, `batch`)
 
 ---
 
@@ -113,27 +98,29 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
+## Completed Releases (continued)
+
+### v0.7: Streaming Support for Large Datasets (Released 2026-03-14)
+
+**Features Delivered:**
+- Keyset-paginated batch hashing (`WHERE pk > lastVal ORDER BY pk LIMIT N`) — O(batch_size) heap at any table size
+- `--batch-size N` and `--parallel N` CLI flags for `diff` and `gen-pack`
+- `performance.hash_batch_size` and `performance.max_parallel_tables` config keys (defaults: 10000 / 1)
+- Bounded goroutine pool via `errgroup` + `semaphore.NewWeighted` for parallel table hashing
+- `BuildCursorQuery` shared module (`internal/content/cursor.go`) used by both hash and pack paths
+- Per-batch memory telemetry at DEBUG level
+- Sample 14: Streaming Large Datasets (SQLite, no Docker, seed script + Makefile)
+
+**Impact:** Enables comparison of databases with millions of rows while keeping memory usage bounded and wall-clock time short
+
+---
+
 ## Upcoming Releases
 
 ---
 
-### Week 1 - v0.7: Streaming Support for Large Datasets
+### v0.8: MSSQL Support
 **Target Date:** Next Saturday
-
-**Features:**
-- Streaming diff for tables > 1M rows
-- Memory-efficient hash computation
-- Chunked processing with progress tracking
-- Configurable batch sizes
-- Resume capability for interrupted operations
-- Performance optimizations for large databases
-
-**Impact:** Enables comparison of very large production databases
-
----
-
-### Week 2 - v0.8: MSSQL Support
-**Target Date:** Week 2 Saturday
 
 **Features:**
 - Microsoft SQL Server driver support
@@ -146,8 +133,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 3 - v0.9: Oracle Support
-**Target Date:** Week 3 Saturday
+### v0.9: Oracle Support
+**Target Date:** Week 2 Saturday
 
 **Features:**
 - Oracle Database driver support
@@ -160,8 +147,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### Week 4 - v1.0: Production Ready Release
-**Target Date:** Week 4 Saturday
+### v1.0: Production Ready Release
+**Target Date:** Week 3 Saturday
 
 **Features:**
 - Comprehensive documentation
@@ -225,10 +212,10 @@ We release a new version every **Saturday**. Each release includes one or more f
 - ~~Conflict Resolution Strategies~~ (v0.4)
 - ~~HTML Report Viewer~~ (v0.5)
 - ~~Enhanced Error Handling & Logging~~ (v0.6)
+- ~~Streaming Support for Large Datasets~~ (v0.7)
 - Documentation & Production Readiness
 
 ### Medium Priority (Should Have)
-- Streaming Support for Large Datasets
 - MSSQL Support
 
 ### Low Priority (Nice to Have)
@@ -242,6 +229,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 - [x] Conflict Resolution Strategies (v0.4)
 - [x] HTML Report Viewer (v0.5)
 - [x] Enhanced Error Handling & Logging (v0.6)
+- [x] Streaming Support for Large Datasets (v0.7)
 - [ ] All high-priority features implemented
 - [ ] Test coverage > 80%
 - [ ] Comprehensive documentation
@@ -271,5 +259,5 @@ If you'd like to contribute to any of these features, please:
 
 ---
 
-**Last Updated:** 2026-01-06
+**Last Updated:** 2026-03-14
 
