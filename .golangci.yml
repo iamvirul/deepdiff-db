@@ -31,8 +31,6 @@ linters-settings:
       - shadow
   gofmt:
     simplify: true
-  revive:
-    min-confidence: 0.8
 
 issues:
   exclude-rules:

@@ -952,19 +952,16 @@ func TestIntegration_MSSQL_FullWorkflow(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
-	makeCfg := func(port int) config.DBConfig {
+	makeCfg := func(port int, database string) config.DBConfig {
 		return config.DBConfig{
 			Driver:   "mssql",
 			Host:     "localhost",
 			Port:     port,
 			User:     "sa",
 			Password: saPassword,
-			Database: "master",
+			Database: database,
 		}
 	}
-
-	prodCfg := makeCfg(prodPort.Int())
-	devCfg := makeCfg(devPort.Int())
 
 	// Connect with retries — MSSQL can be slow even after the log appears.
 	connectWithRetry := func(cfg config.DBConfig, name string) *sql.DB {
@@ -983,6 +980,28 @@ func TestIntegration_MSSQL_FullWorkflow(t *testing.T) {
 		t.Fatalf("failed to connect to %s MSSQL after retries: %v", name, err)
 		return nil
 	}
+
+	// Bootstrap: connect to master only to create dedicated test databases.
+	// Using master directly would pick up system tables (spt_values, spt_fallback_usg,
+	// etc.) that have no primary key and cause HashTable to fail.
+	const testDB = "deepdifftest"
+	for _, side := range []struct {
+		port int
+		name string
+	}{
+		{prodPort.Int(), "prod"},
+		{devPort.Int(), "dev"},
+	} {
+		bootstrap := connectWithRetry(makeCfg(side.port, "master"), side.name+"-bootstrap")
+		if _, err := bootstrap.ExecContext(ctx, "CREATE DATABASE "+testDB); err != nil {
+			bootstrap.Close()
+			t.Fatalf("[%s] create database: %v", side.name, err)
+		}
+		bootstrap.Close()
+	}
+
+	prodCfg := makeCfg(prodPort.Int(), testDB)
+	devCfg := makeCfg(devPort.Int(), testDB)
 
 	prodDB := connectWithRetry(prodCfg, "prod")
 	defer prodDB.Close()
@@ -1044,11 +1063,11 @@ func TestIntegration_MSSQL_FullWorkflow(t *testing.T) {
 
 	// ---------- Test: SchemaDiff ----------
 	t.Run("SchemaDiff", func(t *testing.T) {
-		prodSchema, err := schema.LoadSchema(ctx, prodDB, "mssql", "master", nil)
+		prodSchema, err := schema.LoadSchema(ctx, prodDB, "mssql", testDB, nil)
 		if err != nil {
 			t.Fatalf("load prod schema: %v", err)
 		}
-		devSchema, err := schema.LoadSchema(ctx, devDB, "mssql", "master", nil)
+		devSchema, err := schema.LoadSchema(ctx, devDB, "mssql", testDB, nil)
 		if err != nil {
 			t.Fatalf("load dev schema: %v", err)
 		}
@@ -1090,11 +1109,11 @@ func TestIntegration_MSSQL_FullWorkflow(t *testing.T) {
 
 	// ---------- Test: ContentDiff ----------
 	t.Run("ContentDiff", func(t *testing.T) {
-		prodSchema, err := schema.LoadSchema(ctx, prodDB, "mssql", "master", nil)
+		prodSchema, err := schema.LoadSchema(ctx, prodDB, "mssql", testDB, nil)
 		if err != nil {
 			t.Fatalf("load prod schema: %v", err)
 		}
-		devSchema, err := schema.LoadSchema(ctx, devDB, "mssql", "master", nil)
+		devSchema, err := schema.LoadSchema(ctx, devDB, "mssql", testDB, nil)
 		if err != nil {
 			t.Fatalf("load dev schema: %v", err)
 		}
@@ -1144,11 +1163,11 @@ func TestIntegration_MSSQL_FullWorkflow(t *testing.T) {
 
 	// ---------- Test: GeneratePack ----------
 	t.Run("GeneratePack", func(t *testing.T) {
-		prodSchema, err := schema.LoadSchema(ctx, prodDB, "mssql", "master", nil)
+		prodSchema, err := schema.LoadSchema(ctx, prodDB, "mssql", testDB, nil)
 		if err != nil {
 			t.Fatalf("load prod schema: %v", err)
 		}
-		devSchema, err := schema.LoadSchema(ctx, devDB, "mssql", "master", nil)
+		devSchema, err := schema.LoadSchema(ctx, devDB, "mssql", testDB, nil)
 		if err != nil {
 			t.Fatalf("load dev schema: %v", err)
 		}
@@ -1176,7 +1195,7 @@ func TestIntegration_MSSQL_FullWorkflow(t *testing.T) {
 		schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 		dataDiff, _ := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
 
-		packPath, err := content.GeneratePack(ctx, "mssql", devDB, "master", prodSchema, devSchema, schemaDiff, dataDiff, ignoreFn, outputDir)
+		packPath, err := content.GeneratePack(ctx, "mssql", devDB, testDB, prodSchema, devSchema, schemaDiff, dataDiff, ignoreFn, outputDir)
 		if err != nil {
 			t.Fatalf("generate pack: %v", err)
 		}
