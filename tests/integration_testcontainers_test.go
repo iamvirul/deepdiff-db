@@ -16,11 +16,13 @@ import (
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/mssql"
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5"
+	_ "github.com/microsoft/go-mssqldb"
 )
 
 // TestIntegration_MySQL_FullWorkflow tests the complete workflow with MySQL databases
@@ -884,6 +886,318 @@ func TestIntegration_PostgreSQL_FullWorkflow(t *testing.T) {
 			t.Errorf("hash mismatch for key %s: prod=%s dev=%s", key, prodHash, devHash)
 		}
 	}
+}
+
+// TestIntegration_MSSQL_FullWorkflow tests the complete schema + content diff workflow
+// against two real MSSQL 2022 containers. The test verifies that:
+//   - Schema is loaded correctly (columns, data types, PKs, indexes, FKs)
+//   - Row hashing via keyset pagination produces the correct diff
+//   - A migration pack with MSSQL-compatible SQL is generated
+//
+// The MSSQL containers use SA authentication with a strong password to satisfy
+// SQL Server's password complexity policy. ACCEPT_EULA=Y is required by Microsoft.
+func TestIntegration_MSSQL_FullWorkflow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping MSSQL integration test in -short mode")
+	}
+
+	ctx := context.Background()
+
+	const mssqlImage = "mcr.microsoft.com/mssql/server:2022-latest"
+	const saPassword = "StrongP@ss1word!"
+
+	mssqlWait := wait.ForLog("SQL Server is now ready for client connections").
+		WithOccurrence(1).
+		WithStartupTimeout(120 * time.Second)
+
+	// Start prod container.
+	prodContainer, err := mssql.Run(ctx, mssqlImage,
+		mssql.WithAcceptEULA(),
+		mssql.WithPassword(saPassword),
+		testcontainers.WithWaitStrategy(mssqlWait),
+	)
+	if err != nil {
+		t.Fatalf("failed to start prod MSSQL container: %v", err)
+	}
+	defer func() {
+		if err := prodContainer.Terminate(ctx); err != nil {
+			t.Logf("warn: failed to terminate prod container: %v", err)
+		}
+	}()
+
+	// Start dev container.
+	devContainer, err := mssql.Run(ctx, mssqlImage,
+		mssql.WithAcceptEULA(),
+		mssql.WithPassword(saPassword),
+		testcontainers.WithWaitStrategy(mssqlWait),
+	)
+	if err != nil {
+		t.Fatalf("failed to start dev MSSQL container: %v", err)
+	}
+	defer func() {
+		if err := devContainer.Terminate(ctx); err != nil {
+			t.Logf("warn: failed to terminate dev container: %v", err)
+		}
+	}()
+
+	prodPort, err := prodContainer.MappedPort(ctx, "1433")
+	if err != nil {
+		t.Fatalf("get prod port: %v", err)
+	}
+	devPort, err := devContainer.MappedPort(ctx, "1433")
+	if err != nil {
+		t.Fatalf("get dev port: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	makeCfg := func(port int) config.DBConfig {
+		return config.DBConfig{
+			Driver:   "mssql",
+			Host:     "localhost",
+			Port:     port,
+			User:     "sa",
+			Password: saPassword,
+			Database: "master",
+		}
+	}
+
+	prodCfg := makeCfg(prodPort.Int())
+	devCfg := makeCfg(devPort.Int())
+
+	// Connect with retries — MSSQL can be slow even after the log appears.
+	connectWithRetry := func(cfg config.DBConfig, name string) *sql.DB {
+		t.Helper()
+		var (
+			db  *sql.DB
+			err error
+		)
+		for i := 0; i < 10; i++ {
+			db, err = drivers.Open(ctx, cfg)
+			if err == nil {
+				return db
+			}
+			time.Sleep(3 * time.Second)
+		}
+		t.Fatalf("failed to connect to %s MSSQL after retries: %v", name, err)
+		return nil
+	}
+
+	prodDB := connectWithRetry(prodCfg, "prod")
+	defer prodDB.Close()
+
+	devDB := connectWithRetry(devCfg, "dev")
+	defer devDB.Close()
+
+	// ---------- Schema setup ----------
+
+	prodSetup := []string{
+		`CREATE TABLE users (
+			id    INT           NOT NULL,
+			name  NVARCHAR(100) NOT NULL,
+			email NVARCHAR(100) NULL,
+			PRIMARY KEY (id)
+		)`,
+		`CREATE TABLE orders (
+			id      INT            NOT NULL,
+			user_id INT            NOT NULL,
+			amount  DECIMAL(10,2)  NOT NULL,
+			PRIMARY KEY (id),
+			CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users (id)
+		)`,
+		`CREATE INDEX idx_orders_user ON orders (user_id)`,
+		`INSERT INTO users  (id, name, email) VALUES (1,'Alice','alice@example.com'),(2,'Bob','bob@example.com'),(3,'Charlie','charlie@example.com')`,
+		`INSERT INTO orders (id, user_id, amount) VALUES (1,1,100.50),(2,2,200.75)`,
+	}
+	devSetup := []string{
+		`CREATE TABLE users (
+			id    INT           NOT NULL,
+			name  NVARCHAR(100) NOT NULL,
+			email NVARCHAR(100) NULL,
+			PRIMARY KEY (id)
+		)`,
+		`CREATE TABLE orders (
+			id      INT            NOT NULL,
+			user_id INT            NOT NULL,
+			amount  DECIMAL(10,2)  NOT NULL,
+			PRIMARY KEY (id),
+			CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users (id)
+		)`,
+		`CREATE INDEX idx_orders_user ON orders (user_id)`,
+		// Bob updated, Charlie unchanged, David new
+		`INSERT INTO users  (id, name, email) VALUES (2,'Bob Updated','bob.new@example.com'),(3,'Charlie','charlie@example.com'),(4,'David','david@example.com')`,
+		// order 2 updated amount, order 3+4 new
+		`INSERT INTO orders (id, user_id, amount) VALUES (2,2,250.00),(3,3,150.25),(4,4,300.00)`,
+	}
+
+	execStmts := func(db *sql.DB, label string, stmts []string) {
+		t.Helper()
+		for _, stmt := range stmts {
+			if _, err := db.ExecContext(ctx, stmt); err != nil {
+				t.Fatalf("[%s] exec failed: %v\nSQL: %s", label, err, stmt)
+			}
+		}
+	}
+	execStmts(prodDB, "prod", prodSetup)
+	execStmts(devDB, "dev", devSetup)
+
+	// ---------- Test: SchemaDiff ----------
+	t.Run("SchemaDiff", func(t *testing.T) {
+		prodSchema, err := schema.LoadSchema(ctx, prodDB, "mssql", "master", nil)
+		if err != nil {
+			t.Fatalf("load prod schema: %v", err)
+		}
+		devSchema, err := schema.LoadSchema(ctx, devDB, "mssql", "master", nil)
+		if err != nil {
+			t.Fatalf("load dev schema: %v", err)
+		}
+
+		if _, ok := prodSchema.Tables["users"]; !ok {
+			t.Fatal("prod schema missing 'users' table")
+		}
+		if _, ok := prodSchema.Tables["orders"]; !ok {
+			t.Fatal("prod schema missing 'orders' table")
+		}
+
+		// Both databases have identical schemas — no drift expected.
+		diff := schema.DiffSchemas(prodSchema, devSchema)
+		if diff.HasDrift() {
+			t.Errorf("unexpected schema drift: %+v", diff)
+		}
+
+		// Primary keys should be detected.
+		for _, tbl := range []string{"users", "orders"} {
+			if len(prodSchema.Tables[tbl].PrimaryKey) == 0 {
+				t.Errorf("table %s has no primary key in prod schema", tbl)
+			}
+		}
+
+		// Index on orders should be detected.
+		if _, ok := prodSchema.Tables["orders"].Indexes["idx_orders_user"]; !ok {
+			t.Error("expected index 'idx_orders_user' on orders table")
+		}
+
+		// FK should be detected.
+		if _, ok := prodSchema.Tables["orders"].ForeignKeys["fk_orders_user"]; !ok {
+			t.Error("expected FK 'fk_orders_user' on orders table")
+		}
+
+		if err := schema.WriteReports(diff, outputDir); err != nil {
+			t.Fatalf("write schema reports: %v", err)
+		}
+	})
+
+	// ---------- Test: ContentDiff ----------
+	t.Run("ContentDiff", func(t *testing.T) {
+		prodSchema, err := schema.LoadSchema(ctx, prodDB, "mssql", "master", nil)
+		if err != nil {
+			t.Fatalf("load prod schema: %v", err)
+		}
+		devSchema, err := schema.LoadSchema(ctx, devDB, "mssql", "master", nil)
+		if err != nil {
+			t.Fatalf("load dev schema: %v", err)
+		}
+
+		ignoreFn := content.IgnoreMatcher(nil)
+		prodHashes := make(map[string]map[string]string)
+		devHashes := make(map[string]map[string]string)
+
+		for name, pt := range prodSchema.Tables {
+			dt, ok := devSchema.Tables[name]
+			if !ok {
+				continue
+			}
+			ph, err := content.HashTable(ctx, prodDB, "mssql", pt, ignoreFn, 0)
+			if err != nil {
+				t.Fatalf("hash prod %s: %v", name, err)
+			}
+			dh, err := content.HashTable(ctx, devDB, "mssql", dt, ignoreFn, 0)
+			if err != nil {
+				t.Fatalf("hash dev %s: %v", name, err)
+			}
+			prodHashes[name] = ph
+			devHashes[name] = dh
+		}
+
+		dataDiff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
+		if !dataDiff.HasChanges() {
+			t.Error("expected data changes to be detected")
+		}
+
+		tablesScanned := 0
+		for name := range prodSchema.Tables {
+			if _, ok := devSchema.Tables[name]; ok {
+				tablesScanned++
+			}
+		}
+		if err := content.WriteReportsWithInfo(dataDiff, conflicts, outputDir, "OK", tablesScanned, ""); err != nil {
+			t.Fatalf("write content reports: %v", err)
+		}
+
+		// Verify content_diff.json exists and is valid.
+		contentJSONPath := filepath.Join(outputDir, "content_diff.json")
+		if _, err := os.Stat(contentJSONPath); os.IsNotExist(err) {
+			t.Fatal("content_diff.json was not created")
+		}
+	})
+
+	// ---------- Test: GeneratePack ----------
+	t.Run("GeneratePack", func(t *testing.T) {
+		prodSchema, err := schema.LoadSchema(ctx, prodDB, "mssql", "master", nil)
+		if err != nil {
+			t.Fatalf("load prod schema: %v", err)
+		}
+		devSchema, err := schema.LoadSchema(ctx, devDB, "mssql", "master", nil)
+		if err != nil {
+			t.Fatalf("load dev schema: %v", err)
+		}
+
+		ignoreFn := content.IgnoreMatcher(nil)
+		prodHashes := make(map[string]map[string]string)
+		devHashes := make(map[string]map[string]string)
+		for name, pt := range prodSchema.Tables {
+			dt, ok := devSchema.Tables[name]
+			if !ok {
+				continue
+			}
+			ph, err := content.HashTable(ctx, prodDB, "mssql", pt, ignoreFn, 0)
+			if err != nil {
+				t.Fatalf("hash prod %s: %v", name, err)
+			}
+			dh, err := content.HashTable(ctx, devDB, "mssql", dt, ignoreFn, 0)
+			if err != nil {
+				t.Fatalf("hash dev %s: %v", name, err)
+			}
+			prodHashes[name] = ph
+			devHashes[name] = dh
+		}
+
+		schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+		dataDiff, _ := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
+
+		packPath, err := content.GeneratePack(ctx, "mssql", devDB, "master", prodSchema, devSchema, schemaDiff, dataDiff, ignoreFn, outputDir)
+		if err != nil {
+			t.Fatalf("generate pack: %v", err)
+		}
+
+		packContent, err := os.ReadFile(packPath)
+		if err != nil {
+			t.Fatalf("read pack: %v", err)
+		}
+
+		packStr := string(packContent)
+		if !strings.Contains(packStr, "BEGIN;") {
+			t.Error("pack should start with BEGIN;")
+		}
+		if !strings.Contains(packStr, "COMMIT;") {
+			t.Error("pack should end with COMMIT;")
+		}
+		// MSSQL uses square-bracket quoting.
+		if !strings.Contains(packStr, "[users]") && !strings.Contains(packStr, "[orders]") {
+			t.Error("pack should contain MSSQL-quoted table names")
+		}
+	})
 }
 
 // TestIntegration_AllReportsGenerated verifies all report files are created correctly

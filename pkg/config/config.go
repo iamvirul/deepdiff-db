@@ -184,11 +184,11 @@ func (c *DBConfig) validate(prefix string) error {
 	if c.Database == "" {
 		return fmt.Errorf("%s.database is required", prefix)
 	}
-	if c.Port == 0 && c.Driver != "sqlite" {
+	if c.Port == 0 && c.Driver != "sqlite" && c.Driver != "mssql" {
 		return fmt.Errorf("%s.port is required", prefix)
 	}
 	switch c.Driver {
-	case "mysql", "postgres", "postgresql", "sqlite":
+	case "mysql", "postgres", "postgresql", "sqlite", "mssql":
 	default:
 		return fmt.Errorf("%s.driver unsupported: %s", prefix, c.Driver)
 	}

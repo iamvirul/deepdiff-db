@@ -64,6 +64,7 @@ func Open(ctx context.Context, cfg config.DBConfig) (*sql.DB, error) {
 // For MySQL it returns driver "mysql" and a DSN that includes parseTime=true, UTF-8 mb4 charset,
 // and utf8mb4_unicode_ci collation; user and password are URL-escaped and host/port are joined.
 // For PostgreSQL it returns driver "pgx" and a lib/pq-like DSN with sslmode=disable.
+// For MSSQL it returns driver "sqlserver" (the registered name for go-mssqldb) and a URL-form DSN.
 // For SQLite it returns driver "sqlite" and treats cfg.Database as the file path.
 //
 // It returns the chosen driver name, the corresponding DSN string, and an error if the driver
@@ -86,6 +87,21 @@ func BuildDSN(cfg config.DBConfig) (string, string, error) {
 			cfg.Password,
 			cfg.Database,
 		), nil
+	case "mssql":
+		// go-mssqldb registers under the "sqlserver" driver name.
+		// URL DSN: sqlserver://user:password@host:port?database=db
+		// Omit the port segment when cfg.Port == 0 so MSSQL defaults to 1433.
+		host := cfg.Host
+		if cfg.Port != 0 {
+			host = net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port))
+		}
+		dsn := fmt.Sprintf("sqlserver://%s:%s@%s?database=%s",
+			url.QueryEscape(cfg.User),
+			url.QueryEscape(cfg.Password),
+			host,
+			url.QueryEscape(cfg.Database),
+		)
+		return "sqlserver", dsn, nil
 	case "sqlite":
 		// Database is treated as the filepath for sqlite.
 		if cfg.Database == "" {
