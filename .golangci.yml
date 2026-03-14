@@ -1,0 +1,51 @@
+run:
+  # Target Go 1.24 for analysis so golangci-lint v1.x (built with Go 1.24)
+  # can lint a module whose go.mod declares go 1.25.x.
+  # Without this, golangci-lint refuses with:
+  #   "the Go language version (go1.24) used to build golangci-lint is
+  #    lower than the targeted Go version (1.25.x)"
+  go: "1.24"
+  timeout: 5m
+
+linters:
+  enable-all: false
+  # Use golangci-lint's default linter set; explicitly disable linters that
+  # produce excessive noise or require Go 1.25-specific analysis.
+  disable:
+    - depguard
+    - exhaustruct
+    - gochecknoglobals
+    - nlreturn
+    - wsl
+    - paralleltest
+    - testpackage
+    - godox
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: false
+  govet:
+    enable-all: false
+    enable:
+      - shadow
+  gofmt:
+    simplify: true
+  revive:
+    min-confidence: 0.8
+
+issues:
+  exclude-rules:
+    # Test files get relaxed rules
+    - path: "_test\\.go"
+      linters:
+        - errcheck
+        - gosec
+        - gocritic
+    # Seed/tooling binaries get relaxed rules
+    - path: "cmd/"
+      linters:
+        - forbidigo
+  # Don't fail on warnings from generated or vendor code
+  exclude-dirs:
+    - vendor
