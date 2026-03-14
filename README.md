@@ -38,6 +38,8 @@ DeepDiff DB makes the entire process deterministic, reviewable, and safe by:
 - **Progress tracking** - Visual progress bars and spinners for long-running operations
 - **Checkpoint/resume** - Resume interrupted operations from saved checkpoints
 - **Enhanced error handling** - Rich error messages with actionable suggestions
+- **Streaming large datasets** - Keyset-paginated batch hashing keeps memory bounded at any table size
+- **Parallel table hashing** - Hash multiple tables concurrently with configurable worker pool
 
 ### Safety Features
 
@@ -247,6 +249,16 @@ Resolution strategies:
 - `theirs`: Use development values (accept dev changes)
 - `manual`: Require interactive decision for each conflict
 
+**Performance Configuration (v0.7+):**
+- `performance.hash_batch_size`: Rows per keyset-paginated query during table hashing. `0` disables batching (loads all rows in one query). Default: `10000`
+- `performance.max_parallel_tables`: Maximum number of tables hashed concurrently. Default: `1`
+
+```yaml
+performance:
+  hash_batch_size: 10000      # ~1–2 MB per page; keeps heap bounded on any table size
+  max_parallel_tables: 2      # hash prod tables in parallel; raises throughput ~2× on dual-core
+```
+
 An example configuration file is included at `deepdiffdb.config.yaml.example`.
 
 ## Commands
@@ -314,6 +326,18 @@ Performs a full comparison of both schema and data.
 deepdiffdb diff --config deepdiffdb.config.yaml
 ```
 
+**Large Dataset Options (v0.7+):**
+```bash
+# Keyset-paginated hashing, 2 tables in parallel
+deepdiffdb diff --config deepdiffdb.config.yaml --batch-size 10000 --parallel 2
+
+# Disable batching (pre-v0.7 behaviour, loads all rows in memory)
+deepdiffdb diff --config deepdiffdb.config.yaml --batch-size 0 --parallel 1
+```
+
+- `--batch-size N`: Rows per page when hashing large tables. Overrides `performance.hash_batch_size`. `0` = no pagination.
+- `--parallel N`: Max tables hashed concurrently. Overrides `performance.max_parallel_tables`.
+
 **Generate Interactive HTML Report:**
 ```bash
 deepdiffdb diff --config deepdiffdb.config.yaml --html
@@ -344,6 +368,14 @@ Generates a SQL migration pack for data differences.
 ```bash
 deepdiffdb gen-pack --config deepdiffdb.config.yaml
 ```
+
+**Large Dataset Options (v0.7+):**
+```bash
+deepdiffdb gen-pack --config deepdiffdb.config.yaml --batch-size 5000 --parallel 4
+```
+
+- `--batch-size N`: Rows per page when hashing large tables. Overrides `performance.hash_batch_size`.
+- `--parallel N`: Max tables hashed concurrently. Overrides `performance.max_parallel_tables`.
 
 **Resume from Checkpoint:**
 ```bash
@@ -513,7 +545,7 @@ DeepDiff DB uses a multi-stage approach to ensure safe and accurate database syn
 7. **Migration Generation** - Creates SQL migration scripts with proper ordering and batching
 8. **Transactional Application** - Applies changes within a single transaction for atomicity
 
-The tool processes data in chunks for large tables and provides progress indicators for operations exceeding 10,000 rows. Progress bars show throughput (rows/second) and estimated time remaining. Checkpoints are automatically saved during long-running operations, allowing you to resume from interruptions.
+The tool processes data using **keyset-paginated batching** for large tables — each page fetches a bounded number of rows (`WHERE pk > lastVal ORDER BY pk LIMIT N`), keeping heap usage flat regardless of table size. Multiple tables can be hashed concurrently using a bounded goroutine pool. Progress bars show throughput (rows/second) and estimated time remaining. Checkpoints are automatically saved during long-running operations, allowing you to resume from interruptions.
 
 ## Architecture
 
@@ -584,7 +616,7 @@ Current limitations and known constraints:
 - **Database Support** - MSSQL and Oracle are not yet supported (planned for future releases)
 - **Schema Auto-merge** - Schema differences must be resolved manually
 - **Primary Key Requirement** - All tables must have primary keys (unless explicitly ignored)
-- **Large Database Performance** - Very large databases may produce large diff files and require significant processing time
+- **Large Database Performance** - Very large tables are handled with keyset-paginated batching (v0.7+); diff output files may still be large for tables with many changed rows
 - **Conflict Resolution** - Complex merge strategies (e.g., column-level merging) are not supported
 - **SQLite Constraints** - SQLite has limited support for ALTER TABLE operations
 
