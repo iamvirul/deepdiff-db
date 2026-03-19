@@ -95,3 +95,46 @@ func TestBuildCursorQuery_MSSQL_VsMySQLDifference(t *testing.T) {
 		t.Errorf("MSSQL should use OFFSET/FETCH, got: %s", mssqlQuery)
 	}
 }
+
+func TestBuildCursorQuery_Oracle_FirstPage(t *testing.T) {
+	cols := []string{"id", "name", "email"}
+	pk := []string{"id"}
+
+	query := content.BuildCursorQuery("oracle", "USERS", cols, pk, 500, nil)
+
+	// Oracle 12c+ uses OFFSET/FETCH — not LIMIT
+	if !strings.Contains(query, "OFFSET 0 ROWS FETCH NEXT 500 ROWS ONLY") {
+		t.Errorf("Oracle first page must use OFFSET/FETCH, got: %s", query)
+	}
+	if strings.Contains(query, "LIMIT") {
+		t.Errorf("Oracle must not use LIMIT, got: %s", query)
+	}
+	// ORDER BY must precede OFFSET/FETCH
+	orderPos := strings.Index(query, "ORDER BY")
+	offsetPos := strings.Index(query, "OFFSET")
+	if orderPos < 0 || offsetPos < 0 || orderPos > offsetPos {
+		t.Errorf("ORDER BY must appear before OFFSET, got: %s", query)
+	}
+	// Double-quote identifier quoting
+	if !strings.Contains(query, `"USERS"`) {
+		t.Errorf("Oracle should use double-quote identifiers for table, got: %s", query)
+	}
+}
+
+func TestBuildCursorQuery_Oracle_SubsequentPage(t *testing.T) {
+	cols := []string{"id", "status"}
+	pk := []string{"id"}
+	lastPKValues := []any{100}
+
+	query := content.BuildCursorQuery("oracle", "ORDERS", cols, pk, 1000, lastPKValues)
+
+	if !strings.Contains(query, "WHERE") {
+		t.Errorf("Oracle subsequent page must have WHERE clause, got: %s", query)
+	}
+	if !strings.Contains(query, "OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY") {
+		t.Errorf("Oracle subsequent page must use OFFSET/FETCH, got: %s", query)
+	}
+	if strings.Contains(query, "LIMIT") {
+		t.Errorf("Oracle must not use LIMIT, got: %s", query)
+	}
+}
