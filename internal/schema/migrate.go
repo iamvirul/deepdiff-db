@@ -73,7 +73,7 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 
 	// Validate driver
 	switch driver {
-	case "mysql", "postgres", "postgresql", "sqlite", "mssql":
+	case "mysql", "postgres", "postgresql", "sqlite", "mssql", "oracle":
 	default:
 		return "", fmt.Errorf("unsupported driver: %s", driver)
 	}
@@ -328,6 +328,10 @@ func generateAddColumn(tableName string, col Column, driver string) (string, err
 				quotedTable, quotedCol, col.DataType), nil
 		}
 		return fmt.Sprintf("ALTER TABLE %s ADD %s %s %s%s;", quotedTable, quotedCol, col.DataType, nullClause, defaultClause), nil
+	case "oracle":
+		// Oracle uses ADD without the COLUMN keyword.
+		// NOT NULL columns without a default value are fine in Oracle (unlike SQLite/MSSQL).
+		return fmt.Sprintf("ALTER TABLE %s ADD %s %s %s%s;", quotedTable, quotedCol, col.DataType, nullClause, defaultClause), nil
 	case "sqlite":
 		// SQLite doesn't support NOT NULL in ADD COLUMN without a default value
 		if col.IsNullable {
@@ -353,6 +357,9 @@ func generateDropColumn(tableName string, col Column, driver string) (string, er
 	case "postgres", "postgresql":
 		return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s;", quotedTable, quotedCol), nil
 	case "mssql":
+		return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s;", quotedTable, quotedCol), nil
+	case "oracle":
+		// Oracle requires the COLUMN keyword in DROP COLUMN.
 		return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s;", quotedTable, quotedCol), nil
 	case "sqlite":
 		return fmt.Sprintf("-- SQLite does not support DROP COLUMN directly. Manual migration required for table %s column %s", tableName, col.Name), nil
@@ -471,6 +478,40 @@ func generateModifyColumn(tableName string, colDiff ColumnDiff, driver string) (
 
 		return strings.Join(stmts, "\n"), nil
 
+	case "oracle":
+		// Oracle uses MODIFY (no COLUMN keyword) for type and nullable changes.
+		// DEFAULT changes require DROP + ADD DEFAULT constraint; emit a comment for those.
+		var stmts []string
+
+		if colDiff.TypeMismatch || colDiff.NullableMismatch {
+			dataType := colDiff.DevType
+			if dataType == "" {
+				dataType = colDiff.ProdType
+			}
+			var nullable *bool
+			if colDiff.DevNullable != nil {
+				nullable = colDiff.DevNullable
+			} else if colDiff.ProdNullable != nil {
+				nullable = colDiff.ProdNullable
+			}
+			nullClause := "NOT NULL"
+			if nullable != nil && *nullable {
+				nullClause = "NULL"
+			}
+			stmts = append(stmts, fmt.Sprintf("ALTER TABLE %s MODIFY %s %s %s;", quotedTable, quotedCol, dataType, nullClause))
+		}
+
+		if colDiff.DefaultMismatch {
+			stmts = append(stmts, fmt.Sprintf("-- Oracle: to change DEFAULT on %s.%s, use MODIFY with the new default.", tableName, colDiff.Column))
+			if colDiff.DevDefault != nil {
+				stmts = append(stmts, fmt.Sprintf("ALTER TABLE %s MODIFY %s DEFAULT %s;", quotedTable, quotedCol, *colDiff.DevDefault))
+			} else {
+				stmts = append(stmts, fmt.Sprintf("ALTER TABLE %s MODIFY %s DEFAULT NULL;", quotedTable, quotedCol))
+			}
+		}
+
+		return strings.Join(stmts, "\n"), nil
+
 	case "sqlite":
 		return fmt.Sprintf("-- SQLite does not support MODIFY COLUMN. Manual migration required for table %s column %s", tableName, colDiff.Column), nil
 
@@ -491,7 +532,7 @@ func quoteIdentifier(identifier string, driver string) string {
 		escapeQuote = func(s string) string {
 			return strings.ReplaceAll(s, "`", "``")
 		}
-	case "postgres", "postgresql", "sqlite":
+	case "postgres", "postgresql", "sqlite", "oracle":
 		quoteChar = "\""
 		escapeQuote = func(s string) string {
 			return strings.ReplaceAll(s, "\"", "\"\"")
@@ -553,7 +594,8 @@ func generateDropIndex(tableName string, idx Index, driver string) string {
 		// MSSQL requires the table name: DROP INDEX index ON table
 		quotedTable := quoteIdentifier(tableName, driver)
 		return fmt.Sprintf("DROP INDEX %s ON %s;", quotedIndex, quotedTable)
-	case "postgres", "postgresql", "sqlite":
+	case "postgres", "postgresql", "sqlite", "oracle":
+		// Oracle DROP INDEX does not require the table name.
 		return fmt.Sprintf("DROP INDEX %s;", quotedIndex)
 	default:
 		return fmt.Sprintf("-- DROP INDEX %s; -- unsupported driver", idx.Name)
@@ -713,6 +755,9 @@ func generateDropForeignKey(tableName string, fk ForeignKey, driver string) stri
 	case "mssql":
 		// MSSQL uses DROP CONSTRAINT (same as PostgreSQL) for foreign keys.
 		return fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT %s;", quotedTable, quotedFK)
+	case "oracle":
+		// Oracle uses DROP CONSTRAINT for foreign keys.
+		return fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT %s;", quotedTable, quotedFK)
 	case "sqlite":
 		return fmt.Sprintf("-- SQLite limitation: Cannot drop foreign key %s. Table recreation required.", fk.Name)
 	default:
@@ -789,6 +834,26 @@ func generateModifyPrimaryKey(tableName string, pkDiff *PrimaryKeyDiff, driver s
 			stmts = append(stmts, fmt.Sprintf("-- Current primary key: (%s)", strings.Join(pkDiff.ProdColumns, ", ")))
 			stmts = append(stmts, fmt.Sprintf("-- New primary key: (%s)", strings.Join(pkDiff.DevColumns, ", ")))
 			stmts = append(stmts, "-- NOTE: Replace 'PK_tablename' with the actual constraint name if different")
+			stmts = append(stmts, dropStmt)
+		}
+		if len(pkDiff.DevColumns) > 0 {
+			stmts = append(stmts, addStmt)
+		}
+
+	case "oracle":
+		// Oracle: DROP CONSTRAINT pk_name, then ADD PRIMARY KEY.
+		// Oracle PK constraint names are user-defined; use SYS_Cxxxxxx as placeholder.
+		dropStmt := fmt.Sprintf("ALTER TABLE %s DROP PRIMARY KEY;", quotedTable)
+		addStmt := fmt.Sprintf("ALTER TABLE %s ADD PRIMARY KEY (%s);", quotedTable, newColList)
+
+		if !allowModify {
+			dropStmt = "-- " + dropStmt
+			addStmt = "-- " + addStmt
+		}
+
+		if len(pkDiff.ProdColumns) > 0 {
+			stmts = append(stmts, fmt.Sprintf("-- Current primary key: (%s)", strings.Join(pkDiff.ProdColumns, ", ")))
+			stmts = append(stmts, fmt.Sprintf("-- New primary key: (%s)", strings.Join(pkDiff.DevColumns, ", ")))
 			stmts = append(stmts, dropStmt)
 		}
 		if len(pkDiff.DevColumns) > 0 {

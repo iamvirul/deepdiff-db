@@ -34,15 +34,15 @@ func BuildCursorQuery(driver, table string, cols, pk []string, batchSize int, la
 	)
 	orderBy := " ORDER BY " + strings.Join(quotedPK, ", ")
 
-	// MSSQL does not support LIMIT — it uses the ANSI SQL:2008 OFFSET/FETCH syntax.
+	// MSSQL and Oracle 12c+ do not support LIMIT — they use the ANSI SQL:2008 OFFSET/FETCH syntax.
 	// The paging clause must come after ORDER BY.
-	if driver == "mssql" {
+	if driver == "mssql" || driver == "oracle" {
 		// "OFFSET 0 ROWS FETCH NEXT n ROWS ONLY" replaces "LIMIT n".
-		mssqlPage := fmt.Sprintf(" OFFSET 0 ROWS FETCH NEXT %d ROWS ONLY", batchSize)
+		fetchPage := fmt.Sprintf(" OFFSET 0 ROWS FETCH NEXT %d ROWS ONLY", batchSize)
 		if len(lastPKValues) == 0 {
-			return base + orderBy + mssqlPage
+			return base + orderBy + fetchPage
 		}
-		return base + " " + buildCursorWhere(driver, pk, lastPKValues) + orderBy + mssqlPage
+		return base + " " + buildCursorWhere(driver, pk, lastPKValues) + orderBy + fetchPage
 	}
 
 	limit := fmt.Sprintf(" LIMIT %d", batchSize)

@@ -23,6 +23,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5"
 	_ "github.com/microsoft/go-mssqldb"
+	_ "github.com/sijms/go-ora/v2"
 )
 
 // TestIntegration_MySQL_FullWorkflow tests the complete workflow with MySQL databases
@@ -1465,3 +1466,264 @@ func TestIntegration_AllReportsGenerated(t *testing.T) {
 	}
 }
 
+
+// TestIntegration_Oracle_FullWorkflow tests the complete workflow with Oracle XE 21c databases.
+// It uses gvenzl/oracle-xe:21-slim-faststart via the generic testcontainers API (no official Oracle module).
+// Oracle startup takes ~2-3 minutes; the test waits on "DATABASE IS READY TO USE!" in logs.
+func TestIntegration_Oracle_FullWorkflow(t *testing.T) {
+	ctx := context.Background()
+
+	const (
+		oraclePassword = "StrongP@ss1word!" // satisfies Oracle complexity requirements
+		oracleService  = "XEPDB1"           // Oracle 21c XE pluggable database
+		oracleUser     = "system"
+		oraclePort     = "1521/tcp"
+	)
+
+	// Start prod Oracle container
+	prodReq := testcontainers.ContainerRequest{
+		Image: "gvenzl/oracle-xe:21-slim-faststart",
+		Env: map[string]string{
+			"ORACLE_PASSWORD": oraclePassword,
+		},
+		ExposedPorts: []string{oraclePort},
+		WaitingFor:   wait.ForLog("DATABASE IS READY TO USE!").WithStartupTimeout(5 * time.Minute),
+	}
+	prodContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: prodReq,
+		Started:          true,
+	})
+	if err != nil {
+		t.Skipf("Oracle prod container unavailable (Docker or image issue): %v", err)
+	}
+	defer func() {
+		if err := prodContainer.Terminate(ctx); err != nil {
+			t.Logf("failed to terminate Oracle prod container: %v", err)
+		}
+	}()
+
+	// Start dev Oracle container
+	devReq := testcontainers.ContainerRequest{
+		Image: "gvenzl/oracle-xe:21-slim-faststart",
+		Env: map[string]string{
+			"ORACLE_PASSWORD": oraclePassword,
+		},
+		ExposedPorts: []string{oraclePort},
+		WaitingFor:   wait.ForLog("DATABASE IS READY TO USE!").WithStartupTimeout(5 * time.Minute),
+	}
+	devContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: devReq,
+		Started:          true,
+	})
+	if err != nil {
+		t.Skipf("Oracle dev container unavailable (Docker or image issue): %v", err)
+	}
+	defer func() {
+		if err := devContainer.Terminate(ctx); err != nil {
+			t.Logf("failed to terminate Oracle dev container: %v", err)
+		}
+	}()
+
+	// Resolve host/port for each container
+	prodHost, err := prodContainer.Host(ctx)
+	if err != nil {
+		t.Fatalf("Oracle prod container host: %v", err)
+	}
+	prodMappedPort, err := prodContainer.MappedPort(ctx, oraclePort)
+	if err != nil {
+		t.Fatalf("Oracle prod container port: %v", err)
+	}
+
+	devHost, err := devContainer.Host(ctx)
+	if err != nil {
+		t.Fatalf("Oracle dev container host: %v", err)
+	}
+	devMappedPort, err := devContainer.MappedPort(ctx, oraclePort)
+	if err != nil {
+		t.Fatalf("Oracle dev container port: %v", err)
+	}
+
+	prodDSN := fmt.Sprintf("oracle://%s:%s@%s:%s/%s", oracleUser, oraclePassword, prodHost, prodMappedPort.Port(), oracleService)
+	devDSN := fmt.Sprintf("oracle://%s:%s@%s:%s/%s", oracleUser, oraclePassword, devHost, devMappedPort.Port(), oracleService)
+
+	prodDB, err := sql.Open("oracle", prodDSN)
+	if err != nil {
+		t.Fatalf("open Oracle prod DB: %v", err)
+	}
+	defer prodDB.Close()
+
+	devDB, err := sql.Open("oracle", devDSN)
+	if err != nil {
+		t.Fatalf("open Oracle dev DB: %v", err)
+	}
+	defer devDB.Close()
+
+	// Seed prod: users table + orders table with FK, data
+	prodSetup := []string{
+		`CREATE TABLE USERS (
+			ID       NUMBER(10) NOT NULL,
+			USERNAME VARCHAR2(100) NOT NULL,
+			EMAIL    VARCHAR2(255) NOT NULL,
+			STATUS   VARCHAR2(20) DEFAULT 'active',
+			CONSTRAINT PK_USERS PRIMARY KEY (ID)
+		)`,
+		`CREATE TABLE ORDERS (
+			ID          NUMBER(10) NOT NULL,
+			USER_ID     NUMBER(10) NOT NULL,
+			AMOUNT      NUMBER(10,2) NOT NULL,
+			DESCRIPTION VARCHAR2(500),
+			CONSTRAINT PK_ORDERS PRIMARY KEY (ID),
+			CONSTRAINT FK_ORDERS_USERS FOREIGN KEY (USER_ID) REFERENCES USERS(ID)
+		)`,
+		`CREATE INDEX IDX_ORDERS_USER_ID ON ORDERS(USER_ID)`,
+		`INSERT INTO USERS (ID, USERNAME, EMAIL) VALUES (1, 'alice', 'alice@example.com')`,
+		`INSERT INTO USERS (ID, USERNAME, EMAIL) VALUES (2, 'bob', 'bob@example.com')`,
+		`INSERT INTO ORDERS (ID, USER_ID, AMOUNT, DESCRIPTION) VALUES (1, 1, 99.99, 'Order A')`,
+		`INSERT INTO ORDERS (ID, USER_ID, AMOUNT, DESCRIPTION) VALUES (2, 2, 49.99, 'Order B')`,
+	}
+	for _, stmt := range prodSetup {
+		if _, err := prodDB.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("Oracle prod setup %q: %v", stmt[:40], err)
+		}
+	}
+
+	// Seed dev: same tables with schema drift (extra column, new user, modified order)
+	devSetup := []string{
+		`CREATE TABLE USERS (
+			ID         NUMBER(10) NOT NULL,
+			USERNAME   VARCHAR2(100) NOT NULL,
+			EMAIL      VARCHAR2(255) NOT NULL,
+			STATUS     VARCHAR2(20) DEFAULT 'active',
+			CREATED_AT DATE DEFAULT SYSDATE,
+			CONSTRAINT PK_USERS PRIMARY KEY (ID)
+		)`,
+		`CREATE TABLE ORDERS (
+			ID          NUMBER(10) NOT NULL,
+			USER_ID     NUMBER(10) NOT NULL,
+			AMOUNT      NUMBER(10,2) NOT NULL,
+			DESCRIPTION VARCHAR2(500),
+			CONSTRAINT PK_ORDERS PRIMARY KEY (ID),
+			CONSTRAINT FK_ORDERS_USERS FOREIGN KEY (USER_ID) REFERENCES USERS(ID)
+		)`,
+		`CREATE INDEX IDX_ORDERS_USER_ID ON ORDERS(USER_ID)`,
+		`INSERT INTO USERS (ID, USERNAME, EMAIL, CREATED_AT) VALUES (1, 'alice', 'alice@example.com', SYSDATE)`,
+		`INSERT INTO USERS (ID, USERNAME, EMAIL, CREATED_AT) VALUES (2, 'bob', 'bob@example.com', SYSDATE)`,
+		`INSERT INTO USERS (ID, USERNAME, EMAIL, CREATED_AT) VALUES (3, 'carol', 'carol@example.com', SYSDATE)`,
+		`INSERT INTO ORDERS (ID, USER_ID, AMOUNT, DESCRIPTION) VALUES (1, 1, 149.99, 'Order A updated')`,
+		`INSERT INTO ORDERS (ID, USER_ID, AMOUNT, DESCRIPTION) VALUES (2, 2, 49.99, 'Order B')`,
+	}
+	for _, stmt := range devSetup {
+		if _, err := devDB.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("Oracle dev setup %q: %v", stmt[:40], err)
+		}
+	}
+
+	outputDir := t.TempDir()
+
+	prodCfg := config.DBConfig{Driver: "oracle", Host: prodHost, Port: prodMappedPort.Int(), User: oracleUser, Password: oraclePassword, Database: oracleService}
+	devCfg := config.DBConfig{Driver: "oracle", Host: devHost, Port: devMappedPort.Int(), User: oracleUser, Password: oraclePassword, Database: oracleService}
+
+	ignoreColumn := func(_, _ string) bool { return false }
+	ignoreTables := []string{}
+
+	t.Run("SchemaDiff", func(t *testing.T) {
+		_ = prodCfg
+		_ = devCfg
+		prodSchema, err := schema.LoadSchema(ctx, prodDB, "oracle", oracleService, ignoreTables)
+		if err != nil {
+			t.Fatalf("load prod schema: %v", err)
+		}
+		devSchema, err := schema.LoadSchema(ctx, devDB, "oracle", oracleService, ignoreTables)
+		if err != nil {
+			t.Fatalf("load dev schema: %v", err)
+		}
+
+		schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+
+		if err := schema.WriteReports(schemaDiff, outputDir); err != nil {
+			t.Fatalf("write schema reports: %v", err)
+		}
+
+		// USERS table should show CREATED_AT as missing in prod
+		var usersDiff *schema.TableDiff
+		for i := range schemaDiff.Tables {
+			if schemaDiff.Tables[i].Table == "USERS" {
+				usersDiff = &schemaDiff.Tables[i]
+				break
+			}
+		}
+		if usersDiff == nil {
+			t.Fatal("expected USERS table in schema diff")
+		}
+		if !usersDiff.HasDifferences {
+			t.Error("expected USERS table to have schema differences")
+		}
+	})
+
+	t.Run("ContentDiff", func(t *testing.T) {
+		prodSchema, err := schema.LoadSchema(ctx, prodDB, "oracle", oracleService, ignoreTables)
+		if err != nil {
+			t.Fatalf("load prod schema: %v", err)
+		}
+		devSchema, err := schema.LoadSchema(ctx, devDB, "oracle", oracleService, ignoreTables)
+		if err != nil {
+			t.Fatalf("load dev schema: %v", err)
+		}
+
+		for _, tbl := range prodSchema.Tables {
+			ph, err := content.HashTable(ctx, prodDB, "oracle", tbl, ignoreColumn, 0)
+			if err != nil {
+				t.Fatalf("hash prod table %s: %v", tbl.Name, err)
+			}
+			devTbl, ok := devSchema.Tables[tbl.Name]
+			if !ok {
+				continue
+			}
+			dh, err := content.HashTable(ctx, devDB, "oracle", devTbl, ignoreColumn, 0)
+			if err != nil {
+				t.Fatalf("hash dev table %s: %v", devTbl.Name, err)
+			}
+			_ = content.DiffHashes(tbl.Name, ph, dh)
+		}
+	})
+
+	t.Run("GeneratePack", func(t *testing.T) {
+		prodSchema, err := schema.LoadSchema(ctx, prodDB, "oracle", oracleService, ignoreTables)
+		if err != nil {
+			t.Fatalf("load prod schema: %v", err)
+		}
+		devSchema, err := schema.LoadSchema(ctx, devDB, "oracle", oracleService, ignoreTables)
+		if err != nil {
+			t.Fatalf("load dev schema: %v", err)
+		}
+		schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+
+		var tableDiffs []content.TableDiff
+		for _, tbl := range prodSchema.Tables {
+			devTbl, ok := devSchema.Tables[tbl.Name]
+			if !ok {
+				continue
+			}
+			ph, err := content.HashTable(ctx, prodDB, "oracle", tbl, ignoreColumn, 0)
+			if err != nil {
+				t.Fatalf("hash prod %s: %v", tbl.Name, err)
+			}
+			dh, err := content.HashTable(ctx, devDB, "oracle", devTbl, ignoreColumn, 0)
+			if err != nil {
+				t.Fatalf("hash dev %s: %v", devTbl.Name, err)
+			}
+			tableDiffs = append(tableDiffs, content.DiffHashes(tbl.Name, ph, dh))
+		}
+		dataDiff := content.DataDiff{Tables: tableDiffs}
+
+		_, err = content.GeneratePack(ctx, devDB, prodDB, "oracle", oracleService, dataDiff, schemaDiff, devSchema, prodSchema, outputDir, ignoreColumn, nil, nil)
+		if err != nil {
+			t.Fatalf("generate pack: %v", err)
+		}
+
+		packPath := filepath.Join(outputDir, "migration_pack.sql")
+		if _, statErr := os.Stat(packPath); os.IsNotExist(statErr) {
+			t.Fatal("migration_pack.sql not created")
+		}
+	})
+}

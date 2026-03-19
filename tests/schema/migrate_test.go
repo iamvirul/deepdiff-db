@@ -201,7 +201,7 @@ func TestGenerateMigration_NoDifferences(t *testing.T) {
 func TestGenerateMigration_UnsupportedDriver(t *testing.T) {
 	diff := schema.DiffResult{}
 
-	_, err := schema.GenerateMigration(diff, "oracle", nil)
+	_, err := schema.GenerateMigration(diff, "db2", nil)
 	if err == nil {
 		t.Error("Expected error for unsupported driver")
 	}

@@ -137,9 +137,9 @@ dev:
 			name: "unsupported driver",
 			config: `
 prod:
-  driver: "oracle"
+  driver: "db2"
   host: "localhost"
-  port: 1521
+  port: 50000
   database: "prod_db"
 
 dev:

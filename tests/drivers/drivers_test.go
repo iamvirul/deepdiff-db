@@ -104,9 +104,9 @@ func TestBuildDSN(t *testing.T) {
 		{
 			name: "unsupported driver",
 			cfg: config.DBConfig{
-				Driver:   "oracle",
+				Driver:   "db2",
 				Host:     "localhost",
-				Port:     1521,
+				Port:     50000,
 				Database: "testdb",
 			},
 			wantError: true,
