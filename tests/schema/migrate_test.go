@@ -1645,3 +1645,250 @@ func TestGenerateCreateTable_MSSQL(t *testing.T) {
 		t.Errorf("expected CREATE INDEX with square brackets, got:\n%s", sql)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Oracle-specific migration generation tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestGenerateMigration_Oracle_AddDropColumn(t *testing.T) {
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "users",
+				HasDifferences: true,
+				AddedColumns: []schema.Column{
+					{Name: "phone", DataType: "VARCHAR2(30)", IsNullable: true},
+				},
+				RemovedColumns: []schema.Column{
+					{Name: "old_code", DataType: "VARCHAR2(10)", IsNullable: true},
+				},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "oracle", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	// Oracle ADD column: no COLUMN keyword
+	if !strings.Contains(sql, `ALTER TABLE "users" ADD "phone" VARCHAR2(30) NULL;`) {
+		t.Errorf("expected Oracle ADD without COLUMN keyword, got:\n%s", sql)
+	}
+
+	// Oracle DROP COLUMN: requires COLUMN keyword
+	if !strings.Contains(sql, `-- ALTER TABLE "users" DROP COLUMN "old_code";`) {
+		t.Errorf("expected commented DROP COLUMN with COLUMN keyword, got:\n%s", sql)
+	}
+
+	// Must not use MSSQL/MySQL quoting
+	if strings.Contains(sql, "[users]") || strings.Contains(sql, "`users`") {
+		t.Errorf("Oracle should use double-quote identifiers, got:\n%s", sql)
+	}
+}
+
+func TestGenerateMigration_Oracle_ModifyColumn(t *testing.T) {
+	tests := []struct {
+		name    string
+		colDiff schema.ColumnDiff
+		wantHas []string
+	}{
+		{
+			name: "type change uses MODIFY",
+			colDiff: schema.ColumnDiff{
+				Column:       "description",
+				TypeMismatch: true,
+				DevType:      "VARCHAR2(500)",
+				ProdType:     "VARCHAR2(200)",
+				DevNullable:  boolPtr(true),
+				ProdNullable: boolPtr(true),
+			},
+			wantHas: []string{
+				`ALTER TABLE "t" MODIFY "description" VARCHAR2(500) NULL;`,
+			},
+		},
+		{
+			name: "nullable change uses MODIFY",
+			colDiff: schema.ColumnDiff{
+				Column:           "active",
+				NullableMismatch: true,
+				DevNullable:      boolPtr(false),
+				ProdNullable:     boolPtr(true),
+				DevType:          "NUMBER(1)",
+			},
+			wantHas: []string{
+				`ALTER TABLE "t" MODIFY "active" NUMBER(1) NOT NULL;`,
+			},
+		},
+		{
+			name: "default change emits Oracle-specific comment",
+			colDiff: schema.ColumnDiff{
+				Column:          "status",
+				DefaultMismatch: true,
+				DevDefault:      strPtr("'active'"),
+			},
+			wantHas: []string{
+				`-- Oracle: to change DEFAULT on t.status, use MODIFY with the new default.`,
+				`ALTER TABLE "t" MODIFY "status" DEFAULT 'active';`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diff := schema.DiffResult{
+				Tables: []schema.TableDiff{
+					{
+						Name:            "t",
+						HasDifferences:  true,
+						ModifiedColumns: []schema.ColumnDiff{tt.colDiff},
+					},
+				},
+			}
+			sql, err := schema.GenerateMigration(diff, "oracle", nil)
+			if err != nil {
+				t.Fatalf("GenerateMigration error: %v", err)
+			}
+			for _, want := range tt.wantHas {
+				if !strings.Contains(sql, want) {
+					t.Errorf("expected %q in output, got:\n%s", want, sql)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateMigration_Oracle_DropIndex(t *testing.T) {
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "products",
+				HasDifferences: true,
+				RemovedIndexes: []schema.Index{
+					{Name: "idx_products_sku", Columns: []string{"sku"}, IsUnique: false},
+					{Name: "uq_products_code", Columns: []string{"code"}, IsUnique: true},
+				},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "oracle", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	// Oracle DROP INDEX: no table name (unlike MSSQL which requires ON table)
+	if !strings.Contains(sql, `DROP INDEX "idx_products_sku";`) {
+		t.Errorf("expected Oracle DROP INDEX without table name, got:\n%s", sql)
+	}
+	if !strings.Contains(sql, `DROP INDEX "uq_products_code";`) {
+		t.Errorf("expected Oracle DROP INDEX for unique index, got:\n%s", sql)
+	}
+	// Must not include ON clause
+	if strings.Contains(sql, `ON "products"`) {
+		t.Errorf("Oracle DROP INDEX must not include ON table, got:\n%s", sql)
+	}
+}
+
+func TestGenerateMigration_Oracle_DropForeignKey(t *testing.T) {
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "orders",
+				HasDifferences: true,
+				RemovedForeignKeys: []schema.ForeignKey{
+					{
+						Name:              "fk_orders_customer",
+						Columns:           []string{"customer_id"},
+						ReferencedTable:   "customers",
+						ReferencedColumns: []string{"id"},
+					},
+				},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "oracle", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	// Oracle uses DROP CONSTRAINT (same as MSSQL, not DROP FOREIGN KEY like MySQL)
+	if !strings.Contains(sql, `ALTER TABLE "orders" DROP CONSTRAINT "fk_orders_customer";`) {
+		t.Errorf("expected DROP CONSTRAINT syntax for Oracle, got:\n%s", sql)
+	}
+	// MySQL-style DROP FOREIGN KEY uses backtick quoting — must not appear for Oracle
+	if strings.Contains(sql, "DROP FOREIGN KEY `") {
+		t.Errorf("Oracle should not use MySQL DROP FOREIGN KEY syntax, got:\n%s", sql)
+	}
+}
+
+func TestGenerateMigration_Oracle_ModifyPrimaryKey(t *testing.T) {
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "items",
+				HasDifferences: true,
+				PrimaryKeyDiff: &schema.PrimaryKeyDiff{
+					ProdColumns: []string{"id"},
+					DevColumns:  []string{"id", "tenant_id"},
+				},
+			},
+		},
+	}
+
+	cfg := &schema.MigrationOptions{AllowModifyPrimaryKey: true}
+	sql, err := schema.GenerateMigration(diff, "oracle", cfg)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	// Oracle: DROP PRIMARY KEY (no constraint name needed)
+	if !strings.Contains(sql, `ALTER TABLE "items" DROP PRIMARY KEY;`) {
+		t.Errorf("expected Oracle DROP PRIMARY KEY, got:\n%s", sql)
+	}
+	// Add new composite PK
+	if !strings.Contains(sql, `ALTER TABLE "items" ADD PRIMARY KEY ("id", "tenant_id");`) {
+		t.Errorf("expected ADD PRIMARY KEY with new columns, got:\n%s", sql)
+	}
+}
+
+func TestGenerateCreateTable_Oracle(t *testing.T) {
+	diff := schema.DiffResult{
+		AddedTables: []schema.Table{
+			{
+				Name: "sessions",
+				Columns: map[string]schema.Column{
+					"id":         {Name: "id", DataType: "NUMBER", IsNullable: false},
+					"user_id":    {Name: "user_id", DataType: "NUMBER", IsNullable: false},
+					"created_at": {Name: "created_at", DataType: "TIMESTAMP", IsNullable: true},
+				},
+				PrimaryKey: []string{"id"},
+				Indexes: map[string]schema.Index{
+					"idx_sessions_user": {Name: "idx_sessions_user", Columns: []string{"user_id"}, IsUnique: false},
+				},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "oracle", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	// Oracle CREATE TABLE with double-quote identifiers
+	if !strings.Contains(sql, `CREATE TABLE "sessions"`) {
+		t.Errorf("expected CREATE TABLE with double-quote identifiers, got:\n%s", sql)
+	}
+	if !strings.Contains(sql, `"id" NUMBER NOT NULL`) {
+		t.Errorf("expected \"id\" column definition, got:\n%s", sql)
+	}
+	// No ENGINE=InnoDB for Oracle
+	if strings.Contains(sql, "ENGINE=InnoDB") {
+		t.Errorf("Oracle should not include ENGINE=InnoDB, got:\n%s", sql)
+	}
+	// Index creation with double-quote identifiers
+	if !strings.Contains(sql, `CREATE INDEX "idx_sessions_user" ON "sessions" ("user_id")`) {
+		t.Errorf("expected CREATE INDEX with double-quote identifiers, got:\n%s", sql)
+	}
+}

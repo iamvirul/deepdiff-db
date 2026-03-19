@@ -1670,20 +1670,28 @@ func TestIntegration_Oracle_FullWorkflow(t *testing.T) {
 			t.Fatalf("load dev schema: %v", err)
 		}
 
-		for _, tbl := range prodSchema.Tables {
-			ph, err := content.HashTable(ctx, prodDB, "oracle", tbl, ignoreColumn, 0)
-			if err != nil {
-				t.Fatalf("hash prod table %s: %v", tbl.Name, err)
-			}
-			devTbl, ok := devSchema.Tables[tbl.Name]
+		prodHashes := make(map[string]map[string]string)
+		devHashes := make(map[string]map[string]string)
+		for name, pt := range prodSchema.Tables {
+			dt, ok := devSchema.Tables[name]
 			if !ok {
 				continue
 			}
-			dh, err := content.HashTable(ctx, devDB, "oracle", devTbl, ignoreColumn, 0)
+			ph, err := content.HashTable(ctx, prodDB, "oracle", pt, ignoreColumn, 0)
 			if err != nil {
-				t.Fatalf("hash dev table %s: %v", devTbl.Name, err)
+				t.Fatalf("hash prod table %s: %v", name, err)
 			}
-			_ = content.DiffHashes(tbl.Name, ph, dh)
+			dh, err := content.HashTable(ctx, devDB, "oracle", dt, ignoreColumn, 0)
+			if err != nil {
+				t.Fatalf("hash dev table %s: %v", name, err)
+			}
+			prodHashes[name] = ph
+			devHashes[name] = dh
+		}
+
+		dataDiff, _ := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
+		if !dataDiff.HasChanges() {
+			t.Error("expected data changes to be detected")
 		}
 	})
 
@@ -1698,32 +1706,37 @@ func TestIntegration_Oracle_FullWorkflow(t *testing.T) {
 		}
 		schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
 
-		var tableDiffs []content.TableDiff
-		for _, tbl := range prodSchema.Tables {
-			devTbl, ok := devSchema.Tables[tbl.Name]
+		prodHashes := make(map[string]map[string]string)
+		devHashes := make(map[string]map[string]string)
+		for name, pt := range prodSchema.Tables {
+			dt, ok := devSchema.Tables[name]
 			if !ok {
 				continue
 			}
-			ph, err := content.HashTable(ctx, prodDB, "oracle", tbl, ignoreColumn, 0)
+			ph, err := content.HashTable(ctx, prodDB, "oracle", pt, ignoreColumn, 0)
 			if err != nil {
-				t.Fatalf("hash prod %s: %v", tbl.Name, err)
+				t.Fatalf("hash prod %s: %v", name, err)
 			}
-			dh, err := content.HashTable(ctx, devDB, "oracle", devTbl, ignoreColumn, 0)
+			dh, err := content.HashTable(ctx, devDB, "oracle", dt, ignoreColumn, 0)
 			if err != nil {
-				t.Fatalf("hash dev %s: %v", devTbl.Name, err)
+				t.Fatalf("hash dev %s: %v", name, err)
 			}
-			tableDiffs = append(tableDiffs, content.DiffHashes(tbl.Name, ph, dh))
+			prodHashes[name] = ph
+			devHashes[name] = dh
 		}
-		dataDiff := content.DataDiff{Tables: tableDiffs}
+		dataDiff, _ := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
 
-		_, err = content.GeneratePack(ctx, devDB, prodDB, "oracle", oracleService, dataDiff, schemaDiff, devSchema, prodSchema, outputDir, ignoreColumn, nil, nil)
+		packPath, err := content.GeneratePack(ctx, "oracle", devDB, oracleService, prodSchema, devSchema, schemaDiff, dataDiff, ignoreColumn, outputDir)
 		if err != nil {
 			t.Fatalf("generate pack: %v", err)
 		}
 
-		packPath := filepath.Join(outputDir, "migration_pack.sql")
-		if _, statErr := os.Stat(packPath); os.IsNotExist(statErr) {
-			t.Fatal("migration_pack.sql not created")
+		packContent, err := os.ReadFile(packPath)
+		if err != nil {
+			t.Fatalf("read pack: %v", err)
+		}
+		if len(packContent) == 0 {
+			t.Fatal("migration_pack.sql is empty")
 		}
 	})
 }
