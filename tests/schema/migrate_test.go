@@ -1732,6 +1732,35 @@ func TestGenerateMigration_Oracle_ModifyColumn(t *testing.T) {
 				`ALTER TABLE "t" MODIFY "status" DEFAULT 'active';`,
 			},
 		},
+		{
+			// Covers the `if dataType == ""` fallback to ProdType branch (line 488-490)
+			name: "type mismatch with empty DevType falls back to ProdType",
+			colDiff: schema.ColumnDiff{
+				Column:       "code",
+				TypeMismatch: true,
+				DevType:      "",              // empty — must fall back to ProdType
+				ProdType:     "VARCHAR2(100)",
+				DevNullable:  boolPtr(true),
+				ProdNullable: boolPtr(true),
+			},
+			wantHas: []string{
+				`ALTER TABLE "t" MODIFY "code" VARCHAR2(100) NULL;`,
+			},
+		},
+		{
+			// Covers the `else if colDiff.ProdNullable != nil` branch (line 494-496)
+			name: "nullable mismatch with nil DevNullable uses ProdNullable",
+			colDiff: schema.ColumnDiff{
+				Column:           "active",
+				NullableMismatch: true,
+				DevType:          "NUMBER(1)",
+				DevNullable:      nil,            // not set
+				ProdNullable:     boolPtr(false),  // falls through to ProdNullable
+			},
+			wantHas: []string{
+				`ALTER TABLE "t" MODIFY "active" NUMBER(1) NOT NULL;`,
+			},
+		},
 	}
 
 	for _, tt := range tests {
