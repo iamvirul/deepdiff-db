@@ -1892,3 +1892,68 @@ func TestGenerateCreateTable_Oracle(t *testing.T) {
 		t.Errorf("expected CREATE INDEX with double-quote identifiers, got:\n%s", sql)
 	}
 }
+
+func TestGenerateMigration_Oracle_ModifyColumn_NilDefault(t *testing.T) {
+	// When DevDefault is nil and DefaultMismatch is true, Oracle should emit MODIFY col DEFAULT NULL
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "t",
+				HasDifferences: true,
+				ModifiedColumns: []schema.ColumnDiff{
+					{
+						Column:          "status",
+						DefaultMismatch: true,
+						DevDefault:      nil, // removing the default
+					},
+				},
+			},
+		},
+	}
+
+	sql, err := schema.GenerateMigration(diff, "oracle", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	if !strings.Contains(sql, `-- Oracle: to change DEFAULT on t.status, use MODIFY with the new default.`) {
+		t.Errorf("expected Oracle DEFAULT comment, got:\n%s", sql)
+	}
+	if !strings.Contains(sql, `ALTER TABLE "t" MODIFY "status" DEFAULT NULL;`) {
+		t.Errorf("expected Oracle MODIFY DEFAULT NULL when DevDefault is nil, got:\n%s", sql)
+	}
+}
+
+func TestGenerateMigration_Oracle_ModifyPrimaryKey_Blocked(t *testing.T) {
+	// When AllowModifyPrimaryKey is false, Oracle statements should be commented out
+	diff := schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "items",
+				HasDifferences: true,
+				PrimaryKeyDiff: &schema.PrimaryKeyDiff{
+					ProdColumns: []string{"id"},
+					DevColumns:  []string{"id", "tenant_id"},
+				},
+			},
+		},
+	}
+
+	// nil options → AllowModifyPrimaryKey defaults to false
+	sql, err := schema.GenerateMigration(diff, "oracle", nil)
+	if err != nil {
+		t.Fatalf("GenerateMigration failed: %v", err)
+	}
+
+	// Both statements must be commented out
+	if !strings.Contains(sql, `-- ALTER TABLE "items" DROP PRIMARY KEY;`) {
+		t.Errorf("Oracle DROP PRIMARY KEY should be commented when not allowed, got:\n%s", sql)
+	}
+	if !strings.Contains(sql, `-- ALTER TABLE "items" ADD PRIMARY KEY ("id", "tenant_id");`) {
+		t.Errorf("Oracle ADD PRIMARY KEY should be commented when not allowed, got:\n%s", sql)
+	}
+	// Must not have uncommented DROP/ADD
+	if strings.Contains(sql, "\nALTER TABLE \"items\" DROP PRIMARY KEY;") {
+		t.Errorf("Oracle DROP PRIMARY KEY must not be uncommented when blocked, got:\n%s", sql)
+	}
+}
