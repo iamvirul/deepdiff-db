@@ -1,0 +1,168 @@
+name: DeepDiff DB
+description: >
+  Compare two databases (schema + row-level), detect drift, generate migration packs,
+  and apply changes safely. Supports MySQL, PostgreSQL, SQLite, MSSQL, and Oracle.
+author: iamvirul
+
+branding:
+  icon: database
+  color: purple
+
+inputs:
+  command:
+    description: >
+      DeepDiff DB command to run.
+      One of: check, schema-diff, schema-migrate, diff, gen-pack, apply, resolve-conflicts
+    required: true
+    default: diff
+
+  config:
+    description: Path to the deepdiffdb YAML config file.
+    required: false
+    default: deepdiffdb.yaml
+
+  version:
+    description: >
+      Version of deepdiff-db to install (e.g. "v1.0.0").
+      Use "latest" to always get the newest release.
+    required: false
+    default: latest
+
+  args:
+    description: Additional CLI arguments passed directly to the command (e.g. "--html --batch-size 5000").
+    required: false
+    default: ""
+
+  pack:
+    description: Path to migration pack SQL file. Required when command is "apply".
+    required: false
+    default: ""
+
+  upload-artifacts:
+    description: >
+      Upload generated output files (summary.txt, content_diff.json,
+      schema_diff.json, migration_pack.sql, report.html) as workflow artifacts.
+    required: false
+    default: "true"
+
+  artifact-name:
+    description: Name for the uploaded artifact bundle.
+    required: false
+    default: deepdiff-db-output
+
+outputs:
+  summary:
+    description: Path to the generated summary.txt file.
+    value: ${{ steps.run.outputs.summary }}
+
+  migration-pack:
+    description: Path to the generated migration_pack.sql file.
+    value: ${{ steps.run.outputs.migration_pack }}
+
+  report:
+    description: Path to the generated report.html file (only when --html is passed).
+    value: ${{ steps.run.outputs.report }}
+
+  output-dir:
+    description: Path to the output directory containing all generated files.
+    value: ${{ steps.run.outputs.output_dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install deepdiff-db
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+
+        # Normalize arch names to match GoReleaser output
+        case "$ARCH" in
+          x86_64)  ARCH="amd64" ;;
+          aarch64) ARCH="arm64" ;;
+          arm64)   ARCH="arm64" ;;
+        esac
+
+        # Resolve "latest" to the actual latest tag
+        if [ "$VERSION" = "latest" ]; then
+          VERSION=$(gh release view --repo iamvirul/deepdiff-db --json tagName -q .tagName)
+        fi
+
+        # Strip leading 'v' for archive name (GoReleaser uses bare version in filename)
+        BARE_VERSION="${VERSION#v}"
+        ARCHIVE="deepdiff-db_${BARE_VERSION}_${OS}_${ARCH}.tar.gz"
+        DOWNLOAD_URL="https://github.com/iamvirul/deepdiff-db/releases/download/${VERSION}/${ARCHIVE}"
+
+        echo "Installing deepdiff-db ${VERSION} (${OS}/${ARCH})"
+        curl -fsSL "$DOWNLOAD_URL" -o /tmp/deepdiff-db.tar.gz
+        tar -xzf /tmp/deepdiff-db.tar.gz -C /tmp deepdiff-db
+        chmod +x /tmp/deepdiff-db
+        sudo mv /tmp/deepdiff-db /usr/local/bin/deepdiff-db
+
+        deepdiff-db --version
+
+    - name: Run deepdiff-db
+      id: run
+      shell: bash
+      env:
+        COMMAND:   ${{ inputs.command }}
+        CONFIG:    ${{ inputs.config }}
+        ARGS:      ${{ inputs.args }}
+        PACK:      ${{ inputs.pack }}
+      run: |
+        set -euo pipefail
+
+        CMD_ARGS="--config ${CONFIG}"
+
+        if [ "${COMMAND}" = "apply" ]; then
+          if [ -z "${PACK}" ]; then
+            echo "::error::Input 'pack' is required when command is 'apply'"
+            exit 1
+          fi
+          CMD_ARGS="${CMD_ARGS} --pack ${PACK}"
+        fi
+
+        # Append any extra user-supplied args
+        if [ -n "${ARGS}" ]; then
+          CMD_ARGS="${CMD_ARGS} ${ARGS}"
+        fi
+
+        echo "Running: deepdiff-db ${COMMAND} ${CMD_ARGS}"
+        deepdiff-db ${COMMAND} ${CMD_ARGS}
+
+        # Resolve output directory from config (default: ./diff-output)
+        OUTPUT_DIR=$(grep -E '^\s*dir:' "${CONFIG}" 2>/dev/null | head -1 | awk '{print $2}' || echo "diff-output")
+        OUTPUT_DIR="${OUTPUT_DIR:-diff-output}"
+
+        echo "output_dir=${OUTPUT_DIR}"            >> "$GITHUB_OUTPUT"
+        echo "summary=${OUTPUT_DIR}/summary.txt"   >> "$GITHUB_OUTPUT"
+        echo "migration_pack=${OUTPUT_DIR}/migration_pack.sql" >> "$GITHUB_OUTPUT"
+        echo "report=${OUTPUT_DIR}/report.html"    >> "$GITHUB_OUTPUT"
+
+        # Surface summary to the workflow step summary
+        if [ -f "${OUTPUT_DIR}/summary.txt" ]; then
+          echo "## DeepDiff DB — \`${COMMAND}\` summary" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat "${OUTPUT_DIR}/summary.txt" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Upload output artifacts
+      if: ${{ inputs.upload-artifacts == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          ${{ steps.run.outputs.output_dir }}/summary.txt
+          ${{ steps.run.outputs.output_dir }}/schema_diff.json
+          ${{ steps.run.outputs.output_dir }}/schema_diff.txt
+          ${{ steps.run.outputs.output_dir }}/content_diff.json
+          ${{ steps.run.outputs.output_dir }}/conflicts.json
+          ${{ steps.run.outputs.output_dir }}/migration_pack.sql
+          ${{ steps.run.outputs.output_dir }}/report.html
+        if-no-files-found: ignore

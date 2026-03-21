@@ -1,0 +1,81 @@
+name: Test GitHub Action
+
+on:
+  push:
+    paths:
+      - action.yml
+      - .github/workflows/action-test.yml
+  pull_request:
+    paths:
+      - action.yml
+      - .github/workflows/action-test.yml
+
+jobs:
+  test-action:
+    name: Test deepdiff-db action (SQLite)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create test config (SQLite prod vs dev)
+        run: |
+          mkdir -p /tmp/test-dbs
+
+          # Create prod SQLite database
+          sqlite3 /tmp/test-dbs/prod.db "
+            CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+            CREATE TABLE products (id INTEGER PRIMARY KEY, title TEXT, price REAL);
+            INSERT INTO users VALUES (1,'Alice','alice@example.com');
+            INSERT INTO users VALUES (2,'Bob','bob@example.com');
+            INSERT INTO products VALUES (1,'Widget',9.99);
+          "
+
+          # Create dev SQLite database (new column, new row, price changed)
+          sqlite3 /tmp/test-dbs/dev.db "
+            CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, phone TEXT);
+            CREATE TABLE products (id INTEGER PRIMARY KEY, title TEXT, price REAL);
+            INSERT INTO users VALUES (1,'Alice','alice@example.com',NULL);
+            INSERT INTO users VALUES (2,'Bob','bob@example.com',NULL);
+            INSERT INTO users VALUES (3,'Carol','carol@example.com',NULL);
+            INSERT INTO products VALUES (1,'Widget',12.99);
+          "
+
+          cat > deepdiffdb.yaml <<EOF
+          prod:
+            driver: sqlite
+            database: /tmp/test-dbs/prod.db
+
+          dev:
+            driver: sqlite
+            database: /tmp/test-dbs/dev.db
+
+          output:
+            dir: ./diff-output
+          EOF
+
+      - name: Run deepdiff-db check
+        uses: ./
+        with:
+          command: check
+          config: deepdiffdb.yaml
+          upload-artifacts: "false"
+
+      - name: Run deepdiff-db diff
+        uses: ./
+        with:
+          command: diff
+          config: deepdiffdb.yaml
+          args: --html
+          artifact-name: deepdiff-db-test-output
+
+      - name: Verify outputs exist
+        run: |
+          echo "Checking output files..."
+          test -f diff-output/summary.txt       && echo "✓ summary.txt"
+          test -f diff-output/content_diff.json && echo "✓ content_diff.json"
+          test -f diff-output/schema_diff.json  && echo "✓ schema_diff.json"
+          test -f diff-output/report.html       && echo "✓ report.html"
+          echo ""
+          echo "--- summary.txt ---"
+          cat diff-output/summary.txt
