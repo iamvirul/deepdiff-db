@@ -166,7 +166,7 @@ func TestCheckPrimaryKeys_SQLite_EmptyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckPrimaryKeys() error = %v", err)
 	}
-	if missing != nil && len(missing) != 0 {
+	if len(missing) != 0 {
 		t.Errorf("expected nil or empty slice, got %v", missing)
 	}
 }
