@@ -1,0 +1,26 @@
+# CODEOWNERS
+#
+# Each line defines the owner(s) for matching files/directories.
+# The last matching pattern takes precedence.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owner — all files default to @iamvirul
+* @iamvirul
+
+# Core application
+/cmd/                    @iamvirul
+/internal/               @iamvirul
+/pkg/                    @iamvirul
+
+# Tests
+/tests/                  @iamvirul
+
+# CI/CD and release
+/.github/                @iamvirul
+/.goreleaser.yml         @iamvirul
+
+# Documentation
+/website/                @iamvirul
+/README.md               @iamvirul
+/SECURITY.md             @iamvirul
+/CHANGELOG.md            @iamvirul
