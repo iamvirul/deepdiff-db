@@ -1,0 +1,81 @@
+# DeepDiff DB — GitLab CI Integration Example
+#
+# Add this to your .gitlab-ci.yml (or include it as a component).
+# Runs a schema diff on merge requests and posts the result as a note.
+#
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#   PROD_DB_DSN  — e.g. mysql://root:secret@prod-db:3306/myapp
+#   DEV_DB_DSN   — e.g. mysql://root:secret@dev-db:3306/myapp
+
+stages:
+  - db-diff
+
+variables:
+  DEEPDIFFDB_VERSION: "latest"
+
+db-diff:
+  stage: db-diff
+  image: alpine:3.20
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  services:
+    - name: mysql:8.4
+      alias: db-prod
+      variables:
+        MYSQL_ROOT_PASSWORD: prod_secret
+        MYSQL_DATABASE: myapp_prod
+    - name: mysql:8.4
+      alias: db-dev
+      variables:
+        MYSQL_ROOT_PASSWORD: dev_secret
+        MYSQL_DATABASE: myapp_dev
+  before_script:
+    - apk add --no-cache curl tar jq mysql-client
+    - |
+      if [ "$DEEPDIFFDB_VERSION" = "latest" ]; then
+        DEEPDIFFDB_VERSION=$(curl -s https://api.github.com/repos/iamvirul/deepdiff-db/releases/latest \
+          | jq -r '.tag_name')
+      fi
+      curl -fsSL \
+        "https://github.com/iamvirul/deepdiff-db/releases/download/${DEEPDIFFDB_VERSION}/deepdiffdb_${DEEPDIFFDB_VERSION}_linux_amd64.tar.gz" \
+        | tar -xz deepdiffdb
+      chmod +x deepdiffdb && mv deepdiffdb /usr/local/bin/deepdiffdb
+  script:
+    - |
+      cat > deepdiffdb.config.yaml << EOF
+      production:
+        driver: mysql
+        host: db-prod
+        port: 3306
+        user: root
+        password: prod_secret
+        database: myapp_prod
+      development:
+        driver: mysql
+        host: db-dev
+        port: 3306
+        user: root
+        password: dev_secret
+        database: myapp_dev
+      output:
+        directory: diff-output
+      EOF
+    - mkdir -p diff-output
+    - deepdiffdb diff --config deepdiffdb.config.yaml || true
+  artifacts:
+    when: always
+    paths:
+      - diff-output/
+    expire_in: 7 days
+  after_script:
+    - |
+      # Post diff summary as MR note via GitLab API
+      if [ -f diff-output/result.json ]; then
+        TABLES=$(jq '.schema_changes | length' diff-output/result.json 2>/dev/null || echo 0)
+        NOTE="**DeepDiff DB Report**\n\nSchema changes: ${TABLES}\n\nSee artifacts for full output."
+        curl -s --request POST \
+          --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+          --data-urlencode "body=${NOTE}" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}/notes" \
+          > /dev/null || true
+      fi

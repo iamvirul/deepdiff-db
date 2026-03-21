@@ -61,7 +61,7 @@ func initializeLogger(verbose bool, logFile string, logLevelStr string, logForma
 	var fileOutput io.Writer
 	var fileCloser io.Closer
 	if logFile != "" {
-		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to open log file: %w", err)
 		}
@@ -275,7 +275,7 @@ func runCheck(args []string) error {
 	}
 	defer devDB.Close()
 
-	if err := os.MkdirAll(cfg.Output.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.Output.Dir, 0o750); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
 
@@ -381,7 +381,7 @@ func runFullDiff(args []string) error {
 	}
 	defer devDB.Close()
 
-	if err := os.MkdirAll(cfg.Output.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.Output.Dir, 0o750); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
 
@@ -598,7 +598,7 @@ func runGenPack(args []string) error {
 	}
 	defer devDB.Close()
 
-	if err := os.MkdirAll(cfg.Output.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.Output.Dir, 0o750); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
 
@@ -1344,7 +1344,7 @@ func runSchemaMigrate(args []string) error {
 	}
 	defer devDB.Close()
 
-	if err := os.MkdirAll(cfg.Output.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.Output.Dir, 0o750); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
 
@@ -1400,7 +1400,7 @@ func runSchemaMigrate(args []string) error {
 
 	// Write migration file
 	migrationPath := filepath.Join(cfg.Output.Dir, "schema_migration.sql")
-	if err := os.WriteFile(migrationPath, []byte(migrationSQL), 0o644); err != nil {
+	if err := os.WriteFile(migrationPath, []byte(migrationSQL), 0o600); err != nil {
 		return fmt.Errorf("write migration file: %w", err)
 	}
 

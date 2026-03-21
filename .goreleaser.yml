@@ -1,0 +1,159 @@
+version: 2
+
+project_name: deepdiffdb
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: deepdiffdb
+    main: ./cmd/deepdiffdb
+    binary: deepdiffdb
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: deepdiffdb
+    builds:
+      - deepdiffdb
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - CHANGELOG.md
+      - deepdiffdb.config.yaml.example
+
+nfpms:
+  - id: deepdiffdb
+    package_name: deepdiff-db
+    builds:
+      - deepdiffdb
+    vendor: iamvirul
+    homepage: https://iamvirul.github.io/deepdiff-db/
+    maintainer: iamvirul <noreply@github.com>
+    description: Compare databases, detect schema drift, and generate safe SQL migration packs.
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    contents:
+      - src: README.md
+        dst: /usr/share/doc/deepdiff-db/README.md
+        type: doc
+      - src: CHANGELOG.md
+        dst: /usr/share/doc/deepdiff-db/CHANGELOG.md
+        type: doc
+
+scoops:
+  - name: deepdiff-db
+    repository:
+      owner: iamvirul
+      name: deepdiff-db
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      branch: main
+      pull_request:
+        enabled: false
+    directory: scoop
+    homepage: https://iamvirul.github.io/deepdiff-db/
+    description: Compare databases, detect schema drift, and generate safe SQL migration packs.
+    license: Apache-2.0
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: "New Features"
+      regexp: "^feat"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^fix"
+      order: 1
+    - title: "Performance"
+      regexp: "^perf"
+      order: 2
+    - title: Other
+      order: 999
+
+release:
+  github:
+    owner: iamvirul
+    name: deepdiff-db
+  draft: false
+  prerelease: auto
+  name_template: "v{{.Version}}"
+
+brews:
+  - name: deepdiff-db
+    repository:
+      owner: iamvirul
+      name: deepdiff-db
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://iamvirul.github.io/deepdiff-db/"
+    description: "Compare databases, detect schema drift, and generate safe SQL migration packs."
+    license: "Apache-2.0"
+    test: |
+      system "#{bin}/deepdiffdb", "--help"
+    install: |
+      bin.install "deepdiffdb"
+
+dockers:
+  - image_templates:
+      - "ghcr.io/iamvirul/deepdiff-db:{{ .Version }}-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--label=org.opencontainers.image.title=deepdiff-db"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/iamvirul/deepdiff-db"
+  - image_templates:
+      - "ghcr.io/iamvirul/deepdiff-db:{{ .Version }}-arm64"
+    use: buildx
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--build-arg=VERSION={{ .Version }}"
+
+docker_manifests:
+  - name_template: "ghcr.io/iamvirul/deepdiff-db:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/iamvirul/deepdiff-db:{{ .Version }}-amd64"
+      - "ghcr.io/iamvirul/deepdiff-db:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/iamvirul/deepdiff-db:latest"
+    image_templates:
+      - "ghcr.io/iamvirul/deepdiff-db:{{ .Version }}-amd64"
+      - "ghcr.io/iamvirul/deepdiff-db:{{ .Version }}-arm64"

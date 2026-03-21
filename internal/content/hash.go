@@ -313,7 +313,7 @@ func logBatchMemory(log *logger.Logger, table string, batchNum, totalRows int) {
 // getRowCount returns the approximate row count for a table.
 // Returns 0 if count cannot be determined.
 func getRowCount(ctx context.Context, db *sql.DB, driver, table string) (int64, error) {
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", quoteIdent(driver, table))
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", quoteIdent(driver, table)) // #nosec G201 -- table name sourced from schema introspection and passed through quoteIdent
 	var count int64
 	err := db.QueryRowContext(ctx, query).Scan(&count)
 	if err != nil {

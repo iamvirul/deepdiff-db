@@ -43,13 +43,13 @@ func (m *Manager) Save(state *State) error {
 
 	// Ensure output directory exists
 	dir := filepath.Dir(m.checkpointPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return errors.Wrap(err, errors.ErrCheckpointWrite, "create checkpoint directory")
 	}
 
 	// Write checkpoint file atomically (write to temp, then rename)
 	tmpPath := m.checkpointPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
 		return errors.Wrap(err, errors.ErrCheckpointWrite, "write checkpoint file")
 	}
 

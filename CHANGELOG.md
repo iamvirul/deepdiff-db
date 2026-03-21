@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0] - 2026-03-22
+
+### Added
+- Multi-stage `Dockerfile` (scratch-based image, ~15 MB, `CGO_ENABLED=0`) and `docker-compose.example.yml`
+- GoReleaser configuration (`.goreleaser.yml`) — replaces manual release workflow; produces cross-platform archives, SHA256 checksums, multi-arch GHCR Docker manifests, and auto-updates Homebrew formula
+- CI/CD integration examples: GitHub Actions PR diff check, GitLab CI MR check, pre-commit hook (`examples/cicd/`)
+- Go benchmark suite for `HashTable` at 1k/10k rows, batched and unbatched (`tests/content/bench_test.go`)
+- `MIGRATION.md` — upgrade guide from v0.x to v1.0
+- `gosec` and `govulncheck` jobs added to CI workflow
+- Docusaurus documentation site with Deployment section: Docker, CI/CD, Performance, Migration guide
+
+### Changed
+- Release workflow replaced with GoReleaser; archive names updated (e.g. `deepdiffdb_v1.0.0_linux_amd64.tar.gz`)
+- Homebrew formula updated to inject version via ldflags; tap updated to `iamvirul/tap`
+- Go minimum version bumped to **1.25.8** in `go.mod`; all CI jobs updated accordingly
+
+### Security
+- File permissions tightened: `WriteFile` `0644→0600`, `MkdirAll` `0755→0750`, log `OpenFile` `0644→0600`
+- `os.Create` in HTML generator replaced with `os.OpenFile(..., 0o600)`
+- Resolved **GO-2026-4603** (`html/template` URL escaping) and **GO-2026-4601** (`net/url` IPv6 parsing) by upgrading to Go 1.25.8
+
 ## [0.9] - 2026-03-21
 
 ### Added
@@ -346,7 +367,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v0.9...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.0...HEAD
+[1.0]: https://github.com/iamvirul/deepdiff-db/compare/v0.9...v1.0
 [0.9]: https://github.com/iamvirul/deepdiff-db/compare/v0.8...v0.9
 [0.8]: https://github.com/iamvirul/deepdiff-db/compare/v0.7...v0.8
 [0.7]: https://github.com/iamvirul/deepdiff-db/compare/v0.6.1...v0.7

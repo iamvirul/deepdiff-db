@@ -40,7 +40,7 @@ func main() {
 	log.Println("Creating prod.db …")
 	prodDB := mustOpen("prod.db")
 	setupSchema(prodDB)
-	rng := rand.New(rand.NewSource(42))
+	rng := rand.New(rand.NewSource(42)) // #nosec G404 -- deterministic seed for reproducible test data, not security-sensitive
 	seedOrders(prodDB, rng, oRows)
 	seedProducts(prodDB, rng, pRows)
 	seedAuditLogs(prodDB, rng, aRows)
@@ -51,12 +51,12 @@ func main() {
 	log.Println("Creating dev.db …")
 	devDB := mustOpen("dev.db")
 	setupSchema(devDB)
-	rng2 := rand.New(rand.NewSource(42)) // same seed → identical rows
+	rng2 := rand.New(rand.NewSource(42)) // #nosec G404 -- same seed → identical rows for diff testing, not security-sensitive
 	seedOrders(devDB, rng2, oRows)
 	seedProducts(devDB, rng2, pRows)
 	seedAuditLogs(devDB, rng2, aRows)
 
-	mutateDev(devDB, rand.New(rand.NewSource(99)), oRows, pRows)
+	mutateDev(devDB, rand.New(rand.NewSource(99)), oRows, pRows) // #nosec G404 -- deterministic seed for reproducible mutations, not security-sensitive
 	devDB.Close()
 	log.Println("dev.db ready")
 
@@ -184,7 +184,7 @@ func bulkInsert(db *sql.DB, n, txSize int, table, cols string, row func(i int) [
 	for i := 1; i < count; i++ {
 		ph += ",?"
 	}
-	insertSQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, cols, ph)
+	insertSQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, cols, ph) // #nosec G201 -- table/col names are hardcoded constants in this seed file, not user input
 
 	tx, err := db.Begin()
 	if err != nil {

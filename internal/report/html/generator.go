@@ -102,12 +102,12 @@ func templateFuncs() template.FuncMap {
 // GenerateReport creates the HTML report file.
 func (g *Generator) GenerateReport(data *ReportData, outPath string) error {
 	// Ensure output directory exists
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o750); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
 
-	// Create output file
-	f, err := os.Create(outPath)
+	// Create output file with restricted permissions (0600)
+	f, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("create output file: %w", err)
 	}

@@ -26,7 +26,7 @@ func WriteReports(diff DataDiff, conflicts Conflicts, outDir string) error {
 //
 // It returns an error if directory creation or any file write fails.
 func WriteReportsWithInfo(diff DataDiff, conflicts Conflicts, outDir string, schemaStatus string, tablesScanned int, migrationPack string) error {
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
 	if err := writeJSON(diff, filepath.Join(outDir, "content_diff.json")); err != nil {
@@ -48,7 +48,7 @@ func writeJSON(diff DataDiff, path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal content diff: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("write content diff json: %w", err)
 	}
 	return nil
@@ -61,7 +61,7 @@ func writeConflictsJSON(conflicts Conflicts, path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal conflicts: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("write conflicts json: %w", err)
 	}
 	return nil
@@ -104,7 +104,7 @@ func writeSummary(diff DataDiff, conflicts Conflicts, path string, schemaStatus 
 		fmt.Fprintf(&b, "Migration pack: %s\n", filepath.Base(migrationPack))
 	}
 
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
 		return fmt.Errorf("write summary: %w", err)
 	}
 	return nil
@@ -125,7 +125,7 @@ type ResolutionInfo struct {
 func WriteReportsWithResolutions(diff DataDiff, conflicts Conflicts, outDir string,
 	schemaStatus string, tablesScanned int, migrationPack string, resInfo *ResolutionInfo) error {
 
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
 	if err := writeJSON(diff, filepath.Join(outDir, "content_diff.json")); err != nil {
@@ -223,7 +223,7 @@ func writeSummaryWithResolutions(diff DataDiff, conflicts Conflicts, path string
 		fmt.Fprintf(&b, "\nMigration pack: %s\n", filepath.Base(migrationPack))
 	}
 
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
 		return fmt.Errorf("write summary: %w", err)
 	}
 	return nil
@@ -249,7 +249,7 @@ func writeResolutionSummaryJSON(resInfo *ResolutionInfo, path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal resolution summary: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("write resolution summary json: %w", err)
 	}
 	return nil

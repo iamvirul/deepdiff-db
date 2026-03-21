@@ -7,121 +7,44 @@ on:
 
 permissions:
   contents: write
+  packages: write
+  id-token: write
 
 jobs:
-  release:
-    name: Build and Release
+  goreleaser:
+    name: GoReleaser
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            binary: deepdiffdb-linux-amd64
-          - goos: linux
-            goarch: arm64
-            binary: deepdiffdb-linux-arm64
-          - goos: darwin
-            goarch: amd64
-            binary: deepdiffdb-darwin-amd64
-          - goos: darwin
-            goarch: arm64
-            binary: deepdiffdb-darwin-arm64
-          - goos: windows
-            goarch: amd64
-            binary: deepdiffdb-windows-amd64.exe
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
-          cache-dependency-path: go.sum
+          go-version-file: go.mod
+          cache: true
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          mkdir -p bin
-          go build -ldflags="-s -w" -o bin/${{ matrix.binary }} ./cmd/deepdiffdb
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          name: ${{ matrix.binary }}
-          path: bin/${{ matrix.binary }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    needs: release
-    if: startsWith(github.ref, 'refs/tags/v')
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          pattern: '*'
-          path: release-binaries
-          merge-multiple: true
-
-      - name: Get tag name
-        id: tag
-        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Create checksums
-        run: |
-          cd release-binaries
-          find . -type f -name "deepdiffdb-*" -exec sh -c 'sha256sum "$1" >> checksums.txt' _ {} \;
-          cat checksums.txt
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            release-binaries/*
-          body: |
-            ## Release ${{ steps.tag.outputs.TAG_NAME }}
-
-            ### Binaries
-
-            Precompiled binaries for Linux (x64, ARM64), macOS (Intel, Apple Silicon), and Windows (x64).
-
-            ### Checksums
-
-            SHA256 checksums are included in the `checksums.txt` file.
-
-            ### Installation
-
-            Download the appropriate binary for your platform and make it executable:
-
-            **Linux:**
-            ```bash
-            wget https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.TAG_NAME }}/deepdiffdb-linux-amd64
-            chmod +x deepdiffdb-linux-amd64
-            sudo mv deepdiffdb-linux-amd64 /usr/local/bin/deepdiffdb
-            ```
-
-            **macOS (Apple Silicon):**
-            ```bash
-            wget https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.TAG_NAME }}/deepdiffdb-darwin-arm64
-            chmod +x deepdiffdb-darwin-arm64
-            sudo mv deepdiffdb-darwin-arm64 /usr/local/bin/deepdiffdb
-            ```
-
-            **Windows:**
-            Download `deepdiffdb-windows-amd64.exe` and add to PATH.
+          distribution: goreleaser
+          version: latest
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

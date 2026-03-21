@@ -1,7 +1,13 @@
 # DeepDiff DB
 
+[![CI](https://github.com/iamvirul/deepdiff-db/actions/workflows/ci.yml/badge.svg)](https://github.com/iamvirul/deepdiff-db/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/iamvirul/deepdiff-db?color=6366f1)](https://github.com/iamvirul/deepdiff-db/releases/latest)
 [![codecov](https://codecov.io/gh/iamvirul/deepdiff-db/branch/main/graph/badge.svg?token=Y9IORTUBAH)](https://codecov.io/gh/iamvirul/deepdiff-db)
 [![Go Report Card](https://goreportcard.com/badge/github.com/iamvirul/deepdiff-db)](https://goreportcard.com/report/github.com/iamvirul/deepdiff-db)
+[![Go Version](https://img.shields.io/badge/go-1.25.8-00ADD8?logo=go)](https://go.dev/)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker)](https://github.com/iamvirul/deepdiff-db/pkgs/container/deepdiff-db)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-iamvirul.github.io-6366f1)](https://iamvirul.github.io/deepdiff-db/)
 
 DeepDiff DB is a high-performance Go CLI tool designed for comparing two databases, detecting schema drift, identifying data-level differences, and generating safe migration packs that can be applied to production environments without risking data corruption.
 

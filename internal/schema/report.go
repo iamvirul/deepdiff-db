@@ -12,7 +12,7 @@ import (
 // It ensures the output directory exists, then writes schema_diff.json (JSON)
 // and schema_diff.txt (text). An error is returned if any step fails.
 func WriteReports(result DiffResult, outDir string) error {
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		return fmt.Errorf("ensure output dir: %w", err)
 	}
 	if err := writeJSON(result, filepath.Join(outDir, "schema_diff.json")); err != nil {
@@ -31,7 +31,7 @@ func writeJSON(result DiffResult, path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal schema diff json: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("write schema diff json: %w", err)
 	}
 	return nil
@@ -92,7 +92,7 @@ func writeText(result DiffResult, path string) error {
 		b.WriteString("Schema: OK (no differences)\n")
 	}
 
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
 		return fmt.Errorf("write schema diff text: %w", err)
 	}
 	return nil
