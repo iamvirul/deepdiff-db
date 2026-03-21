@@ -18,50 +18,64 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create test config (SQLite prod vs dev)
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Build the binary from source so the test is independent of any
+      # GitHub release having assets attached. The action.yml install step
+      # skips the download when deepdiff-db is already in PATH.
+      - name: Build deepdiff-db from source
+        run: |
+          go build -o /usr/local/bin/deepdiff-db ./cmd/deepdiffdb/
+          deepdiff-db --version
+
+      - name: Create test databases and config
         run: |
           mkdir -p /tmp/test-dbs
 
-          # Create prod SQLite database
+          # Prod SQLite database
           sqlite3 /tmp/test-dbs/prod.db "
-            CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+            CREATE TABLE users    (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
             CREATE TABLE products (id INTEGER PRIMARY KEY, title TEXT, price REAL);
-            INSERT INTO users VALUES (1,'Alice','alice@example.com');
-            INSERT INTO users VALUES (2,'Bob','bob@example.com');
+            INSERT INTO users    VALUES (1,'Alice','alice@example.com');
+            INSERT INTO users    VALUES (2,'Bob','bob@example.com');
             INSERT INTO products VALUES (1,'Widget',9.99);
           "
 
-          # Create dev SQLite database (new column, new row, price changed)
+          # Dev SQLite database — added column, new user, price changed (conflict)
           sqlite3 /tmp/test-dbs/dev.db "
-            CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, phone TEXT);
+            CREATE TABLE users    (id INTEGER PRIMARY KEY, name TEXT, email TEXT, phone TEXT);
             CREATE TABLE products (id INTEGER PRIMARY KEY, title TEXT, price REAL);
-            INSERT INTO users VALUES (1,'Alice','alice@example.com',NULL);
-            INSERT INTO users VALUES (2,'Bob','bob@example.com',NULL);
-            INSERT INTO users VALUES (3,'Carol','carol@example.com',NULL);
+            INSERT INTO users    VALUES (1,'Alice','alice@example.com',NULL);
+            INSERT INTO users    VALUES (2,'Bob','bob@example.com',NULL);
+            INSERT INTO users    VALUES (3,'Carol','carol@example.com',NULL);
             INSERT INTO products VALUES (1,'Widget',12.99);
           "
 
-          cat > deepdiffdb.yaml <<EOF
-          prod:
-            driver: sqlite
-            database: /tmp/test-dbs/prod.db
+          cat > deepdiffdb.yaml <<'EOF'
+prod:
+  driver: sqlite
+  database: /tmp/test-dbs/prod.db
 
-          dev:
-            driver: sqlite
-            database: /tmp/test-dbs/dev.db
+dev:
+  driver: sqlite
+  database: /tmp/test-dbs/dev.db
 
-          output:
-            dir: ./diff-output
-          EOF
+output:
+  dir: ./diff-output
+EOF
 
-      - name: Run deepdiff-db check
+      - name: Run check command
         uses: ./
         with:
           command: check
           config: deepdiffdb.yaml
           upload-artifacts: "false"
 
-      - name: Run deepdiff-db diff
+      - name: Run diff command with HTML report
         uses: ./
         with:
           command: diff
@@ -69,7 +83,7 @@ jobs:
           args: --html
           artifact-name: deepdiff-db-test-output
 
-      - name: Verify outputs exist
+      - name: Verify output files exist
         run: |
           echo "Checking output files..."
           test -f diff-output/summary.txt       && echo "✓ summary.txt"
