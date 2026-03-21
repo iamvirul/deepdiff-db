@@ -108,7 +108,7 @@ func fetchRowData(
 		quotedCols[i] = quoteIdent(driver, col)
 	}
 
-	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s",
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s", // #nosec G201 -- identifiers sourced from schema introspection and passed through quoteIdent; values are parameterised separately
 		strings.Join(quotedCols, ", "),
 		quoteIdent(driver, table.Name),
 		strings.Join(whereParts, " AND "),

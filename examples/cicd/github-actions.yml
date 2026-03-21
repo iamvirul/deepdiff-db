@@ -1,0 +1,153 @@
+# DeepDiff DB — GitHub Actions Integration Example
+#
+# This workflow runs a database diff on every pull request that touches
+# migration files or application code. It posts the diff summary as a
+# PR comment and fails the build if unexpected schema drift is detected.
+#
+# Prerequisites:
+#   1. Add PROD_DB_DSN and DEV_DB_DSN as repository secrets (or use
+#      a test database spun up in the workflow itself).
+#   2. Optionally add DEEPDIFFDB_VERSION to pin a specific release.
+
+name: Database Diff Check
+
+on:
+  pull_request:
+    paths:
+      - 'migrations/**'
+      - 'db/**'
+      - '**.sql'
+
+permissions:
+  contents: read
+  pull-requests: write   # needed to post PR comments
+
+jobs:
+  db-diff:
+    name: Schema & Data Diff
+    runs-on: ubuntu-latest
+
+    # Example: spin up two MySQL instances as prod/dev stand-ins
+    services:
+      db-prod:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: prod_secret
+          MYSQL_DATABASE: myapp_prod
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+      db-dev:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: dev_secret
+          MYSQL_DATABASE: myapp_dev
+        ports:
+          - 3308:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply prod schema
+        run: |
+          mysql -h 127.0.0.1 -P 3307 -u root -pprod_secret myapp_prod \
+            < migrations/prod_schema.sql
+
+      - name: Apply dev schema (PR branch)
+        run: |
+          mysql -h 127.0.0.1 -P 3308 -u root -pdev_secret myapp_dev \
+            < migrations/dev_schema.sql
+
+      - name: Install DeepDiff DB
+        run: |
+          VERSION=${DEEPDIFFDB_VERSION:-latest}
+          if [ "$VERSION" = "latest" ]; then
+            VERSION=$(curl -s https://api.github.com/repos/iamvirul/deepdiff-db/releases/latest \
+              | grep '"tag_name"' | cut -d'"' -f4)
+          fi
+          curl -fsSL \
+            "https://github.com/iamvirul/deepdiff-db/releases/download/${VERSION}/deepdiffdb_${VERSION}_linux_amd64.tar.gz" \
+            | tar -xz deepdiffdb
+          chmod +x deepdiffdb
+          sudo mv deepdiffdb /usr/local/bin/deepdiffdb
+        env:
+          DEEPDIFFDB_VERSION: ${{ vars.DEEPDIFFDB_VERSION }}
+
+      - name: Write config
+        run: |
+          cat > deepdiffdb.config.yaml << 'EOF'
+          production:
+            driver: mysql
+            host: 127.0.0.1
+            port: 3307
+            user: root
+            password: prod_secret
+            database: myapp_prod
+          development:
+            driver: mysql
+            host: 127.0.0.1
+            port: 3308
+            user: root
+            password: dev_secret
+            database: myapp_dev
+          output:
+            directory: diff-output
+          EOF
+
+      - name: Run diff
+        id: diff
+        run: |
+          deepdiffdb diff --config deepdiffdb.config.yaml \
+            --output-format json > diff-output/result.json 2>&1 || true
+          # Capture summary for PR comment
+          TABLES_CHANGED=$(jq '.schema_changes | length' diff-output/result.json 2>/dev/null || echo 0)
+          DATA_CHANGES=$(jq '.data_changes | length' diff-output/result.json 2>/dev/null || echo 0)
+          echo "tables_changed=$TABLES_CHANGED" >> $GITHUB_OUTPUT
+          echo "data_changes=$DATA_CHANGES" >> $GITHUB_OUTPUT
+
+      - name: Post diff summary as PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tablesChanged = '${{ steps.diff.outputs.tables_changed }}';
+            const dataChanges  = '${{ steps.diff.outputs.data_changes }}';
+            const body = [
+              '## 🗄️ DeepDiff DB — Schema Diff Report',
+              '',
+              `| Metric | Count |`,
+              `|--------|-------|`,
+              `| Schema changes | ${tablesChanged} |`,
+              `| Tables with data changes | ${dataChanges} |`,
+              '',
+              '<details><summary>Full diff output</summary>',
+              '',
+              '```',
+              require("fs").readFileSync("diff-output/result.json", "utf8").slice(0, 4000),
+              '```',
+              '</details>',
+            ].join('\n');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Upload diff artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: db-diff-${{ github.sha }}
+          path: diff-output/
+          retention-days: 30

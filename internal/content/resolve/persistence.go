@@ -51,7 +51,7 @@ func SaveResolutions(resolutions []Resolution, filePath string) error {
 		return fmt.Errorf("marshal resolutions: %w", err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+	if err := os.WriteFile(filePath, data, 0o600); err != nil {
 		return fmt.Errorf("write resolutions file: %w", err)
 	}
 

@@ -343,7 +343,7 @@ func fetchRow(ctx context.Context, db *sql.DB, driver string, tbl schema.Table, 
 		where[i] = fmt.Sprintf("%s = %s", quoteIdent(driver, col), literal(keyParts[i]))
 	}
 
-	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s",
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s", // #nosec G201 -- identifiers sourced from schema introspection and passed through quoteIdent; PK values sanitised by literal()
 		strings.Join(quoteIdents(driver, cols), ", "),
 		quoteIdent(driver, tbl.Name),
 		strings.Join(where, " AND "),
@@ -950,5 +950,5 @@ func orderedColumnsIntersection(devTbl, prodTbl schema.Table, ignoreFn func(tabl
 // writeFile writes content to the file at path using file mode 0644.
 // It returns any error encountered while writing the file.
 func writeFile(path, content string) error {
-	return os.WriteFile(path, []byte(content), 0o644)
+	return os.WriteFile(path, []byte(content), 0o600)
 }

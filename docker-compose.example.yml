@@ -1,0 +1,70 @@
+# DeepDiff DB — Docker Compose example
+#
+# This file shows how to run deepdiffdb against two live databases
+# (prod and dev) that are also defined in this Compose project.
+#
+# Usage:
+#   docker compose -f docker-compose.example.yml up -d db-prod db-dev
+#   docker compose -f docker-compose.example.yml run --rm deepdiffdb diff
+#
+# Swap out db-prod / db-dev for your real connection strings via environment
+# variables or a deepdiffdb.config.yaml mounted as a volume.
+
+version: "3.9"
+
+services:
+  # ── Production-like database ─────────────────────────────────────────────
+  db-prod:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: prod_secret
+      MYSQL_DATABASE: myapp_prod
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Development database ─────────────────────────────────────────────────
+  db-dev:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: dev_secret
+      MYSQL_DATABASE: myapp_dev
+    ports:
+      - "3308:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── DeepDiff DB ──────────────────────────────────────────────────────────
+  deepdiffdb:
+    image: ghcr.io/iamvirul/deepdiff-db:latest
+    # Or build locally:
+    # build:
+    #   context: .
+    #   args:
+    #     VERSION: v1.0.0
+    depends_on:
+      db-prod:
+        condition: service_healthy
+      db-dev:
+        condition: service_healthy
+    volumes:
+      # Mount your config file
+      - ./deepdiffdb.config.yaml:/config/deepdiffdb.config.yaml:ro
+      # Output directory for diff results and migration packs
+      - ./diff-output:/diff-output
+    environment:
+      DEEPDIFFDB_CONFIG: /config/deepdiffdb.config.yaml
+    # Override the default command; examples:
+    #   diff --html
+    #   gen-pack
+    #   apply --pack /diff-output/migration_pack.sql
+    command: ["diff", "--html"]

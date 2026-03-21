@@ -18,6 +18,10 @@ const sidebars = {
       type: 'category', label: 'Features',
       items: ['features/streaming', 'features/html-reports', 'features/conflict-resolution', 'features/checkpoint-resume', 'features/logging'],
     },
+    {
+      type: 'category', label: 'Deployment',
+      items: ['deployment/docker', 'deployment/cicd', 'deployment/performance', 'deployment/migration-guide'],
+    },
     'samples/index',
     'troubleshooting',
     'faq',
