@@ -10,7 +10,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ## Current Status: v0.9
 
-**Last Release:** 2026-03-19
+**Last Release:** 2026-03-21
 
 **Current Features:**
 - Schema drift detection and standalone schema migration (`schema-migrate`)
@@ -135,7 +135,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### ~~v0.9: Oracle Support~~ ✅ Released 2026-03-19
+### ~~v0.9: Oracle Support~~ ✅ Released 2026-03-21
 
 **Features delivered:**
 - Oracle Database driver (`sijms/go-ora/v2`) — pure Go, no Instant Client required
@@ -261,5 +261,5 @@ If you'd like to contribute to any of these features, please:
 
 ---
 
-**Last Updated:** 2026-03-19
+**Last Updated:** 2026-03-21
 
