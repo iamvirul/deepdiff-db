@@ -75,7 +75,7 @@ docker pull ghcr.io/iamvirul/deepdiff-db:latest
 The formula now installs the v1.0 binary and injects the version string via ldflags:
 
 ```bash
-brew tap iamvirul/tap
+brew tap iamvirul/deepdiff-db
 brew install deepdiff-db
 deepdiffdb --version   # DeepDiff DB v1.0.0
 ```

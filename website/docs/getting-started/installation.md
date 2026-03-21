@@ -9,8 +9,14 @@ DeepDiff DB ships as a single static binary with no runtime dependencies. Choose
 ## Homebrew (macOS and Linux — Recommended)
 
 ```bash
-brew tap iamvirul/tap
+brew tap iamvirul/deepdiff-db
 brew install deepdiff-db
+```
+
+One-liner:
+
+```bash
+brew install iamvirul/deepdiff-db/deepdiff-db
 ```
 
 **Upgrade to the latest version:**

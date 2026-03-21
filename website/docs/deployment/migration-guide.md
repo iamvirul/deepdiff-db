@@ -40,7 +40,7 @@ GoReleaser now builds releases. Archive names changed:
 - **Docker image** — `ghcr.io/iamvirul/deepdiff-db:v1.0.0`
 - **docker-compose.example.yml** — included in repo root
 - **`examples/cicd/`** — GitHub Actions, GitLab CI, and pre-commit hook examples
-- **Homebrew** — `brew install iamvirul/tap/deepdiff-db`
+- **Homebrew** — `brew install iamvirul/deepdiff-db/deepdiff-db`
 - **Security scanning** in CI — gosec + govulncheck on every push
 
 ---
