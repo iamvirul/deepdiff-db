@@ -32,7 +32,7 @@ jobs:
 
       - name: Run unit tests with coverage
         run: |
-          go test -v -race -coverprofile=coverage-unit.txt -covermode=atomic -coverpkg=./internal/...,./pkg/... ./tests/config ./tests/content ./tests/drivers ./tests/schema
+          go test -v -race -coverprofile=coverage-unit.txt -covermode=atomic -coverpkg=./internal/...,./pkg/... ./tests/config ./tests/content ./tests/drivers ./tests/schema ./internal/schema ./internal/content
         continue-on-error: false
 
       - name: Run basic integration test with coverage
