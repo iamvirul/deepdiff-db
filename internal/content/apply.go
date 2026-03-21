@@ -14,7 +14,7 @@ import (
 
 // ApplyPack executes a SQL migration pack file against the target database.
 // ApplyPack reads the SQL migration pack at packPath and either validates its statements or applies them to db.
-// 
+//
 // If dryRun is true, each non-empty statement is prepared against db to validate syntax; the first preparation
 // error is returned with the 1-based statement index. If dryRun is false, all non-empty statements are executed
 // in a single transaction; any execution error is returned with the 1-based statement index and the transaction
@@ -54,7 +54,7 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 		if err == nil && state != nil && state.ApplyPackState != nil {
 			if state.ApplyPackState.PackPath == packPath && state.ApplyPackState.ExecutedStatements > 0 {
 				startIndex = state.ApplyPackState.ExecutedStatements
-				log.Info("resuming pack application", 
+				log.Info("resuming pack application",
 					"executed_statements", startIndex,
 					"total_statements", len(statements))
 			}
@@ -116,14 +116,14 @@ func ApplyPack(ctx context.Context, db *sql.DB, packPath string, dryRun bool) er
 
 	executedCount := startIndex
 	const checkpointBatchSize = 100 // Save checkpoint every 100 statements
-	
+
 	// Skip already executed statements (resume logic)
 	for i := 0; i < startIndex && i < len(statements); i++ {
 		if bar != nil {
 			_ = bar.Add(1) // Ignore error - progress update
 		}
 	}
-	
+
 	for i := startIndex; i < len(statements); i++ {
 		stmt := strings.TrimSpace(statements[i])
 		if stmt == "" {

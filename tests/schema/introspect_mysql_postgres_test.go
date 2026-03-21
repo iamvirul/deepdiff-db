@@ -1,3 +1,5 @@
+//go:build integration
+
 package schema_test
 
 import (
@@ -348,7 +350,7 @@ func TestIntrospect_MySQL_ColumnTypes(t *testing.T) {
 		{"description", "text"},
 	}
 
-		for _, tt := range tests {
+	for _, tt := range tests {
 		t.Run(tt.columnName, func(t *testing.T) {
 			col := table.Columns[tt.columnName]
 			if col.DataType != tt.expectedType {

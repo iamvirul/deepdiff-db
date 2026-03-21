@@ -314,14 +314,14 @@ func TestHasChanges(t *testing.T) {
 
 func TestHasConflicts(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		conflicts content.Conflicts
-		expected bool
+		expected  bool
 	}{
 		{
-			name:     "no conflicts",
+			name:      "no conflicts",
 			conflicts: content.Conflicts{Conflicts: []content.Conflict{}},
-			expected: false,
+			expected:  false,
 		},
 		{
 			name: "has conflicts",
@@ -342,4 +342,3 @@ func TestHasConflicts(t *testing.T) {
 		})
 	}
 }
-

@@ -284,19 +284,19 @@ func buildSchemaChanges(schemaDiff *schema.DiffResult) []SchemaChangeDisplay {
 
 		for _, col := range td.RemovedColumns {
 			change.ColumnChanges = append(change.ColumnChanges, ColumnChangeDisplay{
-				Column:       col.Name,
-				ChangeType:   "removed",
-				ProdValue:    formatColumnDef(col),
-				Description:  fmt.Sprintf("Column removed: %s", col.Name),
+				Column:        col.Name,
+				ChangeType:    "removed",
+				ProdValue:     formatColumnDef(col),
+				Description:   fmt.Sprintf("Column removed: %s", col.Name),
 				IsDestructive: true,
 			})
 		}
 
 		for _, mod := range td.ModifiedColumns {
 			cc := ColumnChangeDisplay{
-				Column:      mod.Column,
-				ProdValue:   formatColumnDiffProd(mod),
-				DevValue:    formatColumnDiffDev(mod),
+				Column:    mod.Column,
+				ProdValue: formatColumnDiffProd(mod),
+				DevValue:  formatColumnDiffDev(mod),
 			}
 			if mod.TypeMismatch {
 				cc.ChangeType = "type_change"

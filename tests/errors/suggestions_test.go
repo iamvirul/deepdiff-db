@@ -75,7 +75,7 @@ func TestGetSuggestions_MissingPrimaryKey(t *testing.T) {
 func TestGetSuggestions_PackApplication(t *testing.T) {
 	context := map[string]any{
 		"statement":       "INSERT INTO users VALUES (1, 'test')",
-		"statement_index":  5,
+		"statement_index": 5,
 	}
 
 	suggestions := errors.GetSuggestions(errors.ErrPackApplication, context)
@@ -237,4 +237,3 @@ func TestGetSuggestions_AllErrorCodes(t *testing.T) {
 		_ = suggestions // Just ensure it doesn't panic
 	}
 }
-

@@ -23,10 +23,10 @@ type RowData struct {
 
 // ColumnDiff represents a difference in a single column between prod and dev.
 type ColumnDiff struct {
-	Column   string
-	ProdVal  any
-	DevVal   any
-	Differs  bool
+	Column  string
+	ProdVal any
+	DevVal  any
+	Differs bool
 }
 
 // FetchConflictRows fetches both production and development row data for a conflict.

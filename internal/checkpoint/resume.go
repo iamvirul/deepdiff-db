@@ -61,4 +61,3 @@ func GetResumeInfo(state *State) *ResumeInfo {
 		OutputDir:   state.OutputDir,
 	}
 }
-

@@ -130,16 +130,16 @@ func TestContextChaining(t *testing.T) {
 
 func TestSetDefaultOutput(t *testing.T) {
 	var buf bytes.Buffer
-	
+
 	// Set default output to our buffer
 	logger.SetDefaultOutput(&buf)
-	
+
 	// Get default logger (should use our output)
 	ctx := context.Background()
 	log := logger.FromContext(ctx)
-	
+
 	log.Info("test message")
-	
+
 	if !strings.Contains(buf.String(), "test message") {
 		t.Error("expected default logger to use SetDefaultOutput")
 	}

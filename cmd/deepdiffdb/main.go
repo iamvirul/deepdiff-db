@@ -31,10 +31,10 @@ import (
 
 // Version information - set via ldflags during build
 var (
-	version   = "dev"      // Version number (e.g., "v0.3.0" or "dev-abc123")
-	commit    = "unknown"  // Git commit hash
-	branch    = "unknown"  // Git branch
-	buildTime = "unknown"  // Build timestamp
+	version   = "dev"     // Version number (e.g., "v0.3.0" or "dev-abc123")
+	commit    = "unknown" // Git commit hash
+	branch    = "unknown" // Git branch
+	buildTime = "unknown" // Build timestamp
 )
 
 // initializeLogger creates and configures a logger based on command-line flags.
@@ -87,7 +87,7 @@ func initializeLogger(verbose bool, logFile string, logLevelStr string, logForma
 // This is used for operations where connection time is unknown.
 func openDatabaseWithSpinner(ctx context.Context, cfg config.DBConfig, dbName string) (*sql.DB, error) {
 	progressMgr := progress.FromContext(ctx)
-	
+
 	var spinner *progress.Bar
 	if progressMgr != nil && progressMgr.IsEnabled() {
 		spinner = progressMgr.StartSpinner(ctx, fmt.Sprintf("Connecting to %s", dbName))
@@ -95,12 +95,12 @@ func openDatabaseWithSpinner(ctx context.Context, cfg config.DBConfig, dbName st
 			_ = spinner.Finish() // Ignore error - spinner is finishing anyway
 		}()
 	}
-	
+
 	db, err := drivers.Open(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return db, nil
 }
 
@@ -180,7 +180,6 @@ func resolveBatchSize(flagVal int, cfg int) int {
 	return cfg
 }
 
-//
 // It invokes the corresponding command handler with the remaining arguments,
 // prints usage and returns an error when no command is provided or when the
 // command is unknown, and prints usage without error for help flags.
@@ -665,7 +664,7 @@ func runGenPack(args []string) error {
 
 	if conflicts.HasConflicts() {
 		// Resolve conflicts based on configured strategies
-		resolutions = resolve.ResolveConflicts(conflicts, cfg)
+		resolutions = resolve.Conflicts(conflicts, cfg)
 
 		// Filter the data diff based on resolutions
 		filteredDiff, excludedCounts = resolve.FilterDataDiffByResolutions(dataDiff, resolutions)
@@ -779,9 +778,10 @@ func runGenPack(args []string) error {
 // the configured production database.
 //
 // It accepts the following flags on args:
-//   --pack   Path to the migration pack SQL file (required).
-//   --dry-run  Validate the SQL without executing it.
-//   --config Path to the configuration file (default "deepdiffdb.config.yaml").
+//
+//	--pack   Path to the migration pack SQL file (required).
+//	--dry-run  Validate the SQL without executing it.
+//	--config Path to the configuration file (default "deepdiffdb.config.yaml").
 //
 // runApply returns an error when flag parsing fails, the required --pack is missing,
 // the configuration cannot be loaded, the target database connection cannot be opened,
@@ -814,7 +814,7 @@ func runApply(args []string) error {
 	}
 
 	log.Info("starting migration pack application")
-	
+
 	// Handle resume from checkpoint if requested
 	if *resumeCheckpoint {
 		log.Info("resume flag enabled - will attempt to resume from checkpoint if available")
@@ -967,7 +967,7 @@ func runResolveConflicts(args []string) error {
 		if err != nil {
 			fmt.Printf("Warning: could not load resolutions file: %v\n", err)
 			fmt.Println("Starting fresh resolution session.")
-			resolutions = resolve.ResolveConflicts(conflicts, nil) // All pending
+			resolutions = resolve.Conflicts(conflicts, nil) // All pending
 		} else {
 			resolutions = resolve.MergeResolutions(saved.Resolutions, conflicts)
 			fmt.Printf("Resumed from saved resolutions. %d conflicts loaded.\n", len(resolutions))
@@ -988,7 +988,7 @@ func runResolveConflicts(args []string) error {
 	// Auto mode: apply configured strategies without prompts
 	if *autoMode {
 		log.Info("running in auto mode - applying configured strategies")
-		resolutions = resolve.ResolveConflicts(conflicts, cfg)
+		resolutions = resolve.Conflicts(conflicts, cfg)
 		if err := resolve.SaveResolutions(resolutions, *resolutionsPath); err != nil {
 			return fmt.Errorf("save resolutions: %w", err)
 		}

@@ -1,9 +1,11 @@
 package errors_test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/iamvirul/deepdiff-db/pkg/errors"
 )
@@ -152,7 +154,7 @@ func TestWithStackTrace(t *testing.T) {
 
 func TestIsRetryable(t *testing.T) {
 	tests := []struct {
-		code        errors.ErrorCode
+		code          errors.ErrorCode
 		wantRetryable bool
 	}{
 		{errors.ErrConnectionFailed, true},
@@ -225,5 +227,254 @@ func TestErrorNilHandling(t *testing.T) {
 	err = err.WithStackTrace(0)
 	if err != nil {
 		t.Error("WithStackTrace on nil error should return nil")
+	}
+}
+
+// ============================================================================
+// Retry Tests
+// ============================================================================
+
+func TestRetry_SucceedsOnFirstAttempt(t *testing.T) {
+	ctx := context.Background()
+	calls := 0
+	err := errors.Retry(ctx, errors.DefaultRetryConfig(), func() error {
+		calls++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("expected 1 call, got %d", calls)
+	}
+}
+
+func TestRetry_NonRetryableError_DoesNotRetry(t *testing.T) {
+	ctx := context.Background()
+	calls := 0
+	nonRetryable := errors.New(errors.ErrMissingPrimaryKey, "pk missing")
+	err := errors.Retry(ctx, errors.DefaultRetryConfig(), func() error {
+		calls++
+		return nonRetryable
+	})
+	if err != nonRetryable {
+		t.Fatalf("expected original error, got %v", err)
+	}
+	// Should return immediately without retrying
+	if calls != 1 {
+		t.Errorf("expected 1 call for non-retryable error, got %d", calls)
+	}
+}
+
+func TestRetry_RetryableError_RetriesAndFails(t *testing.T) {
+	ctx := context.Background()
+	cfg := errors.RetryConfig{
+		MaxAttempts:       3,
+		InitialDelay:      time.Millisecond,
+		MaxDelay:          10 * time.Millisecond,
+		BackoffMultiplier: 2.0,
+	}
+
+	calls := 0
+	retryable := errors.New(errors.ErrConnectionFailed, "connection failed")
+	err := errors.Retry(ctx, cfg, func() error {
+		calls++
+		return retryable
+	})
+
+	if err != retryable {
+		t.Fatalf("expected retryable error after exhaustion, got %v", err)
+	}
+	if calls != 3 {
+		t.Errorf("expected 3 calls (MaxAttempts), got %d", calls)
+	}
+}
+
+func TestRetry_RetryableError_SucceedsOnRetry(t *testing.T) {
+	ctx := context.Background()
+	cfg := errors.RetryConfig{
+		MaxAttempts:       3,
+		InitialDelay:      time.Millisecond,
+		MaxDelay:          10 * time.Millisecond,
+		BackoffMultiplier: 2.0,
+	}
+
+	calls := 0
+	retryable := errors.New(errors.ErrConnectionFailed, "connection failed")
+	err := errors.Retry(ctx, cfg, func() error {
+		calls++
+		if calls < 3 {
+			return retryable
+		}
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("expected success on third attempt, got %v", err)
+	}
+	if calls != 3 {
+		t.Errorf("expected 3 calls, got %d", calls)
+	}
+}
+
+func TestRetry_ContextCancelledBeforeStart(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	calls := 0
+	err := errors.Retry(ctx, errors.DefaultRetryConfig(), func() error {
+		calls++
+		return nil
+	})
+
+	if err != context.Canceled {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if calls != 0 {
+		t.Errorf("expected 0 calls when context pre-cancelled, got %d", calls)
+	}
+}
+
+func TestRetry_ContextCancelledDuringWait(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	cfg := errors.RetryConfig{
+		MaxAttempts:       5,
+		InitialDelay:      100 * time.Millisecond, // long delay so cancel fires first
+		MaxDelay:          time.Second,
+		BackoffMultiplier: 2.0,
+	}
+
+	calls := 0
+	retryable := errors.New(errors.ErrConnectionFailed, "connection failed")
+
+	// Cancel the context after first call
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+	}()
+
+	err := errors.Retry(ctx, cfg, func() error {
+		calls++
+		return retryable
+	})
+
+	if err != context.Canceled {
+		t.Fatalf("expected context.Canceled during wait, got %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("expected 1 call before context cancelled, got %d", calls)
+	}
+}
+
+func TestRetry_ZeroMaxAttempts_DefaultsToThree(t *testing.T) {
+	ctx := context.Background()
+	cfg := errors.RetryConfig{
+		MaxAttempts:       0, // should default to 3
+		InitialDelay:      time.Millisecond,
+		MaxDelay:          10 * time.Millisecond,
+		BackoffMultiplier: 2.0,
+	}
+
+	calls := 0
+	retryable := errors.New(errors.ErrConnectionFailed, "connection failed")
+	errors.Retry(ctx, cfg, func() error { //nolint:errcheck
+		calls++
+		return retryable
+	})
+
+	if calls != 3 {
+		t.Errorf("expected 3 calls when MaxAttempts=0 (defaults to 3), got %d", calls)
+	}
+}
+
+func TestRetry_ZeroDelayDefaults(t *testing.T) {
+	// Verify that zero-value InitialDelay, MaxDelay, and BackoffMultiplier
+	// are filled with defaults and do not panic.
+	ctx := context.Background()
+	cfg := errors.RetryConfig{
+		MaxAttempts:       2,
+		InitialDelay:      0, // should default to 1s but we'll cap MaxDelay
+		MaxDelay:          0, // should default
+		BackoffMultiplier: 0, // should default
+	}
+
+	// Override to time.Millisecond via a separate config so the test runs fast.
+	// Because zero values get replaced by defaults (InitialDelay=1s) this would
+	// be slow — use a non-zero but small value instead.
+	cfg2 := errors.RetryConfig{
+		MaxAttempts:       1,
+		InitialDelay:      time.Millisecond,
+		MaxDelay:          time.Millisecond,
+		BackoffMultiplier: 1.0,
+	}
+
+	calls := 0
+	retryable := errors.New(errors.ErrQueryFailed, "query failed")
+	err := errors.Retry(ctx, cfg2, func() error {
+		calls++
+		return retryable
+	})
+	if err != retryable {
+		t.Fatalf("expected retryable error, got %v", err)
+	}
+	// With MaxAttempts=1 and a retryable error, it should exit after 1 attempt
+	// (last attempt, no retry wait).
+	if calls != 1 {
+		t.Errorf("expected 1 call with MaxAttempts=1, got %d", calls)
+	}
+
+	// Also exercise the zero-value path just to ensure it does not panic.
+	calls2 := 0
+	successFn := func() error {
+		calls2++
+		return nil
+	}
+	if err2 := errors.Retry(ctx, cfg, successFn); err2 != nil {
+		t.Fatalf("zero-value cfg with immediate success should not error: %v", err2)
+	}
+}
+
+func TestRetry_MaxDelayCapApplied(t *testing.T) {
+	// Verify that delay is capped at MaxDelay and does not grow unboundedly.
+	ctx := context.Background()
+	cfg := errors.RetryConfig{
+		MaxAttempts:       3,
+		InitialDelay:      time.Millisecond,
+		MaxDelay:          2 * time.Millisecond, // cap is tiny
+		BackoffMultiplier: 100.0,               // huge multiplier to trigger the cap
+	}
+
+	calls := 0
+	retryable := errors.New(errors.ErrConnectionTimeout, "timeout")
+	start := time.Now()
+	errors.Retry(ctx, cfg, func() error { //nolint:errcheck
+		calls++
+		return retryable
+	})
+	elapsed := time.Since(start)
+
+	// If capping works, total sleep ≤ 2*(MaxDelay) ≈ 4ms — well under 100ms.
+	if elapsed > 100*time.Millisecond {
+		t.Errorf("expected delay to be capped, but elapsed %v exceeds 100ms", elapsed)
+	}
+	if calls != 3 {
+		t.Errorf("expected 3 calls, got %d", calls)
+	}
+}
+
+func TestDefaultRetryConfig_Values(t *testing.T) {
+	cfg := errors.DefaultRetryConfig()
+	if cfg.MaxAttempts != 3 {
+		t.Errorf("expected MaxAttempts 3, got %d", cfg.MaxAttempts)
+	}
+	if cfg.InitialDelay != time.Second {
+		t.Errorf("expected InitialDelay 1s, got %v", cfg.InitialDelay)
+	}
+	if cfg.MaxDelay != 30*time.Second {
+		t.Errorf("expected MaxDelay 30s, got %v", cfg.MaxDelay)
+	}
+	if cfg.BackoffMultiplier != 2.0 {
+		t.Errorf("expected BackoffMultiplier 2.0, got %f", cfg.BackoffMultiplier)
 	}
 }

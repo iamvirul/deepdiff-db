@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/iamvirul/deepdiff-db/internal/content"
+	"github.com/iamvirul/deepdiff-db/internal/content/resolve"
 	htmlreport "github.com/iamvirul/deepdiff-db/internal/report/html"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 )
@@ -483,6 +484,297 @@ func TestTableDiffDisplay_NoDetailedKeys(t *testing.T) {
 	td := data.TableDiffs[0]
 	if len(td.AddedKeys) != 0 {
 		t.Errorf("expected no added keys when IncludeDetailedKeys=false, got %d", len(td.AddedKeys))
+	}
+}
+
+// ============================================================================
+// buildSchemaChanges — FK modifications with OnDelete / OnUpdate
+// ============================================================================
+
+func TestBuildReportData_WithFKModifications(t *testing.T) {
+	schemaDiff := &schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "orders",
+				HasDifferences: true,
+				ModifiedForeignKeys: []schema.ForeignKeyDiff{
+					{
+						Name:            "fk_on_delete",
+						OnDeleteDiffers: true,
+						ProdOnDelete:    "CASCADE",
+						DevOnDelete:     "RESTRICT",
+					},
+					{
+						Name:            "fk_on_update",
+						OnUpdateDiffers: true,
+						ProdOnUpdate:    "SET NULL",
+						DevOnUpdate:     "CASCADE",
+					},
+					{
+						Name:            "fk_both",
+						OnDeleteDiffers: true,
+						ProdOnDelete:    "CASCADE",
+						DevOnDelete:     "SET NULL",
+						OnUpdateDiffers: true,
+						ProdOnUpdate:    "NO ACTION",
+						DevOnUpdate:     "RESTRICT",
+					},
+				},
+				RemovedForeignKeys: []schema.ForeignKey{
+					{
+						Name:              "fk_removed",
+						Columns:           []string{"user_id"},
+						ReferencedTable:   "users",
+						ReferencedColumns: []string{"id"},
+						OnDelete:          "CASCADE",
+					},
+				},
+			},
+		},
+	}
+
+	data := htmlreport.BuildReportData(
+		"prod", "dev",
+		schemaDiff, nil, nil, nil, nil,
+		"", "", 1, nil,
+	)
+
+	if !data.HasSchemaDiff {
+		t.Error("expected HasSchemaDiff")
+	}
+	if len(data.SchemaChanges) != 1 {
+		t.Fatalf("expected 1 schema change, got %d", len(data.SchemaChanges))
+	}
+
+	fkChanges := data.SchemaChanges[0].ForeignKeyChanges
+	if len(fkChanges) != 4 {
+		t.Errorf("expected 4 FK changes (3 modified + 1 removed), got %d", len(fkChanges))
+	}
+}
+
+// ============================================================================
+// buildSummary — conflict path with nil resInfo (PendingConflicts fallback)
+// ============================================================================
+
+func TestBuildReportData_ConflictsWithoutResolutionInfo(t *testing.T) {
+	conflicts := &content.Conflicts{
+		Conflicts: []content.Conflict{
+			{Table: "users", Key: "1", ProdHash: "abc", DevHash: "def"},
+			{Table: "users", Key: "2", ProdHash: "ghi", DevHash: "jkl"},
+		},
+	}
+
+	// Explicitly pass nil for resInfo — exercises the else branch in buildSummary
+	data := htmlreport.BuildReportData(
+		"prod", "dev",
+		nil, nil, conflicts, nil, nil,
+		"", "", 1, nil,
+	)
+
+	if data.Summary.TotalConflicts != 2 {
+		t.Errorf("expected TotalConflicts=2, got %d", data.Summary.TotalConflicts)
+	}
+	// When resInfo is nil, PendingConflicts should equal total conflicts
+	if data.Summary.PendingConflicts != 2 {
+		t.Errorf("expected PendingConflicts=2 (fallback from nil resInfo), got %d", data.Summary.PendingConflicts)
+	}
+	if data.Summary.ResolvedConflicts != 0 {
+		t.Errorf("expected ResolvedConflicts=0, got %d", data.Summary.ResolvedConflicts)
+	}
+}
+
+// ============================================================================
+// buildReportData_WithResolutions — exercises buildResolutionBreakdown
+// ============================================================================
+
+func TestBuildReportData_WithResolutionsSlice(t *testing.T) {
+	conflicts := &content.Conflicts{
+		Conflicts: []content.Conflict{
+			{Table: "users", Key: "1", ProdHash: "aaa", DevHash: "bbb"},
+			{Table: "users", Key: "2", ProdHash: "ccc", DevHash: "ddd"},
+			{Table: "orders", Key: "1", ProdHash: "eee", DevHash: "fff"},
+		},
+	}
+
+	resolutions := []resolve.Resolution{
+		{
+			Conflict: content.Conflict{Table: "users", Key: "1"},
+			Strategy: resolve.StrategyOurs,
+			Decision: resolve.DecisionKeepProd,
+			Resolved: true,
+		},
+		{
+			Conflict: content.Conflict{Table: "users", Key: "2"},
+			Strategy: resolve.StrategyTheirs,
+			Decision: resolve.DecisionUseDev,
+			Resolved: true,
+		},
+		{
+			Conflict: content.Conflict{Table: "orders", Key: "1"},
+			Strategy: resolve.StrategyManual,
+			Decision: resolve.DecisionPending,
+			Resolved: false,
+		},
+	}
+
+	data := htmlreport.BuildReportData(
+		"prod", "dev",
+		nil, nil, conflicts, nil, resolutions,
+		"", "", 3, nil,
+	)
+
+	if !data.HasResolutions {
+		t.Error("expected HasResolutions when resolutions slice is non-empty")
+	}
+	if data.ResolutionBreakdown == nil {
+		t.Fatal("expected ResolutionBreakdown to be populated")
+	}
+
+	bd := data.ResolutionBreakdown
+	if bd.TotalConflicts != 3 {
+		t.Errorf("expected TotalConflicts=3, got %d", bd.TotalConflicts)
+	}
+	if bd.AutoResolvedOurs != 1 {
+		t.Errorf("expected AutoResolvedOurs=1, got %d", bd.AutoResolvedOurs)
+	}
+	if bd.AutoResolvedTheirs != 1 {
+		t.Errorf("expected AutoResolvedTheirs=1, got %d", bd.AutoResolvedTheirs)
+	}
+	if bd.PendingManual != 1 {
+		t.Errorf("expected PendingManual=1, got %d", bd.PendingManual)
+	}
+	// Verify TableStrategies are sorted
+	if len(bd.TableStrategies) != 2 {
+		t.Errorf("expected 2 table strategies (users, orders), got %d", len(bd.TableStrategies))
+	}
+	if bd.TableStrategies[0].Table != "orders" {
+		t.Errorf("expected first table to be 'orders' (sorted), got %s", bd.TableStrategies[0].Table)
+	}
+
+	// Also test that conflict items are resolved correctly from the resolution map
+	if len(data.ConflictItems) != 3 {
+		t.Errorf("expected 3 conflict items, got %d", len(data.ConflictItems))
+	}
+	for _, item := range data.ConflictItems {
+		if item.Table == "users" && item.Key == "1" {
+			if !item.IsResolved {
+				t.Error("expected users:1 to be resolved")
+			}
+			if item.Decision != string(resolve.DecisionKeepProd) {
+				t.Errorf("expected keep_prod decision, got %s", item.Decision)
+			}
+		}
+	}
+}
+
+// ============================================================================
+// GenerateReport error path — directory creation failure
+// ============================================================================
+
+func TestGenerateReport_InvalidPath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping path error test in short mode")
+	}
+
+	// Use a path with a null byte which is always invalid on all platforms.
+	// filepath.Dir on it still produces something, but os.MkdirAll will fail.
+	invalidPath := "/tmp/\x00invalid/report.html"
+
+	data := &htmlreport.ReportData{
+		GeneratedAt: time.Now(),
+		Version:     "v0.5",
+		ProdDB:      "prod",
+		DevDB:       "dev",
+		Summary:     htmlreport.ReportSummary{SchemaStatus: "OK"},
+	}
+
+	generator := htmlreport.NewGenerator(nil)
+	err := generator.GenerateReport(data, invalidPath)
+	if err == nil {
+		t.Error("expected error for invalid output path")
+	}
+}
+
+// ============================================================================
+// buildSummary — empty dataDiff and nil conflicts branches
+// ============================================================================
+
+func TestBuildReportData_SummaryWithNilDataDiffAndConflicts(t *testing.T) {
+	data := htmlreport.BuildReportData(
+		"prod", "dev",
+		nil, nil, nil, nil, nil,
+		"", "", 5, nil,
+	)
+
+	if data.Summary.AddedRows != 0 {
+		t.Errorf("expected 0 added rows, got %d", data.Summary.AddedRows)
+	}
+	if data.Summary.TotalConflicts != 0 {
+		t.Errorf("expected 0 total conflicts, got %d", data.Summary.TotalConflicts)
+	}
+	if data.Summary.PendingConflicts != 0 {
+		t.Errorf("expected 0 pending conflicts, got %d", data.Summary.PendingConflicts)
+	}
+	if data.Summary.TablesScanned != 5 {
+		t.Errorf("expected TablesScanned=5, got %d", data.Summary.TablesScanned)
+	}
+}
+
+// ============================================================================
+// buildSchemaChanges — table with differences but no column/index/FK changes
+// (HasDifferences=true but all change slices are empty — should not appear)
+// ============================================================================
+
+func TestBuildReportData_SchemaChangeTableWithNoSubChanges(t *testing.T) {
+	schemaDiff := &schema.DiffResult{
+		Tables: []schema.TableDiff{
+			{
+				Name:           "users",
+				HasDifferences: true,
+				// No added/removed/modified columns, indexes, or FKs
+				// This exercises the guard: only append if there are sub-changes
+			},
+		},
+	}
+
+	data := htmlreport.BuildReportData(
+		"prod", "dev",
+		schemaDiff, nil, nil, nil, nil,
+		"", "", 1, nil,
+	)
+
+	// HasSchemaDiff should be true (HasDrift returns true)
+	if !data.HasSchemaDiff {
+		t.Error("expected HasSchemaDiff=true")
+	}
+	// But no SchemaChanges because the table has no sub-changes to display
+	if len(data.SchemaChanges) != 0 {
+		t.Errorf("expected 0 SchemaChanges when table has no column/index/FK changes, got %d", len(data.SchemaChanges))
+	}
+}
+
+// ============================================================================
+// MigrationSQL not included when IncludeMigrationSQL is false
+// ============================================================================
+
+func TestBuildReportData_MigrationSQLNotIncluded(t *testing.T) {
+	opts := &htmlreport.ReportOptions{
+		IncludeMigrationSQL: false,
+		IncludeDetailedKeys: false,
+		MaxKeysPerTable:     10,
+	}
+
+	data := htmlreport.BuildReportData(
+		"prod", "dev",
+		nil, nil, nil, nil, nil,
+		"SELECT 1", "", 0, opts,
+	)
+
+	if data.HasMigration {
+		t.Error("expected HasMigration=false when IncludeMigrationSQL is false")
+	}
+	if data.MigrationSQL != "" {
+		t.Errorf("expected empty MigrationSQL, got %q", data.MigrationSQL)
 	}
 }
 

@@ -37,8 +37,8 @@ func (c *oracleFakeConn) Prepare(query string) (driver.Stmt, error) {
 func (c *oracleFakeConn) Close() error              { return nil }
 func (c *oracleFakeConn) Begin() (driver.Tx, error) { return nil, nil }
 
-func (s *oracleFakeStmt) Close() error      { return nil }
-func (s *oracleFakeStmt) NumInput() int     { return -1 }
+func (s *oracleFakeStmt) Close() error  { return nil }
+func (s *oracleFakeStmt) NumInput() int { return -1 }
 func (s *oracleFakeStmt) Exec(_ []driver.Value) (driver.Result, error) {
 	return &oracleFakeResult{}, nil
 }

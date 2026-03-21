@@ -94,9 +94,9 @@ func ApplyStrategy(conflict content.Conflict, strategy Strategy) Resolution {
 	return res
 }
 
-// ResolveConflicts applies resolution strategies to all conflicts based on the config.
+// Conflicts applies resolution strategies to all conflicts based on the config.
 // It looks up the appropriate strategy for each conflict's table and applies it.
-func ResolveConflicts(conflicts content.Conflicts, cfg *config.Config) []Resolution {
+func Conflicts(conflicts content.Conflicts, cfg *config.Config) []Resolution {
 	resolutions := make([]Resolution, 0, len(conflicts.Conflicts))
 
 	for _, conflict := range conflicts.Conflicts {
@@ -272,21 +272,21 @@ func FilterDataDiffByResolutions(diff content.DataDiff, resolutions []Resolution
 
 // ResolutionSummary contains summary statistics about conflict resolution.
 type ResolutionSummary struct {
-	TotalConflicts    int            `json:"total_conflicts"`
-	ResolvedCount     int            `json:"resolved_count"`
-	UnresolvedCount   int            `json:"unresolved_count"`
-	ByStrategy        map[Strategy]int `json:"by_strategy"`
-	ByDecision        map[Decision]int `json:"by_decision"`
-	ByTable           map[string]int   `json:"by_table"`
+	TotalConflicts  int              `json:"total_conflicts"`
+	ResolvedCount   int              `json:"resolved_count"`
+	UnresolvedCount int              `json:"unresolved_count"`
+	ByStrategy      map[Strategy]int `json:"by_strategy"`
+	ByDecision      map[Decision]int `json:"by_decision"`
+	ByTable         map[string]int   `json:"by_table"`
 }
 
 // BuildResolutionSummary creates a summary of resolution statistics.
 func BuildResolutionSummary(resolutions []Resolution) ResolutionSummary {
 	summary := ResolutionSummary{
-		TotalConflicts:  len(resolutions),
-		ByStrategy:      make(map[Strategy]int),
-		ByDecision:      make(map[Decision]int),
-		ByTable:         make(map[string]int),
+		TotalConflicts: len(resolutions),
+		ByStrategy:     make(map[Strategy]int),
+		ByDecision:     make(map[Decision]int),
+		ByTable:        make(map[string]int),
 	}
 
 	for _, res := range resolutions {

@@ -11,7 +11,7 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	tests := []struct{
+	tests := []struct {
 		name   string
 		config logger.Config
 		want   string // Substring to find in log output
@@ -140,9 +140,9 @@ func TestWithHelpers(t *testing.T) {
 	})
 
 	tests := []struct {
-		name      string
+		name        string
 		enhanceFunc func(*logger.Logger) *logger.Logger
-		wantField string
+		wantField   string
 	}{
 		{
 			name: "with_table",
@@ -239,7 +239,7 @@ func TestParseLevel(t *testing.T) {
 		{"error", slog.LevelError},
 		{"ERROR", slog.LevelError},
 		{"invalid", slog.LevelInfo}, // Default to info
-		{"", slog.LevelInfo},         // Default to info
+		{"", slog.LevelInfo},        // Default to info
 	}
 
 	for _, tt := range tests {

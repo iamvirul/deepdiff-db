@@ -10,17 +10,26 @@ import (
 type OperationType int
 
 const (
-	// Operation order priority (lower = earlier in migration)
-	OpDropForeignKey OperationType = iota // Must drop FKs before dropping tables/columns
-	OpDropIndex                           // Drop indexes before dropping columns
-	OpDropColumn                          // Drop columns before dropping tables
-	OpDropTable                           // Drop tables last in DROP operations
-	OpCreateTable                         // Create tables first in CREATE operations
-	OpAddColumn                           // Add columns after tables exist
-	OpModifyColumn                        // Modify columns after they exist
-	OpAddIndex                            // Add indexes after columns exist
-	OpAddForeignKey                       // Add FKs last (referenced tables must exist)
-	OpModifyPrimaryKey                    // Modify PKs (complex, usually last)
+	// OpDropForeignKey must drop FKs before dropping tables/columns.
+	OpDropForeignKey OperationType = iota
+	// OpDropIndex drops indexes before dropping columns.
+	OpDropIndex
+	// OpDropColumn drops columns before dropping tables.
+	OpDropColumn
+	// OpDropTable drops tables last in DROP operations.
+	OpDropTable
+	// OpCreateTable creates tables first in CREATE operations.
+	OpCreateTable
+	// OpAddColumn adds columns after tables exist.
+	OpAddColumn
+	// OpModifyColumn modifies columns after they exist.
+	OpModifyColumn
+	// OpAddIndex adds indexes after columns exist.
+	OpAddIndex
+	// OpAddForeignKey adds FKs last (referenced tables must exist).
+	OpAddForeignKey
+	// OpModifyPrimaryKey modifies PKs (complex, usually last).
+	OpModifyPrimaryKey
 )
 
 // String returns a human-readable name for the operation type.
@@ -53,13 +62,13 @@ func (o OperationType) String() string {
 
 // MigrationOperation represents a single migration operation with its dependencies.
 type MigrationOperation struct {
-	Type       OperationType
-	Table      string      // Target table name
-	Object     string      // Column, index, or FK name (empty for table operations)
-	Data       interface{} // Associated data (Column, Index, ForeignKey, etc.)
-	DependsOn  []string    // Operation IDs this operation depends on
-	ID         string      // Unique identifier for this operation
-	Priority   int         // Used for stable sorting within same type
+	Type      OperationType
+	Table     string      // Target table name
+	Object    string      // Column, index, or FK name (empty for table operations)
+	Data      interface{} // Associated data (Column, Index, ForeignKey, etc.)
+	DependsOn []string    // Operation IDs this operation depends on
+	ID        string      // Unique identifier for this operation
+	Priority  int         // Used for stable sorting within same type
 }
 
 // String returns a human-readable description of the operation.

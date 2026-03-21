@@ -588,8 +588,8 @@ func TestSave_WriteFileError(t *testing.T) {
 func TestApplyPackState(t *testing.T) {
 	state := &checkpoint.ApplyPackState{
 		ExecutedStatements: 50,
-		TotalStatements:     100,
-		PackPath:            "/tmp/pack.sql",
+		TotalStatements:    100,
+		PackPath:           "/tmp/pack.sql",
 	}
 
 	if state.ExecutedStatements != 50 {
@@ -604,4 +604,3 @@ func TestApplyPackState(t *testing.T) {
 		t.Errorf("expected pack path /tmp/pack.sql, got %s", state.PackPath)
 	}
 }
-

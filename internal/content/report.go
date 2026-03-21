@@ -19,10 +19,10 @@ func WriteReports(diff DataDiff, conflicts Conflicts, outDir string) error {
 // conflicts, and a human-readable summary to the specified output directory.
 //
 // The function writes three files into outDir:
-//  - content_diff.json: the provided DataDiff serialized as indented JSON,
-//  - conflicts.json: the provided Conflicts serialized as indented JSON,
-//  - summary.txt: a textual summary that may include schemaStatus, tablesScanned,
-//    aggregated counts of added/removed/updated rows, conflicts count, and migrationPack.
+//   - content_diff.json: the provided DataDiff serialized as indented JSON,
+//   - conflicts.json: the provided Conflicts serialized as indented JSON,
+//   - summary.txt: a textual summary that may include schemaStatus, tablesScanned,
+//     aggregated counts of added/removed/updated rows, conflicts count, and migrationPack.
 //
 // It returns an error if directory creation or any file write fails.
 func WriteReportsWithInfo(diff DataDiff, conflicts Conflicts, outDir string, schemaStatus string, tablesScanned int, migrationPack string) error {

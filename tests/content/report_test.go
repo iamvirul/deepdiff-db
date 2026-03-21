@@ -725,3 +725,96 @@ func TestBuildResolutionInfo(t *testing.T) {
 		t.Errorf("expected ByTable[users] 4, got %d", resInfo.ByTable["users"])
 	}
 }
+
+// ============================================================================
+// Additional coverage: formatDecision default case (unknown decision key)
+// ============================================================================
+
+func TestWriteReportsWithResolutions_UnknownDecision(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	diff := content.DataDiff{Tables: []content.TableDataDiff{}}
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{}}
+
+	// "unknown_decision" exercises the default case in formatDecision.
+	resInfo := &content.ResolutionInfo{
+		TotalConflicts:  1,
+		ResolvedCount:   1,
+		UnresolvedCount: 0,
+		ByDecision: map[string]int{
+			"unknown_decision": 1,
+		},
+		ByTable: map[string]int{"users": 1},
+	}
+
+	if err := content.WriteReportsWithResolutions(diff, conflicts, tmpDir, "", 0, "", resInfo); err != nil {
+		t.Fatalf("WriteReportsWithResolutions failed: %v", err)
+	}
+
+	summaryContent, err := os.ReadFile(filepath.Join(tmpDir, "summary.txt"))
+	if err != nil {
+		t.Fatalf("failed to read summary: %v", err)
+	}
+
+	// The unknown decision should be passed through as-is (default case).
+	if !strings.Contains(string(summaryContent), "unknown_decision") {
+		t.Errorf("expected summary to contain 'unknown_decision', got:\n%s", summaryContent)
+	}
+}
+
+// ============================================================================
+// writeResolutionSummaryJSON error path
+// ============================================================================
+
+func TestWriteReportsWithResolutions_ResolutionSummaryJSONWriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Block resolutions_summary.json by creating a directory with that name.
+	if err := os.MkdirAll(filepath.Join(tmpDir, "resolutions_summary.json"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	diff := content.DataDiff{Tables: []content.TableDataDiff{}}
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{}}
+	resInfo := &content.ResolutionInfo{
+		TotalConflicts:  1,
+		ResolvedCount:   1,
+		UnresolvedCount: 0,
+		ByDecision:      map[string]int{"keep_prod": 1},
+		ByTable:         map[string]int{"users": 1},
+	}
+
+	if err := content.WriteReportsWithResolutions(diff, conflicts, tmpDir, "", 0, "", resInfo); err == nil {
+		t.Error("WriteReportsWithResolutions should fail when resolutions_summary.json cannot be written")
+	}
+}
+
+// ============================================================================
+// WriteReportsWithResolutions — JSON write errors
+// ============================================================================
+
+func TestWriteReportsWithResolutions_JSONWriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Block content_diff.json
+	if err := os.MkdirAll(filepath.Join(tmpDir, "content_diff.json"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	diff := content.DataDiff{Tables: []content.TableDataDiff{}}
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{}}
+	if err := content.WriteReportsWithResolutions(diff, conflicts, tmpDir, "", 0, "", nil); err == nil {
+		t.Error("WriteReportsWithResolutions should fail when content_diff.json cannot be written")
+	}
+}
+
+func TestWriteReportsWithResolutions_ConflictsJSONWriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Block conflicts.json
+	if err := os.MkdirAll(filepath.Join(tmpDir, "conflicts.json"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	diff := content.DataDiff{Tables: []content.TableDataDiff{}}
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{}}
+	if err := content.WriteReportsWithResolutions(diff, conflicts, tmpDir, "", 0, "", nil); err == nil {
+		t.Error("WriteReportsWithResolutions should fail when conflicts.json cannot be written")
+	}
+}

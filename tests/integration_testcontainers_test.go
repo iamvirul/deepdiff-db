@@ -11,19 +11,19 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/iamvirul/deepdiff-db/internal/content"
 	"github.com/iamvirul/deepdiff-db/internal/drivers"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
+	_ "github.com/jackc/pgx/v5"
+	_ "github.com/microsoft/go-mssqldb"
+	_ "github.com/sijms/go-ora/v2"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mssql"
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5"
-	_ "github.com/microsoft/go-mssqldb"
-	_ "github.com/sijms/go-ora/v2"
 )
 
 // TestIntegration_MySQL_FullWorkflow tests the complete workflow with MySQL databases
@@ -1465,7 +1465,6 @@ func TestIntegration_AllReportsGenerated(t *testing.T) {
 		}
 	}
 }
-
 
 // TestIntegration_Oracle_FullWorkflow tests the complete workflow with Oracle XE 21c databases.
 // It uses gvenzl/oracle-xe:21-slim-faststart via the generic testcontainers API (no official Oracle module).

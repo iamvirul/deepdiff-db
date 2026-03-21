@@ -14,20 +14,23 @@ import (
 type OperationType string
 
 const (
-	OperationTypeHashTable   OperationType = "hash_table"
+	// OperationTypeHashTable identifies a hash-table operation checkpoint.
+	OperationTypeHashTable OperationType = "hash_table"
+	// OperationTypeGeneratePack identifies a generate-pack operation checkpoint.
 	OperationTypeGeneratePack OperationType = "generate_pack"
-	OperationTypeApplyPack    OperationType = "apply_pack"
+	// OperationTypeApplyPack identifies an apply-pack operation checkpoint.
+	OperationTypeApplyPack OperationType = "apply_pack"
 )
 
 // State represents the checkpoint state that can be saved and resumed.
 type State struct {
 	// Metadata
-	Version      string        `json:"version"`       // Checkpoint format version
-	Operation    OperationType `json:"operation"`     // Type of operation
-	CreatedAt    time.Time     `json:"created_at"`    // When checkpoint was created
-	LastUpdated  time.Time     `json:"last_updated"`  // Last update time
-	ConfigHash   string        `json:"config_hash"`   // Hash of config for validation
-	OutputDir    string        `json:"output_dir"`    // Output directory path
+	Version     string        `json:"version"`      // Checkpoint format version
+	Operation   OperationType `json:"operation"`    // Type of operation
+	CreatedAt   time.Time     `json:"created_at"`   // When checkpoint was created
+	LastUpdated time.Time     `json:"last_updated"` // Last update time
+	ConfigHash  string        `json:"config_hash"`  // Hash of config for validation
+	OutputDir   string        `json:"output_dir"`   // Output directory path
 
 	// HashTable state
 	HashTableState *HashTableState `json:"hash_table_state,omitempty"`
@@ -41,24 +44,24 @@ type State struct {
 
 // HashTableState tracks progress for table hashing operations.
 type HashTableState struct {
-	CompletedTables []string            `json:"completed_tables"` // Tables fully hashed
-	CurrentTable    string              `json:"current_table"`      // Table currently being processed
-	CurrentRowCount int64               `json:"current_row_count"` // Rows processed in current table
-	Hashes          map[string]map[string]string `json:"hashes"`  // Completed hash results
+	CompletedTables []string                     `json:"completed_tables"`  // Tables fully hashed
+	CurrentTable    string                       `json:"current_table"`     // Table currently being processed
+	CurrentRowCount int64                        `json:"current_row_count"` // Rows processed in current table
+	Hashes          map[string]map[string]string `json:"hashes"`            // Completed hash results
 }
 
 // GeneratePackState tracks progress for pack generation.
 type GeneratePackState struct {
 	CompletedTables []string `json:"completed_tables"` // Tables fully processed
 	CurrentTable    string   `json:"current_table"`    // Table currently being processed
-	Statements      []string `json:"statements"`      // Generated statements so far
+	Statements      []string `json:"statements"`       // Generated statements so far
 }
 
 // ApplyPackState tracks progress for pack application.
 type ApplyPackState struct {
 	ExecutedStatements int    `json:"executed_statements"` // Number of statements executed
-	TotalStatements     int    `json:"total_statements"`   // Total statements in pack
-	PackPath            string `json:"pack_path"`          // Path to pack file
+	TotalStatements    int    `json:"total_statements"`    // Total statements in pack
+	PackPath           string `json:"pack_path"`           // Path to pack file
 }
 
 // CurrentVersion is the checkpoint format version.
@@ -86,11 +89,11 @@ func NewState(operation OperationType, outputDir string, cfg *config.Config) (*S
 	now := time.Now()
 	return &State{
 		Version:     CurrentVersion,
-		Operation:    operation,
-		CreatedAt:    now,
-		LastUpdated:  now,
-		ConfigHash:   configHash,
-		OutputDir:    outputDir,
+		Operation:   operation,
+		CreatedAt:   now,
+		LastUpdated: now,
+		ConfigHash:  configHash,
+		OutputDir:   outputDir,
 	}, nil
 }
 
@@ -116,4 +119,3 @@ func (s *State) IsExpired(maxAge time.Duration) bool {
 	}
 	return time.Since(s.LastUpdated) > maxAge
 }
-

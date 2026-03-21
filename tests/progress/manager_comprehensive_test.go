@@ -310,4 +310,3 @@ func TestManager_IsEnabled(t *testing.T) {
 		t.Error("expected disabled")
 	}
 }
-

@@ -232,14 +232,6 @@ func TestGeneratePack_WithIgnore(t *testing.T) {
 	}
 }
 
-
-
-
-
-
-
-
-
 func TestGeneratePack_NoPrimaryKey(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
@@ -254,7 +246,7 @@ func TestGeneratePack_NoPrimaryKey(t *testing.T) {
 		Tables: map[string]schema.Table{
 			"users": {
 				Name:       "users",
-				Columns:   map[string]schema.Column{},
+				Columns:    map[string]schema.Column{},
 				PrimaryKey: []string{}, // No primary key
 			},
 		},
@@ -1245,7 +1237,6 @@ func TestGeneratePack_BuildAlterTableSQLite(t *testing.T) {
 	}
 }
 
-
 func TestGeneratePack_MSSQLDriver(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
@@ -1387,4 +1378,3 @@ func TestGeneratePack_OracleNoData(t *testing.T) {
 		t.Errorf("expected BEGIN; for oracle, got:\n%s", sqlText)
 	}
 }
-

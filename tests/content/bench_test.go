@@ -63,7 +63,7 @@ func seedUsers(b *testing.B, db *sql.DB, n int) schema.Table {
 // BenchmarkHashTable measures HashTable throughput at different scales and
 // batch sizes so we can document rows/sec in the performance guide.
 //
-//   go test ./tests/content/... -bench=BenchmarkHashTable -benchmem -benchtime=3s
+//	go test ./tests/content/... -bench=BenchmarkHashTable -benchmem -benchtime=3s
 func BenchmarkHashTable_Unbatched_1k(b *testing.B)  { benchHash(b, 1_000, 0) }
 func BenchmarkHashTable_Unbatched_10k(b *testing.B) { benchHash(b, 10_000, 0) }
 func BenchmarkHashTable_Batched_1k(b *testing.B)    { benchHash(b, 1_000, 500) }
