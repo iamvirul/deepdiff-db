@@ -26,7 +26,7 @@ func Open(ctx context.Context, cfg config.DBConfig) (*sql.DB, error) {
 	}
 
 	var db *sql.DB
-	
+
 	// Retry connection with exponential backoff
 	retryCfg := errors.DefaultRetryConfig()
 	err = errors.Retry(ctx, retryCfg, func() error {

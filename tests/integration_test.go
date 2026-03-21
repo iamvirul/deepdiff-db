@@ -173,13 +173,13 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read pack: %v", err)
 	}
-	
+
 	// Remove BEGIN and COMMIT lines for SQLite compatibility
 	packStr := string(packContent)
 	packStr = strings.ReplaceAll(packStr, "BEGIN;\n", "")
 	packStr = strings.ReplaceAll(packStr, "\nCOMMIT;", "")
 	packStr = strings.TrimSpace(packStr)
-	
+
 	// Write modified pack
 	packPathModified := filepath.Join(tmpDir, "migration_pack_modified.sql")
 	if err := os.WriteFile(packPathModified, []byte(packStr), 0o644); err != nil {
@@ -311,4 +311,3 @@ output:
 		t.Fatalf("dev database ping failed: %v", err)
 	}
 }
-

@@ -26,11 +26,11 @@ func TestNewPrompterWithIO(t *testing.T) {
 
 func TestPromptSelect(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		options  []cli.SelectOption
-		wantIdx  int
-		wantErr  bool
+		name    string
+		input   string
+		options []cli.SelectOption
+		wantIdx int
+		wantErr bool
 	}{
 		{
 			name:  "select by key",

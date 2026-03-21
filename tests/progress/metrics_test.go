@@ -247,4 +247,3 @@ func TestMetrics_Record_UpdateExisting(t *testing.T) {
 		t.Errorf("expected latest rows, got: %d", metric.RowsProcessed)
 	}
 }
-

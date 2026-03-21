@@ -1,3 +1,5 @@
+//go:build integration
+
 package schema_test
 
 import (
@@ -1294,9 +1296,9 @@ func TestGenerateMigration_MSSQL(t *testing.T) {
 			{
 				Name: "orders",
 				Columns: map[string]schema.Column{
-					"id":         {Name: "id", DataType: "INT", IsNullable: false},
-					"customer":   {Name: "customer", DataType: "NVARCHAR(100)", IsNullable: false},
-					"total":      {Name: "total", DataType: "DECIMAL(10,2)", IsNullable: true},
+					"id":       {Name: "id", DataType: "INT", IsNullable: false},
+					"customer": {Name: "customer", DataType: "NVARCHAR(100)", IsNullable: false},
+					"total":    {Name: "total", DataType: "DECIMAL(10,2)", IsNullable: true},
 				},
 				PrimaryKey: []string{"id"},
 			},
@@ -1738,7 +1740,7 @@ func TestGenerateMigration_Oracle_ModifyColumn(t *testing.T) {
 			colDiff: schema.ColumnDiff{
 				Column:       "code",
 				TypeMismatch: true,
-				DevType:      "",              // empty — must fall back to ProdType
+				DevType:      "", // empty — must fall back to ProdType
 				ProdType:     "VARCHAR2(100)",
 				DevNullable:  boolPtr(true),
 				ProdNullable: boolPtr(true),
@@ -1755,7 +1757,7 @@ func TestGenerateMigration_Oracle_ModifyColumn(t *testing.T) {
 				NullableMismatch: true,
 				DevType:          "NUMBER(1)",
 				DevNullable:      nil,            // not set
-				ProdNullable:     boolPtr(false),  // falls through to ProdNullable
+				ProdNullable:     boolPtr(false), // falls through to ProdNullable
 			},
 			wantHas: []string{
 				`ALTER TABLE "t" MODIFY "active" NUMBER(1) NOT NULL;`,

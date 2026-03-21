@@ -364,4 +364,3 @@ func TestBar_Disabled(t *testing.T) {
 		t.Errorf("expected non-negative throughput, got: %f", throughput)
 	}
 }
-

@@ -28,15 +28,16 @@ const (
 // GeneratePack builds a SQL migration pack for applying data diffs to prod.
 // GeneratePack builds a SQL migration script that applies the provided data diff to a production database,
 // using the development database as the source of truth for inserted and updated rows.
-// 
+//
 // The generated script contains:
-// 1. ALTER TABLE statements to add columns missing in prod (from schemaDiff)
-// 2. Transactional statements and, for MySQL, temporarily disables and re-enables foreign key checks
-// 3. For each table with changes, rows identified by primary keys are deleted (for removed and updated entries)
-//    and inserted (for added and updated entries) with column values taken from the development database.
+//  1. ALTER TABLE statements to add columns missing in prod (from schemaDiff)
+//  2. Transactional statements and, for MySQL, temporarily disables and re-enables foreign key checks
+//  3. For each table with changes, rows identified by primary keys are deleted (for removed and updated entries)
+//     and inserted (for added and updated entries) with column values taken from the development database.
+//
 // Only columns that exist in both prod and dev schemas are included in INSERT statements to handle schema drift.
 // The script is written to outDir/migration_pack.sql and the returned string is the written file path.
-// 
+//
 // Errors are returned if a table lacks a primary key, if row fetching or WHERE-clause construction fails,
 // or if writing the output file fails.
 func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devDatabase string, prodSchema, devSchema *schema.Schema, schemaDiff schema.DiffResult, diff DataDiff, ignoreFn func(table, column string) bool, outDir string) (string, error) {
@@ -68,7 +69,7 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 	}
 
 	var stmts []string
-	
+
 	// Load existing statements from checkpoint if resuming
 	completedTablesMap := make(map[string]bool)
 	if checkpointMgr != nil {
@@ -85,7 +86,7 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 			}
 		}
 	}
-	
+
 	// Initialize statements if empty (new run)
 	if len(stmts) == 0 {
 		beginStmt := "BEGIN;"
@@ -178,13 +179,13 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 		if len(td.Added)+len(td.Removed)+len(td.Updated) == 0 {
 			continue
 		}
-		
+
 		// Skip if table is already completed (resume logic)
 		if completedTablesMap[td.Table] {
 			log.Debug("skipping already processed table", "table", td.Table)
 			continue
 		}
-		
+
 		devTbl, ok := devSchema.Tables[td.Table]
 		if !ok {
 			continue
@@ -274,7 +275,7 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 			log.Debug("skipping update statements for already processed table", "table", tableName)
 			continue
 		}
-		
+
 		devTbl, ok := devSchema.Tables[tableName]
 		if !ok {
 			continue
@@ -289,7 +290,7 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 				}
 			}
 		}
-		
+
 		updateStmts, err := generateUpdateStatementsForNewColumns(ctx, log, devDB, prodDriver, tableName, devTbl, columnsToAdd, rowsToSkipUpdate, ignoreFn)
 		if err != nil {
 			return "", fmt.Errorf("generate update statements for %s: %w", tableName, err)
@@ -404,12 +405,12 @@ func quoteIdents(driver string, cols []string) []string {
 // literal converts a Go value to an SQL literal suitable for embedding in a query.
 // It returns:
 //
-// - "NULL" for nil.
-// - "TRUE" or "FALSE" for booleans.
-// - A quoted timestamp in the format 'YYYY-MM-DD HH:MM:SS' for time.Time values or
-//   for strings/byte slices that successfully parse as known timestamp formats
-//   (RFC3339, common MySQL/UTC layouts, and several common variants).
-// - A single-quoted, SQL-escaped string for all other values (single quotes doubled).
+//   - "NULL" for nil.
+//   - "TRUE" or "FALSE" for booleans.
+//   - A quoted timestamp in the format 'YYYY-MM-DD HH:MM:SS' for time.Time values or
+//     for strings/byte slices that successfully parse as known timestamp formats
+//     (RFC3339, common MySQL/UTC layouts, and several common variants).
+//   - A single-quoted, SQL-escaped string for all other values (single quotes doubled).
 //
 // The function attempts multiple timestamp layouts when given strings or []byte;
 // if parsing succeeds it formats the time as 'YYYY-MM-DD HH:MM:SS', otherwise it
@@ -492,7 +493,7 @@ func escape(s string) string {
 // queries information_schema to find the table's schema, defaulting to "public" if not found.
 func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tableName, columnName string) (string, error) {
 	driver = strings.ToLower(driver)
-	
+
 	switch driver {
 	case "mysql":
 		// Query information_schema to get COLUMN_TYPE which includes full definition
@@ -508,7 +509,7 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 			return "", fmt.Errorf("query column type: %w", err)
 		}
 		return fullType, nil
-		
+
 	case "postgres", "postgresql":
 		// For PostgreSQL, determine the schema to use
 		// Priority: 1) explicit database parameter (used as schema), 2) query table's actual schema, 3) default to "public"
@@ -528,7 +529,7 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 				return "", fmt.Errorf("could not determine schema for table %s: %w (hint: provide explicit schema via database parameter)", tableName, err)
 			}
 		}
-		
+
 		// Query information_schema to get full type definition using explicit schema
 		// Note: Integer types (integer, bigint, smallint, serial types) have numeric_precision
 		// but don't accept precision notation, so we exclude precision/scale for these types.
@@ -556,7 +557,7 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 			return "", fmt.Errorf("query column type for schema %s, table %s, column %s: %w", schemaName, tableName, columnName, err)
 		}
 		return fullType, nil
-		
+
 	case "sqlite":
 		// SQLite PRAGMA table_info returns the full type definition
 		// Note: PRAGMA must be called directly, not in a subquery
@@ -565,7 +566,7 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 			return "", fmt.Errorf("query table info: %w", err)
 		}
 		defer rows.Close()
-		
+
 		for rows.Next() {
 			var (
 				cid       int
@@ -586,7 +587,7 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 			return "", fmt.Errorf("iterate columns: %w", err)
 		}
 		return "", fmt.Errorf("column %s not found in table %s", columnName, tableName)
-		
+
 	case "mssql":
 		// Query sys.columns joined with sys.types to reconstruct the full type definition,
 		// including length (max_length), precision, and scale.
@@ -661,7 +662,7 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 	if len(devTbl.PrimaryKey) == 0 {
 		return nil, fmt.Errorf("table %s lacks primary key", tableName)
 	}
-	
+
 	// Get all rows from dev database for this table
 	// Build column list: primary keys + new columns (to fetch values)
 	allCols := append([]string{}, devTbl.PrimaryKey...)
@@ -671,42 +672,42 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 			allCols = append(allCols, newCol)
 		}
 	}
-	
+
 	if len(allCols) == 0 {
 		return nil, fmt.Errorf("no columns to select for table %s", tableName)
 	}
-	
+
 	// Build index map for column positions
 	colIndex := make(map[string]int)
 	for i, col := range allCols {
 		colIndex[col] = i
 	}
-	
+
 	// Batch data structures
 	type batchRow struct {
 		key      string
 		pkValues []any
 		values   map[string]any // column name -> value
 	}
-	
+
 	var batch []batchRow
 	var stmts []string
 	rowCount := 0
 	totalRows := 0
-	
+
 	// Helper to flush current batch
 	flushBatch := func() error {
 		if len(batch) == 0 {
 			return nil
 		}
-		
+
 		// Build CASE expressions for each new column
 		var setParts []string
 		for _, newCol := range newColumns {
 			if _, exists := devTbl.Columns[newCol]; !exists {
 				continue
 			}
-			
+
 			// Build CASE expression: CASE WHEN pk_match THEN val1 WHEN pk_match2 THEN val2 ... ELSE col END
 			var caseParts []string
 			for _, row := range batch {
@@ -716,21 +717,21 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 					pkConditions = append(pkConditions, fmt.Sprintf("%s = %s", quoteIdent(driver, pkCol), literal(row.pkValues[i])))
 				}
 				pkMatch := strings.Join(pkConditions, " AND ")
-				
+
 				// Get value for this column
 				val := row.values[newCol]
 				caseParts = append(caseParts, fmt.Sprintf("WHEN %s THEN %s", pkMatch, literal(val)))
 			}
-			
+
 			// Complete CASE expression: CASE ... ELSE col END
 			caseExpr := fmt.Sprintf("CASE %s ELSE %s END", strings.Join(caseParts, " "), quoteIdent(driver, newCol))
 			setParts = append(setParts, fmt.Sprintf("%s = %s", quoteIdent(driver, newCol), caseExpr))
 		}
-		
+
 		if len(setParts) == 0 {
 			return nil
 		}
-		
+
 		// Build WHERE clause with all primary keys in batch
 		var whereParts []string
 		for _, row := range batch {
@@ -741,7 +742,7 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 			whereParts = append(whereParts, "("+strings.Join(pkConditions, " AND ")+")")
 		}
 		whereClause := strings.Join(whereParts, " OR ")
-		
+
 		// Generate batched UPDATE statement
 		updateStmt := fmt.Sprintf("UPDATE %s SET %s WHERE %s;",
 			quoteIdent(driver, tableName),
@@ -749,19 +750,19 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 			whereClause,
 		)
 		stmts = append(stmts, updateStmt)
-		
+
 		// Log progress for large datasets
 		if totalRows >= progressLogThreshold {
 			log.Debug("generated batch for update statements",
 				"batch_number", len(stmts),
 				"rows_processed", totalRows)
 		}
-		
+
 		batch = batch[:0] // Clear batch but keep capacity
 		rowCount = 0
 		return nil
 	}
-	
+
 	// Process rows using cursor-based pagination (BuildCursorQuery) to avoid
 	// loading all rows into memory at once.
 	dest := make([]any, len(allCols))
@@ -769,51 +770,51 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 		var holder any
 		dest[i] = &holder
 	}
-	
+
 	var lastPKValues []any // Track last primary key for cursor-based pagination
 
 	for {
 		query := BuildCursorQuery(driver, tableName, allCols, devTbl.PrimaryKey, queryPageSize, lastPKValues)
-		
+
 		rows, err := devDB.QueryContext(ctx, query)
 		if err != nil {
 			return nil, fmt.Errorf("query dev rows: %w", err)
 		}
-		
+
 		pageRowCount := 0
 		hasMoreRows := false
-		
+
 		for rows.Next() {
 			if err := rows.Scan(dest...); err != nil {
 				rows.Close()
 				return nil, fmt.Errorf("scan row: %w", err)
 			}
-			
+
 			// Dereference values
 			values := make([]any, len(allCols))
 			for i, v := range dest {
 				values[i] = *(v.(*any))
 			}
-			
+
 			// Build primary key
 			key, err := buildKey(allCols, values, devTbl.PrimaryKey)
 			if err != nil {
 				rows.Close()
 				return nil, fmt.Errorf("build key: %w", err)
 			}
-			
+
 			// Skip rows that will be updated via DELETE/INSERT
 			if skipKeys[key] {
 				continue
 			}
-			
+
 			// Extract PK values
 			pkValues := make([]any, len(devTbl.PrimaryKey))
 			for i, pkCol := range devTbl.PrimaryKey {
 				idx := colIndex[pkCol]
 				pkValues[i] = values[idx]
 			}
-			
+
 			// Extract values for new columns
 			rowValues := make(map[string]any)
 			for _, newCol := range newColumns {
@@ -823,7 +824,7 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 				}
 				rowValues[newCol] = values[idx]
 			}
-			
+
 			// Add to batch
 			batch = append(batch, batchRow{
 				key:      key,
@@ -833,11 +834,11 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 			rowCount++
 			totalRows++
 			pageRowCount++
-			
+
 			// Update last PK values for cursor
 			lastPKValues = make([]any, len(pkValues))
 			copy(lastPKValues, pkValues)
-			
+
 			// Flush batch when it reaches the batch size
 			if rowCount >= updateBatchSize {
 				if err := flushBatch(); err != nil {
@@ -846,37 +847,37 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 				}
 			}
 		}
-		
+
 		if err := rows.Err(); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("iterate rows: %w", err)
 		}
 		rows.Close()
-		
+
 		// If we got fewer rows than the page size, we've reached the end
 		if pageRowCount < queryPageSize {
 			break
 		}
-		
+
 		// If we got exactly the page size, there might be more rows
 		hasMoreRows = pageRowCount == queryPageSize
 		if !hasMoreRows {
 			break
 		}
 	}
-	
+
 	// Flush remaining batch
 	if err := flushBatch(); err != nil {
 		return nil, err
 	}
-	
+
 	// Final progress log if we processed many rows
 	if totalRows >= progressLogThreshold {
 		log.Info("completed update statements for new columns",
 			logger.FieldRowCount, totalRows,
 			"batches", len(stmts))
 	}
-	
+
 	return stmts, nil
 }
 
@@ -885,13 +886,13 @@ func generateUpdateStatementsForNewColumns(ctx context.Context, log *logger.Logg
 func buildAlterTableAddColumn(driver, tableName, columnName, fullType string, isNullable bool) string {
 	colName := quoteIdent(driver, columnName)
 	tableNameQuoted := quoteIdent(driver, tableName)
-	
+
 	// Build column definition with the full type from dev database
 	colDef := colName + " " + fullType
 	if !isNullable {
 		colDef += " NOT NULL"
 	}
-	
+
 	// Driver-specific handling
 	switch driver {
 	case "mysql":
@@ -924,7 +925,7 @@ func orderedColumnsIntersection(devTbl, prodTbl schema.Table, ignoreFn func(tabl
 	var cols []string
 	// Ensure primary keys first (and always included)
 	cols = append(cols, devTbl.PrimaryKey...)
-	
+
 	var nonPK []string
 	// Only include columns that exist in both schemas
 	for name := range devTbl.Columns {

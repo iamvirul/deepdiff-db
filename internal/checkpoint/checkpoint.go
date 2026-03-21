@@ -153,4 +153,3 @@ func FromContext(ctx context.Context) *Manager {
 
 	return nil
 }
-

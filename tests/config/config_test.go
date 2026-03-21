@@ -360,9 +360,9 @@ func TestLoad_FileNotFound(t *testing.T) {
 
 func TestLoad_MigrationConfig_AllowDropIndex(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         string
-		wantDropIndex  bool
+		name          string
+		config        string
+		wantDropIndex bool
 	}{
 		{
 			name: "allow_drop_index true",
@@ -905,8 +905,8 @@ func TestConflictResolutionConfig_GetStrategyForTable(t *testing.T) {
 	}{
 		{"logs", "theirs"},
 		{"config", "ours"},
-		{"users", "manual"},       // Falls back to default
-		{"unknown", "manual"},     // Falls back to default
+		{"users", "manual"},   // Falls back to default
+		{"unknown", "manual"}, // Falls back to default
 	}
 
 	for _, tt := range tests {
@@ -1048,4 +1048,3 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
-

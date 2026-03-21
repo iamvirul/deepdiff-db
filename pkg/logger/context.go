@@ -70,7 +70,7 @@ func WithFields(ctx context.Context, fields ...any) context.Context {
 	return ToContext(ctx, enhanced)
 }
 
-// SetOutput changes the output destination for the default logger.
+// SetDefaultOutput changes the output destination for the default logger.
 // This is useful for testing or when you need to redirect default logs.
 func SetDefaultOutput(w io.Writer) {
 	defaultLogger = &Logger{

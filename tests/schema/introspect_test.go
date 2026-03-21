@@ -1,3 +1,5 @@
+//go:build integration
+
 package schema_test
 
 import (

@@ -204,4 +204,3 @@ func TestError_Format_WithNil(t *testing.T) {
 	_ = fmt.Sprintf("%+v", err)
 	_ = fmt.Sprintf("%s", err)
 }
-

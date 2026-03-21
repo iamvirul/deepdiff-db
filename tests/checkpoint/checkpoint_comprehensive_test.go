@@ -33,7 +33,7 @@ func TestManager_Save_ErrorPaths(t *testing.T) {
 		Dev:  config.DBConfig{Driver: "sqlite", Database: "/tmp/dev.db"},
 	}
 	state, _ := checkpoint.NewState(checkpoint.OperationTypeHashTable, readOnlyDir, cfg)
-	
+
 	// This might fail on some systems, but should handle gracefully
 	_ = readOnlyMgr.Save(state)
 }
@@ -320,4 +320,3 @@ func TestManager_Save_AtomicWrite(t *testing.T) {
 		t.Error("expected checkpoint file to exist")
 	}
 }
-

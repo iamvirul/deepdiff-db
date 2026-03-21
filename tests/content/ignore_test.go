@@ -146,4 +146,3 @@ func TestIgnoreMatcher_RealWorldScenarios(t *testing.T) {
 		t.Error("expected posts.title to not be ignored")
 	}
 }
-

@@ -186,14 +186,13 @@ func containsMiddle(s, substr string) bool {
 	return false
 }
 
-
 func TestBuildDSN_MSSQL(t *testing.T) {
 	tests := []struct {
-		name        string
-		cfg         config.DBConfig
-		wantDriver  string
-		wantDSNHas  []string
-		wantDSNNot  []string
+		name       string
+		cfg        config.DBConfig
+		wantDriver string
+		wantDSNHas []string
+		wantDSNNot []string
 	}{
 		{
 			name: "mssql with port",

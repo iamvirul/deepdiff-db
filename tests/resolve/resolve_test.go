@@ -158,7 +158,7 @@ func TestResolveConflicts(t *testing.T) {
 		},
 	}
 
-	resolutions := resolve.ResolveConflicts(conflicts, cfg)
+	resolutions := resolve.Conflicts(conflicts, cfg)
 
 	if len(resolutions) != 3 {
 		t.Fatalf("expected 3 resolutions, got %d", len(resolutions))
@@ -205,7 +205,7 @@ func TestResolveConflictsWithNilConfig(t *testing.T) {
 		},
 	}
 
-	resolutions := resolve.ResolveConflicts(conflicts, nil)
+	resolutions := resolve.Conflicts(conflicts, nil)
 
 	if len(resolutions) != 1 {
 		t.Fatalf("expected 1 resolution, got %d", len(resolutions))
@@ -378,7 +378,7 @@ func TestEmptyConflicts(t *testing.T) {
 		},
 	}
 
-	resolutions := resolve.ResolveConflicts(conflicts, cfg)
+	resolutions := resolve.Conflicts(conflicts, cfg)
 
 	if len(resolutions) != 0 {
 		t.Errorf("expected 0 resolutions for empty conflicts, got %d", len(resolutions))

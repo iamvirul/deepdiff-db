@@ -356,4 +356,3 @@ func TestRecordMetric_Concurrent(t *testing.T) {
 		t.Errorf("expected count=10, got %d", metric.Count)
 	}
 }
-

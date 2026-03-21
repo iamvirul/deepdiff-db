@@ -28,10 +28,10 @@ func (d *fakeOracleDriver) Open(_ string) (driver.Conn, error) { return &fakeOra
 func (c *fakeOracleConn) Prepare(_ string) (driver.Stmt, error) {
 	return &fakeOracleStmt{}, nil
 }
-func (c *fakeOracleConn) Close() error                        { return nil }
-func (c *fakeOracleConn) Begin() (driver.Tx, error)           { return nil, nil }
-func (s *fakeOracleStmt) Close() error                        { return nil }
-func (s *fakeOracleStmt) NumInput() int                       { return -1 }
+func (c *fakeOracleConn) Close() error              { return nil }
+func (c *fakeOracleConn) Begin() (driver.Tx, error) { return nil, nil }
+func (s *fakeOracleStmt) Close() error              { return nil }
+func (s *fakeOracleStmt) NumInput() int             { return -1 }
 func (s *fakeOracleStmt) Exec(_ []driver.Value) (driver.Result, error) {
 	return &fakeOracleResult{}, nil
 }

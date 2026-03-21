@@ -323,4 +323,3 @@ COMMIT;`
 		t.Fatalf("expected 3 statements, got %d", len(statements))
 	}
 }
-

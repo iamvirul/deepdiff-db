@@ -532,4 +532,3 @@ func TestManagerWithMetrics(t *testing.T) {
 		t.Errorf("expected 50 rows, got %d", op.RowsProcessed)
 	}
 }
-
