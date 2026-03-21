@@ -9,14 +9,8 @@ DeepDiff DB ships as a single static binary with no runtime dependencies. Choose
 ## Homebrew (macOS and Linux — Recommended)
 
 ```bash
-brew tap iamvirul/deepdiff-db
+brew tap iamvirul/tap
 brew install deepdiff-db
-```
-
-One-liner alternative:
-
-```bash
-brew install iamvirul/deepdiff-db/deepdiff-db
 ```
 
 **Upgrade to the latest version:**
@@ -25,49 +19,67 @@ brew install iamvirul/deepdiff-db/deepdiff-db
 brew upgrade deepdiff-db
 ```
 
+## Docker
+
+```bash
+docker pull ghcr.io/iamvirul/deepdiff-db:latest
+
+# Run a diff
+docker run --rm \
+  -v $(pwd)/deepdiffdb.config.yaml:/config/deepdiffdb.config.yaml:ro \
+  -v $(pwd)/diff-output:/diff-output \
+  ghcr.io/iamvirul/deepdiff-db:latest diff
+```
+
+See the [Docker guide](/docs/deployment/docker) for full usage details.
+
 ## Binary Download
 
-Pre-compiled binaries are published for every release on the [GitHub Releases](https://github.com/iamvirul/deepdiff-db/releases) page.
+Pre-compiled archives are published for every release on the [GitHub Releases](https://github.com/iamvirul/deepdiff-db/releases) page.
 
 ### Linux (amd64)
 
 ```bash
-wget https://github.com/iamvirul/deepdiff-db/releases/latest/download/deepdiffdb-linux-amd64
-chmod +x deepdiffdb-linux-amd64
-sudo mv deepdiffdb-linux-amd64 /usr/local/bin/deepdiffdb
+curl -fsSL \
+  https://github.com/iamvirul/deepdiff-db/releases/latest/download/deepdiffdb_linux_amd64.tar.gz \
+  | tar -xz deepdiffdb
+sudo mv deepdiffdb /usr/local/bin/deepdiffdb
 ```
 
 ### Linux (arm64)
 
 ```bash
-wget https://github.com/iamvirul/deepdiff-db/releases/latest/download/deepdiffdb-linux-arm64
-chmod +x deepdiffdb-linux-arm64
-sudo mv deepdiffdb-linux-arm64 /usr/local/bin/deepdiffdb
+curl -fsSL \
+  https://github.com/iamvirul/deepdiff-db/releases/latest/download/deepdiffdb_linux_arm64.tar.gz \
+  | tar -xz deepdiffdb
+sudo mv deepdiffdb /usr/local/bin/deepdiffdb
 ```
 
 ### macOS (Apple Silicon — arm64)
 
 ```bash
-wget https://github.com/iamvirul/deepdiff-db/releases/latest/download/deepdiffdb-darwin-arm64
-chmod +x deepdiffdb-darwin-arm64
-sudo mv deepdiffdb-darwin-arm64 /usr/local/bin/deepdiffdb
+curl -fsSL \
+  https://github.com/iamvirul/deepdiff-db/releases/latest/download/deepdiffdb_darwin_arm64.tar.gz \
+  | tar -xz deepdiffdb
+sudo mv deepdiffdb /usr/local/bin/deepdiffdb
 ```
 
 ### macOS (Intel — amd64)
 
 ```bash
-wget https://github.com/iamvirul/deepdiff-db/releases/latest/download/deepdiffdb-darwin-amd64
-chmod +x deepdiffdb-darwin-amd64
-sudo mv deepdiffdb-darwin-amd64 /usr/local/bin/deepdiffdb
+curl -fsSL \
+  https://github.com/iamvirul/deepdiff-db/releases/latest/download/deepdiffdb_darwin_amd64.tar.gz \
+  | tar -xz deepdiffdb
+sudo mv deepdiffdb /usr/local/bin/deepdiffdb
 ```
 
 ### Windows (amd64)
 
-Download `deepdiffdb-windows-amd64.exe` from the Releases page and place it somewhere on your `%PATH%`, for example `C:\Windows\System32\deepdiffdb.exe`, or add its directory to the `PATH` environment variable.
+Download `deepdiffdb_windows_amd64.zip` from the [Releases page](https://github.com/iamvirul/deepdiff-db/releases), extract `deepdiffdb.exe`, and add it to your `%PATH%`.
 
 ## Build from Source
 
-Requires Go 1.21 or later.
+Requires Go 1.25.8 or later.
 
 **Using `go install`:**
 
@@ -82,19 +94,20 @@ This installs the binary to `$GOPATH/bin` (usually `~/go/bin`). Make sure that d
 ```bash
 git clone https://github.com/iamvirul/deepdiff-db.git
 cd deepdiff-db
-./scripts/build-local.sh --install --install-dir ~/bin
+go build -o deepdiffdb ./cmd/deepdiffdb
+sudo mv deepdiffdb /usr/local/bin/deepdiffdb
 ```
 
 ## Verify the Installation
 
 ```bash
-deepdiffdb version
+deepdiffdb --version
 ```
 
 Expected output:
 
 ```
-deepdiffdb version 0.9.0
+DeepDiff DB v1.0.0
 ```
 
 ## Next Step

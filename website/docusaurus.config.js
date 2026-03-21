@@ -30,7 +30,7 @@ const config = {
       items: [
         { type: 'docSidebar', sidebarId: 'docs', position: 'left', label: 'Docs' },
         { href: 'https://github.com/iamvirul/deepdiff-db', label: 'GitHub', position: 'right' },
-        { href: 'https://github.com/iamvirul/deepdiff-db/releases', label: 'v0.9', position: 'right' },
+        { href: 'https://github.com/iamvirul/deepdiff-db/releases', label: 'v1.0', position: 'right' },
       ],
     },
     footer: {
