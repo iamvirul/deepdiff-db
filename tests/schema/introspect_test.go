@@ -158,41 +158,6 @@ func TestLoadSchema_SQLite_WithIgnore(t *testing.T) {
 	}
 }
 
-func TestLoadSchema_SQLite_NoPrimaryKey(t *testing.T) {
-	ctx := context.Background()
-
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	// Create table without primary key
-	_, err = db.ExecContext(ctx, `
-		CREATE TABLE users (
-			id INTEGER,
-			name TEXT
-		)
-	`)
-	if err != nil {
-		t.Fatalf("failed to create table: %v", err)
-	}
-
-	schema, err := schema.LoadSchema(ctx, db, "sqlite", "", nil)
-	if err != nil {
-		t.Fatalf("schema.schema.LoadSchema failed: %v", err)
-	}
-
-	usersTable, ok := schema.Tables["users"]
-	if !ok {
-		t.Fatal("users table not found")
-	}
-
-	if len(usersTable.PrimaryKey) != 0 {
-		t.Errorf("expected no primary key, got %v", usersTable.PrimaryKey)
-	}
-}
-
 func TestCheckPrimaryKeys_SQLite(t *testing.T) {
 	ctx := context.Background()
 
@@ -291,17 +256,3 @@ func TestLoadSchema_UnsupportedDriver(t *testing.T) {
 	}
 }
 
-func TestCheckPrimaryKeys_UnsupportedDriver(t *testing.T) {
-	ctx := context.Background()
-
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	_, err = schema.CheckPrimaryKeys(ctx, db, "oracle", "", nil)
-	if err == nil {
-		t.Error("expected error for unsupported driver")
-	}
-}

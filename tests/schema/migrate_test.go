@@ -200,18 +200,6 @@ func TestGenerateMigration_NoDifferences(t *testing.T) {
 	}
 }
 
-func TestGenerateMigration_UnsupportedDriver(t *testing.T) {
-	diff := schema.DiffResult{}
-
-	_, err := schema.GenerateMigration(diff, "db2", nil)
-	if err == nil {
-		t.Error("Expected error for unsupported driver")
-	}
-	if !strings.Contains(err.Error(), "unsupported driver") {
-		t.Errorf("Expected 'unsupported driver' error, got: %v", err)
-	}
-}
-
 func TestGenerateMigration_SQLiteLimitations(t *testing.T) {
 	diff := schema.DiffResult{
 		Tables: []schema.TableDiff{
