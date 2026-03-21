@@ -2,50 +2,104 @@
 
 ## Supported Versions
 
-We release patches for security vulnerabilities. Which versions are eligible for receiving security updates depends on the CVSS v3.0 Rating:
+Only the latest released version of DeepDiff DB receives security fixes. Older versions are not patched.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| Latest  | :white_check_mark: |
-| < Latest | :x:                |
+| Version | Supported |
+|---------|-----------|
+| Latest  | ✅ Yes    |
+| Older   | ❌ No     |
 
 ## Reporting a Vulnerability
 
-**Please do not report security vulnerabilities through public GitHub issues.**
+**Please do not report security vulnerabilities through public GitHub Issues.**
 
-Instead, please report them via one of the following methods:
-- **Private Security Advisory**: Use GitHub's private vulnerability reporting feature
+If you discover a security vulnerability, please report it privately so we can address it before public disclosure.
 
-Please include the following information in your report:
+### How to Report
 
-- Type of issue (e.g., buffer overflow, SQL injection, etc.)
-- Full paths of source file(s) related to the manifestation of the issue
-- The location of the affected source code (tag/branch/commit or direct URL)
-- Step-by-step instructions to reproduce the issue
-- Proof-of-concept or exploit code (if possible)
-- Impact of the issue, including how an attacker might exploit the issue
+Use GitHub's private vulnerability reporting:
 
-This information will help us triage your report more quickly.
+1. Go to the [Security Advisories](https://github.com/iamvirul/deepdiff-db/security/advisories/new) page
+2. Click **"Report a vulnerability"**
+3. Fill in the details — include steps to reproduce, impact, and suggested fix if known
 
-## Security Best Practices
+Alternatively, email **virulnirmala@gmail.com** with the subject line `[SECURITY] DeepDiff DB — <brief description>`.
 
-When using DeepDiff DB:
+### What to Include
 
-- **Never commit** database credentials or config files with passwords to version control
-- Use environment variables or secure secret management for sensitive data
-- Regularly update to the latest version
-- Review migration packs before applying them to production
-- Use `--dry-run` flag to validate SQL before execution
-- Always backup your database before applying migrations
+- A clear description of the vulnerability
+- Steps to reproduce (config file, command, database setup)
+- Potential impact (data exposure, privilege escalation, denial of service, etc.)
+- Any suggested fix or mitigation
+
+### Response Timeline
+
+| Milestone | Target |
+|-----------|--------|
+| Acknowledgement | Within 48 hours |
+| Severity assessment | Within 5 business days |
+| Fix and release | Within 30 days for critical/high severity |
+| Public disclosure | After fix is available (coordinated) |
+
+If you do not receive a response within 48 hours, follow up via email.
+
+---
+
+## Security Considerations for Users
+
+### Database Credentials
+
+- Never commit your `deepdiffdb.yaml` config file if it contains plaintext credentials
+- Use environment variable substitution: `password: ${PROD_DB_PASSWORD}`
+- Add `deepdiffdb.yaml` to `.gitignore`
+
+### Principle of Least Privilege
+
+The production database user only needs **read access**. DeepDiff DB never writes to the production database during `diff` or `gen-pack` — only during `apply`.
+
+Recommended grants for the prod read-only user:
+
+```sql
+-- MySQL
+GRANT SELECT ON myapp.* TO 'deepdiff_ro'@'%';
+
+-- PostgreSQL
+GRANT CONNECT ON DATABASE myapp TO deepdiff_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO deepdiff_ro;
+```
+
+### Migration Pack Review
+
+Always review `migration_pack.sql` before running `apply`. The file contains DELETE and INSERT statements that modify production data. Use `--dry-run` first to validate syntax:
+
+```bash
+deepdiff-db apply --pack ./diff-output/migration_pack.sql --dry-run
+```
+
+### Network Security
+
+Run DeepDiff DB from a host with direct, authenticated database access — not over the public internet. Use SSH tunnels or VPN for remote databases.
+
+---
+
+## Scope
+
+Security issues in scope:
+
+- Credential or secret exposure (e.g. credentials leaked to logs, error messages, or generated files)
+- SQL injection via config values or column data affecting generated migration packs
+- Path traversal in output directory or pack file path handling
+- Denial of service via malformed config or database responses
+- Privilege escalation via the `apply` command
+
+Out of scope:
+
+- Vulnerabilities in databases themselves (MySQL, PostgreSQL, etc.)
+- Issues requiring local admin access to the machine running DeepDiff DB
+- Social engineering attacks
+
+---
 
 ## Disclosure Policy
 
-When we receive a security bug report, we will:
-
-1. Confirm the issue and determine affected versions
-2. Audit code to find any potential similar problems
-3. Prepare fixes for all releases still under support
-4. Release a security update as soon as possible
-
-We credit security researchers who responsibly disclose vulnerabilities.
-
+We follow [coordinated vulnerability disclosure](https://en.wikipedia.org/wiki/Coordinated_vulnerability_disclosure). We will credit reporters in the release notes and security advisory unless they prefer to remain anonymous.
