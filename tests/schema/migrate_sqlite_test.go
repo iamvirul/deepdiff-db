@@ -7,6 +7,22 @@ import (
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 )
 
+// containsUncommented reports whether sql contains substr on a non-commented line.
+// This prevents false-positives where strings.Contains matches "-- DROP TABLE ..."
+// even though the destructive statement is still commented out.
+func containsUncommented(sql, substr string) bool {
+	for _, line := range strings.Split(sql, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "--") {
+			continue
+		}
+		if strings.Contains(trimmed, substr) {
+			return true
+		}
+	}
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // GenerateMigration – unsupported driver
 // ---------------------------------------------------------------------------
@@ -108,7 +124,7 @@ func TestGenerateMigration_RemovedTable_UncommentedWhenAllowed(t *testing.T) {
 		t.Fatalf("GenerateMigration() error = %v", err)
 	}
 
-	if !strings.Contains(sql, `DROP TABLE "old_table"`) {
+	if !containsUncommented(sql, `DROP TABLE "old_table"`) {
 		t.Errorf("expected uncommented DROP TABLE, got:\n%s", sql)
 	}
 }
@@ -191,9 +207,9 @@ func TestGenerateMigration_DropColumn_CommentedByDefault(t *testing.T) {
 		t.Fatalf("GenerateMigration() error = %v", err)
 	}
 
-	// SQLite generates a comment about manual migration, and opts default keeps it commented
-	if !strings.Contains(sql, "old_col") {
-		t.Error("expected reference to old_col in output")
+	// SQLite cannot execute DROP COLUMN — generator emits a comment instead.
+	if !strings.Contains(sql, "SQLite does not support DROP COLUMN") {
+		t.Errorf("expected commented DROP COLUMN notice for SQLite, got:\n%s", sql)
 	}
 }
 
@@ -368,7 +384,7 @@ func TestGenerateMigration_DroppedIndex_UncommentedWhenAllowed(t *testing.T) {
 		t.Fatalf("GenerateMigration() error = %v", err)
 	}
 
-	if !strings.Contains(sql, `DROP INDEX "idx_old"`) {
+	if !containsUncommented(sql, `DROP INDEX "idx_old"`) {
 		t.Errorf("expected uncommented DROP INDEX, got:\n%s", sql)
 	}
 }

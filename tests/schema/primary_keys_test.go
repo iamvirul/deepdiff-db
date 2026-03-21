@@ -102,8 +102,15 @@ func TestCheckPrimaryKeys_SQLite_MultipleMissingPK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckPrimaryKeys() error = %v", err)
 	}
-	if len(missing) != 2 {
-		t.Errorf("expected 2 tables missing PK, got %v", missing)
+	want := map[string]struct{}{"nopk_a": {}, "nopk_b": {}}
+	for _, tbl := range missing {
+		if _, ok := want[tbl]; !ok {
+			t.Errorf("unexpected table in missing list: %q", tbl)
+		}
+		delete(want, tbl)
+	}
+	if len(want) != 0 {
+		t.Errorf("expected tables not reported missing: %v", want)
 	}
 }
 

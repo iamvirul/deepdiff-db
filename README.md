@@ -662,7 +662,7 @@ Contributions are welcome. Please:
 
 This project is licensed under the [Apache License 2.0](LICENSE).
 
-```
+```text
 Copyright 2026 Virul Nirmala
 
 Licensed under the Apache License, Version 2.0 (the "License");

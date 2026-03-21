@@ -16,6 +16,7 @@ func openInMemorySQLite(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("failed to open in-memory SQLite: %v", err)
 	}
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 	return db
 }

@@ -76,9 +76,23 @@ func TestHashTable_WithCheckpointManager(t *testing.T) {
 		t.Errorf("expected 1050 hashes, got %d", len(hashes))
 	}
 
-	// Verify checkpoint was saved.
-	if !mgr.HasCheckpoint() {
-		t.Error("expected checkpoint file to exist after HashTable")
+	// Verify the table is recorded as completed in the checkpoint state.
+	state, loadErr := mgr.Load()
+	if loadErr != nil {
+		t.Fatalf("Load after HashTable: %v", loadErr)
+	}
+	if state == nil || state.HashTableState == nil {
+		t.Fatal("expected non-nil HashTableState after HashTable")
+	}
+	found := false
+	for _, name := range state.HashTableState.CompletedTables {
+		if name == "items" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'items' in CompletedTables, got %v", state.HashTableState.CompletedTables)
 	}
 }
 
@@ -119,8 +133,16 @@ func TestHashTable_BatchedWithCheckpointManager(t *testing.T) {
 	if len(hashes) != 300 {
 		t.Errorf("expected 300 hashes, got %d", len(hashes))
 	}
-	if !mgr.HasCheckpoint() {
-		t.Error("expected checkpoint file after batched HashTable")
+	// Verify hashes were persisted in the checkpoint state.
+	batchState, loadErr := mgr.Load()
+	if loadErr != nil {
+		t.Fatalf("Load after batched HashTable: %v", loadErr)
+	}
+	if batchState == nil || batchState.HashTableState == nil {
+		t.Fatal("expected non-nil HashTableState after batched HashTable")
+	}
+	if n := len(batchState.HashTableState.Hashes["items"]); n == 0 {
+		t.Errorf("expected hashes persisted for 'items', got 0 entries")
 	}
 }
 

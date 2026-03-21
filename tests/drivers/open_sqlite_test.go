@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/iamvirul/deepdiff-db/internal/drivers"
@@ -36,7 +37,7 @@ func TestOpen_SQLiteInMemory(t *testing.T) {
 func TestOpen_SQLiteTempFile(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
-	dbPath := tmpDir + "/test.db"
+	dbPath := filepath.Join(tmpDir, "test.db")
 
 	cfg := config.DBConfig{
 		Driver:   "sqlite",
@@ -94,12 +95,14 @@ func TestOpen_SQLiteContextCancelled(t *testing.T) {
 		Database: ":memory:",
 	}
 
-	// SQLite in-memory Ping is so fast it may or may not respect a
-	// pre-cancelled context depending on the driver implementation.
-	// We accept either outcome — the important thing is no panic.
+	// SQLite in-memory Open/Ping is so fast it may succeed before the
+	// cancellation is observed. Both outcomes are valid — assert we get
+	// either a usable *sql.DB or a non-nil error; never both nil.
 	db, err := drivers.Open(ctx, cfg)
-	if err == nil && db != nil {
+	if err == nil && db == nil {
+		t.Error("Open returned (nil, nil) — expected either a valid DB or an error")
+	}
+	if db != nil {
 		db.Close()
 	}
-	// No assertion on error here — the test merely proves no panic occurs.
 }

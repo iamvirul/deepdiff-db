@@ -257,11 +257,6 @@ func TestGenerateMigration_SQLiteLimitations(t *testing.T) {
 	}
 }
 
-// Helper function
-func boolPtr(b bool) *bool {
-	return &b
-}
-
 func TestQuoteIdentifier_MySQL(t *testing.T) {
 	tests := []struct {
 		name       string

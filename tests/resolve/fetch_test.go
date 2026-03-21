@@ -18,6 +18,7 @@ func openFetchMemDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 	return db
 }
@@ -257,11 +258,15 @@ func TestCompareRows_DevNil(t *testing.T) {
 }
 
 func TestCompareRows_IdenticalRows(t *testing.T) {
-	row := &resolve.RowData{
+	rowA := &resolve.RowData{
 		Columns: []string{"id", "name"},
 		Values:  map[string]any{"id": int64(1), "name": "Alice"},
 	}
-	diffs := resolve.CompareRows(row, row)
+	rowB := &resolve.RowData{
+		Columns: []string{"id", "name"},
+		Values:  map[string]any{"id": int64(1), "name": "Alice"},
+	}
+	diffs := resolve.CompareRows(rowA, rowB)
 	for _, d := range diffs {
 		if d.Differs {
 			t.Errorf("column %q should not differ for identical rows", d.Column)

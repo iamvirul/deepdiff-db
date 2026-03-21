@@ -89,7 +89,7 @@ jobs:
 
       - name: Run testcontainers integration tests
         run: |
-          go test -v -timeout=30m -coverprofile=coverage-integration.txt -covermode=atomic -coverpkg=./internal/...,./pkg/... ./tests -run 'TestIntegration_MySQL_FullWorkflow|TestIntegration_PostgreSQL_FullWorkflow|TestIntegration_MSSQL_FullWorkflow|TestIntegration_AllReportsGenerated'
+          go test -v -timeout=30m -tags integration -coverprofile=coverage-integration.txt -covermode=atomic -coverpkg=./internal/...,./pkg/... ./tests ./tests/schema -run 'TestIntegration_MySQL_FullWorkflow|TestIntegration_PostgreSQL_FullWorkflow|TestIntegration_MSSQL_FullWorkflow|TestIntegration_AllReportsGenerated'
         continue-on-error: false
 
       - name: Verify integration coverage file exists
