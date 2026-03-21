@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/iamvirul/deepdiff-db/internal/content"
-
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/iamvirul/deepdiff-db/internal/content"
 )
 
 func TestWriteReportsWithInfo(t *testing.T) {
@@ -593,6 +594,105 @@ func TestWriteReportsWithResolutions_MultipleTables(t *testing.T) {
 	}
 	if !strings.Contains(summaryStr, "users: 1") {
 		t.Error("Summary should contain 'users: 1'")
+	}
+}
+
+// ============================================================================
+// Error-path tests (cover os.MkdirAll / os.WriteFile error branches)
+// ============================================================================
+
+func TestWriteReportsWithInfo_MkdirError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod not reliable on Windows")
+	}
+	tmpParent := t.TempDir()
+	if err := os.Chmod(tmpParent, 0o555); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(tmpParent, 0o755) }) //nolint:errcheck
+
+	diff := content.DataDiff{Tables: []content.TableDataDiff{}}
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{}}
+	if err := content.WriteReportsWithInfo(diff, conflicts, filepath.Join(tmpParent, "newsubdir"), "", 0, ""); err == nil {
+		t.Error("WriteReportsWithInfo should fail when MkdirAll cannot create directory")
+	}
+}
+
+func TestWriteReportsWithInfo_JSONWriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	// A directory named content_diff.json blocks the first WriteFile.
+	if err := os.MkdirAll(filepath.Join(tmpDir, "content_diff.json"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	diff := content.DataDiff{Tables: []content.TableDataDiff{}}
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{}}
+	if err := content.WriteReportsWithInfo(diff, conflicts, tmpDir, "", 0, ""); err == nil {
+		t.Error("WriteReportsWithInfo should fail when content_diff.json cannot be written")
+	}
+}
+
+func TestWriteReportsWithInfo_ConflictsWriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	// A directory named conflicts.json blocks the second WriteFile (JSON write succeeds).
+	if err := os.MkdirAll(filepath.Join(tmpDir, "conflicts.json"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	diff := content.DataDiff{Tables: []content.TableDataDiff{}}
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{}}
+	if err := content.WriteReportsWithInfo(diff, conflicts, tmpDir, "", 0, ""); err == nil {
+		t.Error("WriteReportsWithInfo should fail when conflicts.json cannot be written")
+	}
+}
+
+func TestWriteReportsWithInfo_SummaryWriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	// A directory named summary.txt blocks the third WriteFile (JSON and conflicts succeed).
+	if err := os.MkdirAll(filepath.Join(tmpDir, "summary.txt"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	diff := content.DataDiff{Tables: []content.TableDataDiff{}}
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{}}
+	if err := content.WriteReportsWithInfo(diff, conflicts, tmpDir, "", 0, ""); err == nil {
+		t.Error("WriteReportsWithInfo should fail when summary.txt cannot be written")
+	}
+}
+
+func TestWriteReportsWithResolutions_MkdirError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod not reliable on Windows")
+	}
+	tmpParent := t.TempDir()
+	if err := os.Chmod(tmpParent, 0o555); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(tmpParent, 0o755) }) //nolint:errcheck
+
+	diff := content.DataDiff{Tables: []content.TableDataDiff{}}
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{}}
+	if err := content.WriteReportsWithResolutions(diff, conflicts, filepath.Join(tmpParent, "newsubdir"), "", 0, "", nil); err == nil {
+		t.Error("WriteReportsWithResolutions should fail when MkdirAll cannot create directory")
+	}
+}
+
+func TestWriteReportsWithResolutions_SummaryWriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	// A directory named summary.txt blocks writeSummaryWithResolutions.
+	if err := os.MkdirAll(filepath.Join(tmpDir, "summary.txt"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	diff := content.DataDiff{Tables: []content.TableDataDiff{
+		{Table: "users", Updated: []string{"1"}},
+	}}
+	conflicts := content.Conflicts{Conflicts: []content.Conflict{
+		{Table: "users", Key: "1"},
+	}}
+	resInfo := &content.ResolutionInfo{
+		TotalConflicts: 1, ResolvedCount: 1,
+		ByDecision: map[string]int{"keep_prod": 1},
+		ByTable:    map[string]int{"users": 1},
+	}
+	if err := content.WriteReportsWithResolutions(diff, conflicts, tmpDir, "", 0, "", resInfo); err == nil {
+		t.Error("WriteReportsWithResolutions should fail when summary.txt cannot be written")
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -531,6 +532,56 @@ func TestGeneratePackState(t *testing.T) {
 
 	if len(state.Statements) != 2 {
 		t.Errorf("expected 2 statements, got %d", len(state.Statements))
+	}
+}
+
+func TestSave_MkdirError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod not reliable on Windows")
+	}
+	tmpParent := t.TempDir()
+	// Read-only parent so MkdirAll cannot create a new subdirectory inside it.
+	if err := os.Chmod(tmpParent, 0o555); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(tmpParent, 0o750) }) //nolint:errcheck
+
+	mgr := checkpoint.NewManager(filepath.Join(tmpParent, "newsubdir"))
+	cfg := &config.Config{
+		Prod: config.DBConfig{Driver: "sqlite", Database: "/tmp/prod.db"},
+		Dev:  config.DBConfig{Driver: "sqlite", Database: "/tmp/dev.db"},
+	}
+	state, err := checkpoint.NewState(checkpoint.OperationTypeHashTable, tmpParent, cfg)
+	if err != nil {
+		t.Fatalf("NewState: %v", err)
+	}
+	if err := mgr.Save(state); err == nil {
+		t.Error("Save should fail when MkdirAll cannot create directory")
+	}
+}
+
+func TestSave_WriteFileError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod not reliable on Windows")
+	}
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		Prod: config.DBConfig{Driver: "sqlite", Database: "/tmp/prod.db"},
+		Dev:  config.DBConfig{Driver: "sqlite", Database: "/tmp/dev.db"},
+	}
+	state, err := checkpoint.NewState(checkpoint.OperationTypeHashTable, tmpDir, cfg)
+	if err != nil {
+		t.Fatalf("NewState: %v", err)
+	}
+	// Make dir read-only: MkdirAll succeeds (dir exists) but WriteFile fails.
+	if err := os.Chmod(tmpDir, 0o555); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(tmpDir, 0o750) }) //nolint:errcheck
+
+	mgr := checkpoint.NewManager(tmpDir)
+	if err := mgr.Save(state); err == nil {
+		t.Error("Save should fail when WriteFile cannot write to directory")
 	}
 }
 

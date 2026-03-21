@@ -3,6 +3,7 @@ package schema_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -530,6 +531,46 @@ func TestWriteReports_IndexOnly_NoDifferences(t *testing.T) {
 	textStr := string(textContent)
 	if !strings.Contains(textStr, "Schema: OK") {
 		t.Error("Text should indicate no differences")
+	}
+}
+
+func TestWriteReports_MkdirError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod not reliable on Windows")
+	}
+	tmpParent := t.TempDir()
+	if err := os.Chmod(tmpParent, 0o555); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(tmpParent, 0o755) }) //nolint:errcheck
+
+	result := schema.DiffResult{Tables: []schema.TableDiff{}}
+	if err := schema.WriteReports(result, filepath.Join(tmpParent, "newsubdir")); err == nil {
+		t.Error("WriteReports should fail when MkdirAll cannot create directory")
+	}
+}
+
+func TestWriteReports_JSONWriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	// A directory named schema_diff.json blocks the JSON write.
+	if err := os.MkdirAll(filepath.Join(tmpDir, "schema_diff.json"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	result := schema.DiffResult{Tables: []schema.TableDiff{}}
+	if err := schema.WriteReports(result, tmpDir); err == nil {
+		t.Error("WriteReports should fail when schema_diff.json cannot be written")
+	}
+}
+
+func TestWriteReports_TextWriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	// A directory named schema_diff.txt blocks the text write (JSON write succeeds first).
+	if err := os.MkdirAll(filepath.Join(tmpDir, "schema_diff.txt"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	result := schema.DiffResult{Tables: []schema.TableDiff{}}
+	if err := schema.WriteReports(result, tmpDir); err == nil {
+		t.Error("WriteReports should fail when schema_diff.txt cannot be written")
 	}
 }
 
