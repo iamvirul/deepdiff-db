@@ -56,18 +56,18 @@ jobs:
             INSERT INTO products VALUES (1,'Widget',12.99);
           "
 
-          cat > deepdiffdb.yaml <<'EOF'
-prod:
-  driver: sqlite
-  database: /tmp/test-dbs/prod.db
-
-dev:
-  driver: sqlite
-  database: /tmp/test-dbs/dev.db
-
-output:
-  dir: ./diff-output
-EOF
+          {
+            echo 'prod:'
+            echo '  driver: sqlite'
+            echo '  database: /tmp/test-dbs/prod.db'
+            echo ''
+            echo 'dev:'
+            echo '  driver: sqlite'
+            echo '  database: /tmp/test-dbs/dev.db'
+            echo ''
+            echo 'output:'
+            echo '  dir: ./diff-output'
+          } > deepdiffdb.yaml
 
       - name: Run check command
         uses: ./
