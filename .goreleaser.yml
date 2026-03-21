@@ -39,6 +39,43 @@ archives:
       - CHANGELOG.md
       - deepdiffdb.config.yaml.example
 
+nfpms:
+  - id: deepdiffdb
+    package_name: deepdiff-db
+    builds:
+      - deepdiffdb
+    vendor: iamvirul
+    homepage: https://iamvirul.github.io/deepdiff-db/
+    maintainer: iamvirul <noreply@github.com>
+    description: Compare databases, detect schema drift, and generate safe SQL migration packs.
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    contents:
+      - src: README.md
+        dst: /usr/share/doc/deepdiff-db/README.md
+        type: doc
+      - src: CHANGELOG.md
+        dst: /usr/share/doc/deepdiff-db/CHANGELOG.md
+        type: doc
+
+scoops:
+  - name: deepdiff-db
+    repository:
+      owner: iamvirul
+      name: deepdiff-db
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      branch: main
+      pull_request:
+        enabled: false
+    directory: scoop
+    homepage: https://iamvirul.github.io/deepdiff-db/
+    description: Compare databases, detect schema drift, and generate safe SQL migration packs.
+    license: Apache-2.0
+
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256
