@@ -3,7 +3,7 @@ class DeepDiffDb < Formula
   homepage "https://iamvirul.github.io/deepdiff-db/"
   url "https://github.com/iamvirul/deepdiff-db/archive/refs/tags/v0.9.tar.gz"
   sha256 "REPLACE_WITH_SHA256_ON_RELEASE"
-  license "MIT"
+  license "Apache-2.0"
   head "https://github.com/iamvirul/deepdiff-db.git", branch: "main"
 
   depends_on "go" => :build

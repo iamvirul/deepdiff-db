@@ -93,12 +93,12 @@ brews:
   - name: deepdiff-db
     repository:
       owner: iamvirul
-      name: homebrew-tap
+      name: deepdiff-db
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: "https://iamvirul.github.io/deepdiff-db/"
     description: "Compare databases, detect schema drift, and generate safe SQL migration packs."
-    license: "MIT"
+    license: "Apache-2.0"
     test: |
       system "#{bin}/deepdiffdb", "--help"
     install: |
