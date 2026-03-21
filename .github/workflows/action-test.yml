@@ -46,13 +46,13 @@ jobs:
             INSERT INTO products VALUES (1,'Widget',9.99);
           "
 
-          # Dev SQLite database — added column, new user, price changed (conflict)
+          # Dev SQLite database — same schema, but new user + price changed (data-only diff)
           sqlite3 /tmp/test-dbs/dev.db "
-            CREATE TABLE users    (id INTEGER PRIMARY KEY, name TEXT, email TEXT, phone TEXT);
+            CREATE TABLE users    (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
             CREATE TABLE products (id INTEGER PRIMARY KEY, title TEXT, price REAL);
-            INSERT INTO users    VALUES (1,'Alice','alice@example.com',NULL);
-            INSERT INTO users    VALUES (2,'Bob','bob@example.com',NULL);
-            INSERT INTO users    VALUES (3,'Carol','carol@example.com',NULL);
+            INSERT INTO users    VALUES (1,'Alice','alice@example.com');
+            INSERT INTO users    VALUES (2,'Bob','bob@example.com');
+            INSERT INTO users    VALUES (3,'Carol','carol@example.com');
             INSERT INTO products VALUES (1,'Widget',12.99);
           "
 
