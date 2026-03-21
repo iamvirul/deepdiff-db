@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="dbTop" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.95)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0.75)"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App icon background -->
+  <rect width="48" height="48" rx="11" fill="url(#bg)"/>
+
+  <!-- Subtle inner highlight -->
+  <rect x="1" y="1" width="46" height="22" rx="10" fill="rgba(255,255,255,0.06)"/>
+
+  <!-- Left database cylinder -->
+  <ellipse cx="11" cy="15" rx="6" ry="2.2" fill="url(#dbTop)"/>
+  <rect x="5" y="15" width="12" height="12" fill="rgba(255,255,255,0.16)"/>
+  <ellipse cx="11" cy="27" rx="6" ry="2.2" fill="rgba(255,255,255,0.6)"/>
+  <!-- Cylinder edges -->
+  <line x1="5"  y1="15" x2="5"  y2="27" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
+  <line x1="17" y1="15" x2="17" y2="27" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
+  <!-- Middle stripe for depth -->
+  <ellipse cx="11" cy="21" rx="6" ry="1.5" fill="rgba(255,255,255,0.08)"/>
+
+  <!-- Right database cylinder -->
+  <ellipse cx="37" cy="15" rx="6" ry="2.2" fill="url(#dbTop)"/>
+  <rect x="31" y="15" width="12" height="12" fill="rgba(255,255,255,0.16)"/>
+  <ellipse cx="37" cy="27" rx="6" ry="2.2" fill="rgba(255,255,255,0.6)"/>
+  <line x1="31" y1="15" x2="31" y2="27" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
+  <line x1="43" y1="15" x2="43" y2="27" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
+  <ellipse cx="37" cy="21" rx="6" ry="1.5" fill="rgba(255,255,255,0.08)"/>
+
+  <!-- Compare arrows (center gap x=17–31) -->
+  <!-- Arrow right → -->
+  <path d="M19 20.5 L29 20.5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M26.5 18.2 L29 20.5 L26.5 22.8"
+        stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Arrow left ← -->
+  <path d="M19 26.5 L29 26.5" stroke="rgba(255,255,255,0.6)" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M21.5 24.2 L19 26.5 L21.5 28.8"
+        stroke="rgba(255,255,255,0.6)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Bottom text label -->
+  <text x="24" y="40.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+        font-size="7" font-weight="700" fill="rgba(255,255,255,0.75)"
+        text-anchor="middle" letter-spacing="0.5">DIFF</text>
+</svg>

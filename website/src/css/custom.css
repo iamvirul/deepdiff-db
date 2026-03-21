@@ -1,0 +1,105 @@
+:root {
+  --ifm-color-primary: #6366f1;
+  --ifm-color-primary-dark: #4f52e8;
+  --ifm-color-primary-darker: #4346e4;
+  --ifm-color-primary-darkest: #2e31d3;
+  --ifm-color-primary-light: #777af4;
+  --ifm-color-primary-lighter: #8385f5;
+  --ifm-color-primary-lightest: #a5a7f8;
+  --ifm-code-font-size: 90%;
+  --ifm-font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  --ifm-heading-font-weight: 700;
+  --ifm-navbar-height: 60px;
+  --docusaurus-highlighted-code-line-bg: rgba(99,102,241,0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #818cf8;
+  --ifm-color-primary-dark: #6f7af6;
+  --ifm-color-primary-darker: #6672f5;
+  --ifm-color-primary-darkest: #4a55f2;
+  --ifm-color-primary-light: #939ef9;
+  --ifm-color-primary-lighter: #9fa9fa;
+  --ifm-color-primary-lightest: #c2c8fc;
+  --ifm-background-color: #0f0f18;
+  --ifm-background-surface-color: #16161f;
+  --docusaurus-highlighted-code-line-bg: rgba(129,140,248,0.15);
+}
+
+/* Navbar */
+.navbar {
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  box-shadow: none;
+}
+
+.navbar__brand {
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.navbar__logo {
+  height: 28px;
+  width: 28px;
+  margin-right: 8px;
+}
+
+/* Sidebar */
+.menu__link {
+  font-size: 0.875rem;
+  border-radius: 6px;
+}
+
+.menu__link--active {
+  background: rgba(99,102,241,0.1);
+  color: var(--ifm-color-primary);
+  font-weight: 600;
+}
+
+/* Admonitions */
+.alert {
+  border-radius: 10px;
+  border-left-width: 3px;
+}
+
+/* Code blocks */
+.prism-code {
+  border-radius: 10px;
+  font-size: 0.875rem;
+}
+
+/* Tables */
+table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+thead tr {
+  background: var(--ifm-color-emphasis-100);
+}
+
+/* Pagination */
+.pagination-nav__link {
+  border-radius: 10px;
+}
+
+/* Doc article */
+.markdown h1:first-child {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.markdown h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+/* Footer */
+.footer {
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
