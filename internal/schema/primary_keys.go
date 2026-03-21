@@ -70,6 +70,18 @@ func CheckPrimaryKeys(ctx context.Context, db *sql.DB, driver string, database s
 			      AND kc.type = 'PK'
 			  )
 		`)
+	case "oracle":
+		// Return all tables visible to the current Oracle user that lack a primary key constraint.
+		rows, err = db.QueryContext(ctx, `
+			SELECT TABLE_NAME
+			FROM USER_TABLES
+			WHERE NOT EXISTS (
+			    SELECT 1 FROM USER_CONSTRAINTS c
+			    WHERE c.TABLE_NAME = USER_TABLES.TABLE_NAME
+			      AND c.CONSTRAINT_TYPE = 'P'
+			)
+			ORDER BY TABLE_NAME
+		`)
 	default:
 		return nil, fmt.Errorf("pk check unsupported for driver: %s", driver)
 	}

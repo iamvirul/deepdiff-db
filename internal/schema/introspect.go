@@ -171,6 +171,47 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 			return nil, err
 		}
 		log.Debug("loaded table and column metadata", "tables", len(s.Tables))
+	case "oracle":
+		// Oracle stores all unquoted identifiers in UPPERCASE.
+		// USER_TAB_COLUMNS covers the current connected user's tables.
+		// NULLABLE = 'Y' means the column is nullable.
+		log.Debug("querying Oracle USER_TAB_COLUMNS for columns and primary keys")
+		rows, err := db.QueryContext(ctx, `
+			SELECT
+				c.TABLE_NAME,
+				c.COLUMN_NAME,
+				CASE
+					WHEN c.DATA_TYPE IN ('VARCHAR2','CHAR','NVARCHAR2','NCHAR','RAW') THEN
+						LOWER(c.DATA_TYPE) || '(' || c.CHAR_LENGTH || ')'
+					WHEN c.DATA_TYPE = 'NUMBER' AND c.DATA_PRECISION IS NOT NULL AND c.DATA_SCALE IS NOT NULL THEN
+						'number(' || c.DATA_PRECISION || ',' || c.DATA_SCALE || ')'
+					WHEN c.DATA_TYPE = 'NUMBER' AND c.DATA_PRECISION IS NOT NULL THEN
+						'number(' || c.DATA_PRECISION || ')'
+					WHEN c.DATA_TYPE = 'FLOAT' AND c.DATA_PRECISION IS NOT NULL THEN
+						'float(' || c.DATA_PRECISION || ')'
+					ELSE LOWER(c.DATA_TYPE)
+				END AS data_type,
+				CASE WHEN c.NULLABLE = 'Y' THEN 'YES' ELSE 'NO' END AS is_nullable,
+				c.DATA_DEFAULT,
+				cc.POSITION AS pk_ordinal
+			FROM USER_TAB_COLUMNS c
+			LEFT JOIN USER_CONSTRAINTS pk
+				ON pk.TABLE_NAME = c.TABLE_NAME
+				AND pk.CONSTRAINT_TYPE = 'P'
+			LEFT JOIN USER_CONS_COLUMNS cc
+				ON cc.CONSTRAINT_NAME = pk.CONSTRAINT_NAME
+				AND cc.TABLE_NAME = c.TABLE_NAME
+				AND cc.COLUMN_NAME = c.COLUMN_NAME
+			ORDER BY c.TABLE_NAME, c.COLUMN_ID
+		`)
+		if err != nil {
+			return nil, fmt.Errorf("oracle columns: %w", err)
+		}
+		defer rows.Close()
+		if err := scanColumns(rows, s, ignore); err != nil {
+			return nil, err
+		}
+		log.Debug("loaded table and column metadata", "tables", len(s.Tables))
 	default:
 		return nil, fmt.Errorf("schema load unsupported driver: %s", driver)
 	}
@@ -385,6 +426,8 @@ func loadIndexes(ctx context.Context, db *sql.DB, driver string, database string
 		return loadSQLiteIndexes(ctx, db, s)
 	case "mssql":
 		return loadMSSQLIndexes(ctx, db, s)
+	case "oracle":
+		return loadOracleIndexes(ctx, db, s)
 	default:
 		return fmt.Errorf("index introspection unsupported for driver: %s", driver)
 	}
@@ -627,6 +670,8 @@ func loadForeignKeys(ctx context.Context, db *sql.DB, driver string, database st
 		return loadSQLiteForeignKeys(ctx, db, s)
 	case "mssql":
 		return loadMSSQLForeignKeys(ctx, db, s)
+	case "oracle":
+		return loadOracleForeignKeys(ctx, db, s)
 	default:
 		return fmt.Errorf("foreign key introspection unsupported for driver: %s", driver)
 	}
@@ -1046,6 +1091,167 @@ func loadMSSQLForeignKeys(ctx context.Context, db *sql.DB, s *Schema) error {
 				ReferencedColumns: []string{},
 				OnDelete:          e.deleteRule,
 				OnUpdate:          e.updateRule,
+			}
+		}
+		fkMap[e.tableName][e.constraintName].Columns = append(fkMap[e.tableName][e.constraintName].Columns, e.columnName)
+		fkMap[e.tableName][e.constraintName].ReferencedColumns = append(fkMap[e.tableName][e.constraintName].ReferencedColumns, e.referencedColumn)
+	}
+
+	for tableName, fks := range fkMap {
+		t := s.Tables[tableName]
+		if t.ForeignKeys == nil {
+			t.ForeignKeys = make(map[string]ForeignKey)
+		}
+		for fkName, fk := range fks {
+			t.ForeignKeys[fkName] = *fk
+		}
+		s.Tables[tableName] = t
+	}
+	return nil
+}
+
+// loadOracleIndexes queries USER_INDEXES and USER_IND_COLUMNS to load non-primary-key
+// index metadata for all tables visible to the current Oracle user.
+func loadOracleIndexes(ctx context.Context, db *sql.DB, s *Schema) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT
+			uic.TABLE_NAME,
+			ui.INDEX_NAME,
+			uic.COLUMN_NAME,
+			uic.COLUMN_POSITION,
+			CASE WHEN ui.UNIQUENESS = 'UNIQUE' THEN 1 ELSE 0 END AS is_unique
+		FROM USER_INDEXES ui
+		JOIN USER_IND_COLUMNS uic ON ui.INDEX_NAME = uic.INDEX_NAME
+		WHERE ui.INDEX_TYPE = 'NORMAL'
+		  AND NOT EXISTS (
+		      SELECT 1 FROM USER_CONSTRAINTS uc
+		      WHERE uc.INDEX_NAME = ui.INDEX_NAME
+		        AND uc.CONSTRAINT_TYPE = 'P'
+		  )
+		ORDER BY uic.TABLE_NAME, ui.INDEX_NAME, uic.COLUMN_POSITION
+	`)
+	if err != nil {
+		return fmt.Errorf("oracle indexes: %w", err)
+	}
+	defer rows.Close()
+
+	type indexEntry struct {
+		tableName  string
+		indexName  string
+		columnName string
+		seqInIndex int
+		isUnique   int
+	}
+	var entries []indexEntry
+	for rows.Next() {
+		var e indexEntry
+		if err := rows.Scan(&e.tableName, &e.indexName, &e.columnName, &e.seqInIndex, &e.isUnique); err != nil {
+			return fmt.Errorf("scan oracle index: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	indexMap := make(map[string]map[string]*Index)
+	for _, e := range entries {
+		if _, ok := s.Tables[e.tableName]; !ok {
+			continue
+		}
+		if indexMap[e.tableName] == nil {
+			indexMap[e.tableName] = make(map[string]*Index)
+		}
+		if indexMap[e.tableName][e.indexName] == nil {
+			indexMap[e.tableName][e.indexName] = &Index{
+				Name:     e.indexName,
+				Columns:  []string{},
+				IsUnique: e.isUnique == 1,
+			}
+		}
+		indexMap[e.tableName][e.indexName].Columns = append(indexMap[e.tableName][e.indexName].Columns, e.columnName)
+	}
+
+	for tableName, indexes := range indexMap {
+		t := s.Tables[tableName]
+		if t.Indexes == nil {
+			t.Indexes = make(map[string]Index)
+		}
+		for indexName, idx := range indexes {
+			t.Indexes[indexName] = *idx
+		}
+		s.Tables[tableName] = t
+	}
+	return nil
+}
+
+// loadOracleForeignKeys queries USER_CONSTRAINTS and USER_CONS_COLUMNS to load foreign key
+// metadata for all tables visible to the current Oracle user.
+// Oracle does not support ON UPDATE CASCADE — UpdateRule is always "NO ACTION".
+func loadOracleForeignKeys(ctx context.Context, db *sql.DB, s *Schema) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT
+			fk.TABLE_NAME,
+			fk.CONSTRAINT_NAME,
+			fk_cols.COLUMN_NAME,
+			fk_cols.POSITION,
+			pk.TABLE_NAME   AS ref_table,
+			pk_cols.COLUMN_NAME AS ref_column,
+			fk.DELETE_RULE
+		FROM USER_CONSTRAINTS fk
+		JOIN USER_CONS_COLUMNS fk_cols
+			ON fk_cols.CONSTRAINT_NAME = fk.CONSTRAINT_NAME
+		JOIN USER_CONSTRAINTS pk
+			ON pk.CONSTRAINT_NAME = fk.R_CONSTRAINT_NAME
+		JOIN USER_CONS_COLUMNS pk_cols
+			ON pk_cols.CONSTRAINT_NAME = pk.CONSTRAINT_NAME
+			AND pk_cols.POSITION = fk_cols.POSITION
+		WHERE fk.CONSTRAINT_TYPE = 'R'
+		ORDER BY fk.TABLE_NAME, fk.CONSTRAINT_NAME, fk_cols.POSITION
+	`)
+	if err != nil {
+		return fmt.Errorf("oracle foreign keys: %w", err)
+	}
+	defer rows.Close()
+
+	type fkEntry struct {
+		tableName        string
+		constraintName   string
+		columnName       string
+		position         int
+		referencedTable  string
+		referencedColumn string
+		deleteRule       string
+	}
+	var entries []fkEntry
+	for rows.Next() {
+		var e fkEntry
+		if err := rows.Scan(&e.tableName, &e.constraintName, &e.columnName, &e.position,
+			&e.referencedTable, &e.referencedColumn, &e.deleteRule); err != nil {
+			return fmt.Errorf("scan oracle foreign key: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	fkMap := make(map[string]map[string]*ForeignKey)
+	for _, e := range entries {
+		if _, ok := s.Tables[e.tableName]; !ok {
+			continue
+		}
+		if fkMap[e.tableName] == nil {
+			fkMap[e.tableName] = make(map[string]*ForeignKey)
+		}
+		if fkMap[e.tableName][e.constraintName] == nil {
+			fkMap[e.tableName][e.constraintName] = &ForeignKey{
+				Name:              e.constraintName,
+				Columns:           []string{},
+				ReferencedTable:   e.referencedTable,
+				ReferencedColumns: []string{},
+				OnDelete:          e.deleteRule,
+				OnUpdate:          "NO ACTION", // Oracle does not support ON UPDATE CASCADE
 			}
 		}
 		fkMap[e.tableName][e.constraintName].Columns = append(fkMap[e.tableName][e.constraintName].Columns, e.columnName)

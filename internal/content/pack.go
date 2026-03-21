@@ -102,6 +102,12 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 		case "mssql":
 			stmts = append(stmts, "EXEC sp_msforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';")
 			log.Debug("disabled foreign key constraints for MSSQL")
+		case "oracle":
+			// Oracle has no single command to disable all FK constraints.
+			// Run this PL/SQL block manually before applying the pack if FK violations occur.
+			stmts = append(stmts, "-- Oracle: disable all FK constraints before applying (run manually if needed):")
+			stmts = append(stmts, "-- BEGIN FOR c IN (SELECT TABLE_NAME, CONSTRAINT_NAME FROM USER_CONSTRAINTS WHERE CONSTRAINT_TYPE = 'R') LOOP EXECUTE IMMEDIATE 'ALTER TABLE \"'||c.TABLE_NAME||'\" DISABLE CONSTRAINT \"'||c.CONSTRAINT_NAME||'\"'; END LOOP; END;")
+			log.Debug("emitted Oracle FK disable comment")
 		}
 	}
 
@@ -297,6 +303,9 @@ func GeneratePack(ctx context.Context, prodDriver string, devDB *sql.DB, devData
 		stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 1;")
 	case "mssql":
 		stmts = append(stmts, "EXEC sp_msforeachtable 'ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL';")
+	case "oracle":
+		stmts = append(stmts, "-- Oracle: re-enable all FK constraints after applying (run manually if disabled):")
+		stmts = append(stmts, "-- BEGIN FOR c IN (SELECT TABLE_NAME, CONSTRAINT_NAME FROM USER_CONSTRAINTS WHERE CONSTRAINT_TYPE = 'R') LOOP EXECUTE IMMEDIATE 'ALTER TABLE \"'||c.TABLE_NAME||'\" ENABLE CONSTRAINT \"'||c.CONSTRAINT_NAME||'\"'; END LOOP; END;")
 	}
 
 	commitStmt := "COMMIT;"
@@ -609,6 +618,36 @@ func getFullColumnType(ctx context.Context, devDB *sql.DB, driver, database, tab
 		}
 		return fullType, nil
 
+	case "oracle":
+		// Oracle: reconstruct the full type from USER_TAB_COLUMNS.
+		// CHAR_LENGTH gives character length for VARCHAR2/CHAR/NVARCHAR2.
+		// DATA_PRECISION and DATA_SCALE give precision/scale for NUMBER.
+		// Table and column names are stored in UPPERCASE.
+		var fullType string
+		err := devDB.QueryRowContext(ctx, `
+			SELECT
+				CASE
+					WHEN DATA_TYPE IN ('VARCHAR2','CHAR','NVARCHAR2','NCHAR','RAW') THEN
+						DATA_TYPE || '(' || CHAR_LENGTH || ')'
+					WHEN DATA_TYPE = 'NUMBER' AND DATA_PRECISION IS NOT NULL AND DATA_SCALE IS NOT NULL THEN
+						'NUMBER(' || DATA_PRECISION || ',' || DATA_SCALE || ')'
+					WHEN DATA_TYPE = 'NUMBER' AND DATA_PRECISION IS NOT NULL THEN
+						'NUMBER(' || DATA_PRECISION || ')'
+					WHEN DATA_TYPE LIKE 'TIMESTAMP%' AND DATA_SCALE IS NOT NULL THEN
+						DATA_TYPE
+					WHEN DATA_TYPE = 'FLOAT' AND DATA_PRECISION IS NOT NULL THEN
+						'FLOAT(' || DATA_PRECISION || ')'
+					ELSE DATA_TYPE
+				END AS full_type
+			FROM USER_TAB_COLUMNS
+			WHERE TABLE_NAME  = UPPER(:1)
+			  AND COLUMN_NAME = UPPER(:2)
+		`, tableName, columnName).Scan(&fullType)
+		if err != nil {
+			return "", fmt.Errorf("oracle column type for %s.%s: %w", tableName, columnName, err)
+		}
+		return strings.ToLower(fullType), nil
+
 	default:
 		return "", fmt.Errorf("unsupported driver: %s", driver)
 	}
@@ -863,6 +902,9 @@ func buildAlterTableAddColumn(driver, tableName, columnName, fullType string, is
 		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s;", tableNameQuoted, colDef)
 	case "mssql":
 		// MSSQL: ALTER TABLE table ADD col TYPE [NOT NULL] — no COLUMN keyword.
+		return fmt.Sprintf("ALTER TABLE %s ADD %s;", tableNameQuoted, colDef)
+	case "oracle":
+		// Oracle: ALTER TABLE table ADD col TYPE [NOT NULL] — no COLUMN keyword.
 		return fmt.Sprintf("ALTER TABLE %s ADD %s;", tableNameQuoted, colDef)
 	case "sqlite":
 		// SQLite: ALTER TABLE table ADD COLUMN col TYPE [NOT NULL]

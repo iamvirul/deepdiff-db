@@ -1,0 +1,42 @@
+# Spins up two independent Oracle XE 21c instances — one for production data
+# and one for development data — to demonstrate Oracle support in DeepDiff DB.
+#
+# Uses gvenzl/oracle-xe:21-slim-faststart (pre-built DB, starts in ~60–90 s).
+# XEPDB1 is the built-in PDB service name used for both containers.
+#
+# Default system/SYS password: set via ORACLE_PASSWORD below.
+
+services:
+  oracle-prod:
+    image: gvenzl/oracle-xe:21-slim-faststart
+    environment:
+      ORACLE_PASSWORD: "OraclePass123"
+    ports:
+      - "1521:1521"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/oracle/healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    volumes:
+      - oracle-prod-data:/opt/oracle/oradata
+
+  oracle-dev:
+    image: gvenzl/oracle-xe:21-slim-faststart
+    environment:
+      ORACLE_PASSWORD: "OraclePass123"
+    ports:
+      - "1522:1521"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/oracle/healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    volumes:
+      - oracle-dev-data:/opt/oracle/oradata
+
+volumes:
+  oracle-prod-data:
+  oracle-dev-data:

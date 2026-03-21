@@ -1352,3 +1352,39 @@ func TestGeneratePack_MSSQLDriver(t *testing.T) {
 	}
 }
 
+// TestGeneratePack_OracleNoData verifies Oracle-specific FK comment stmts are emitted
+// when GeneratePack is called with an oracle driver but no data changes.
+// The devDB is never touched when diff and schemaDiff are empty, so nil is safe.
+func TestGeneratePack_OracleNoData(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	emptySchema := &schema.Schema{Tables: map[string]schema.Table{}}
+	emptyDiff := content.DataDiff{}
+	schemaDiff := schema.DiffSchemas(emptySchema, emptySchema)
+
+	packPath, err := content.GeneratePack(ctx, "oracle", nil, "", emptySchema, emptySchema, schemaDiff, emptyDiff, nil, tmpDir)
+	if err != nil {
+		t.Fatalf("GeneratePack oracle no-data: %v", err)
+	}
+
+	sqlBytes, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatalf("read pack: %v", err)
+	}
+	sqlText := string(sqlBytes)
+
+	// Lines 105-110: Oracle FK disable comment
+	if !strings.Contains(sqlText, "-- Oracle: disable all FK constraints") {
+		t.Errorf("expected Oracle FK disable comment, got:\n%s", sqlText)
+	}
+	// Lines 306-308: Oracle FK re-enable comment
+	if !strings.Contains(sqlText, "-- Oracle: re-enable all FK constraints") {
+		t.Errorf("expected Oracle FK re-enable comment, got:\n%s", sqlText)
+	}
+	// Oracle BEGIN is plain (not BEGIN TRANSACTION like MSSQL)
+	if !strings.Contains(sqlText, "BEGIN;") {
+		t.Errorf("expected BEGIN; for oracle, got:\n%s", sqlText)
+	}
+}
+

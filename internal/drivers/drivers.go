@@ -65,6 +65,7 @@ func Open(ctx context.Context, cfg config.DBConfig) (*sql.DB, error) {
 // and utf8mb4_unicode_ci collation; user and password are URL-escaped and host/port are joined.
 // For PostgreSQL it returns driver "pgx" and a lib/pq-like DSN with sslmode=disable.
 // For MSSQL it returns driver "sqlserver" (the registered name for go-mssqldb) and a URL-form DSN.
+// For Oracle it returns driver "oracle" (go-ora/v2) and a URL-form DSN; port defaults to 1521.
 // For SQLite it returns driver "sqlite" and treats cfg.Database as the file path.
 //
 // It returns the chosen driver name, the corresponding DSN string, and an error if the driver
@@ -102,6 +103,23 @@ func BuildDSN(cfg config.DBConfig) (string, string, error) {
 			url.QueryEscape(cfg.Database),
 		)
 		return "sqlserver", dsn, nil
+	case "oracle":
+		// go-ora/v2 registers under the "oracle" driver name.
+		// DSN format: oracle://user:password@host:port/service_name
+		// cfg.Database is the Oracle service name (e.g. "XEPDB1", "ORCL").
+		// Port defaults to 1521 when cfg.Port == 0.
+		port := cfg.Port
+		if port == 0 {
+			port = 1521
+		}
+		dsn := fmt.Sprintf("oracle://%s:%s@%s:%d/%s",
+			url.QueryEscape(cfg.User),
+			url.QueryEscape(cfg.Password),
+			cfg.Host,
+			port,
+			url.QueryEscape(cfg.Database),
+		)
+		return "oracle", dsn, nil
 	case "sqlite":
 		// Database is treated as the filepath for sqlite.
 		if cfg.Database == "" {

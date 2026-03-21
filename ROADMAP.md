@@ -8,15 +8,15 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v0.8
+## Current Status: v0.9
 
-**Last Release:** 2026-03-14
+**Last Release:** 2026-03-19
 
 **Current Features:**
 - Schema drift detection and standalone schema migration (`schema-migrate`)
 - Row-level data comparison with SHA-256 hashing
 - Migration pack generation and transactional apply mode
-- MySQL, PostgreSQL, SQLite, and **Microsoft SQL Server** support
+- MySQL, PostgreSQL, SQLite, Microsoft SQL Server, and **Oracle Database** support
 - Conflict detection with `ours`/`theirs`/`manual` resolution strategies
 - Interactive `resolve-conflicts` command with `--auto` and `--resume` flags
 - Per-table conflict resolution strategies with `resolutions.json` persistence
@@ -27,10 +27,11 @@ We release a new version every **Saturday**. Each release includes one or more f
 - Visual progress bars and throughput metrics
 - Checkpoint/resume system for long-running operations
 - Enhanced error handling with actionable suggestions and retry logic
-- **NEW:** Keyset-paginated batch hashing — `--batch-size N` / `performance.hash_batch_size`
-- **NEW:** Parallel table hashing — `--parallel N` / `performance.max_parallel_tables`
-- **NEW:** Bounded O(batch_size) memory during hashing regardless of table size
-- **NEW:** Per-batch memory telemetry at DEBUG log level (`alloc_mb`, `batch`)
+- Keyset-paginated batch hashing — `--batch-size N` / `performance.hash_batch_size`
+- Parallel table hashing — `--parallel N` / `performance.max_parallel_tables`
+- Bounded O(batch_size) memory during hashing regardless of table size
+- Per-batch memory telemetry at DEBUG log level (`alloc_mb`, `batch`)
+- **NEW:** Oracle Database support — pure Go driver, no Instant Client required
 
 ---
 
@@ -134,17 +135,18 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-### v0.9: Oracle Support
-**Target Date:** Week 2 Saturday
+### ~~v0.9: Oracle Support~~ ✅ Released 2026-03-19
 
-**Features:**
-- Oracle Database driver support
-- Oracle-specific schema introspection
-- Oracle-specific SQL generation
-- Transaction handling for Oracle
-- Testing with Oracle 12c+ versions
+**Features delivered:**
+- Oracle Database driver (`sijms/go-ora/v2`) — pure Go, no Instant Client required
+- Schema introspection via `ALL_TAB_COLUMNS`, `ALL_INDEXES`, `ALL_CONSTRAINTS`, `ALL_CONS_COLUMNS`
+- Oracle DDL generation: `ADD "col"` (no COLUMN), `MODIFY "col"`, standalone `DROP INDEX`, `DROP CONSTRAINT`
+- `OFFSET/FETCH` pagination (Oracle 12c+), double-quote identifier quoting
+- Optional port (defaults to 1521), `GENERATED ALWAYS AS IDENTITY` for auto-increment
+- Integration tests with Oracle XE 21c (testcontainers + `gvenzl/oracle-xe:21-slim-faststart`)
+- Sample 16: Oracle Support (Docker Compose, SQLPlus init scripts, Makefile)
 
-**Impact:** Expands database support to enterprise Oracle users
+**Impact:** Enterprise Oracle users can now use DeepDiff DB in production
 
 ---
 
@@ -218,7 +220,6 @@ We release a new version every **Saturday**. Each release includes one or more f
 - Documentation & Production Readiness
 
 ### Low Priority (Nice to Have)
-- Oracle Support (can be post-v1.0)
 - Advanced features (post-v1.0)
 
 ---
@@ -229,6 +230,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 - [x] HTML Report Viewer (v0.5)
 - [x] Enhanced Error Handling & Logging (v0.6)
 - [x] Streaming Support for Large Datasets (v0.7)
+- [x] MSSQL Support (v0.8)
+- [x] Oracle Support (v0.9)
 - [ ] All high-priority features implemented
 - [ ] Test coverage > 80%
 - [ ] Comprehensive documentation
@@ -258,5 +261,5 @@ If you'd like to contribute to any of these features, please:
 
 ---
 
-**Last Updated:** 2026-03-14
+**Last Updated:** 2026-03-19
 

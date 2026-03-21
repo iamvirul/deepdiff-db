@@ -24,7 +24,7 @@ DeepDiff DB makes the entire process deterministic, reviewable, and safe by:
 
 - **Fast Go-based diff engine** - Optimized for performance with efficient memory usage
 - **Single static binary** - Zero dependencies after download, works on any compatible system
-- **Multi-database support** - MySQL, PostgreSQL, SQLite, and Microsoft SQL Server
+- **Multi-database support** - MySQL, PostgreSQL, SQLite, Microsoft SQL Server, and Oracle Database
 - **Schema drift detection** - Identifies structural differences between databases
 - **Row-level comparison** - SHA-256 hashing for accurate change detection
 - **Conflict detection** - Identifies rows that exist in both databases but differ
@@ -172,7 +172,7 @@ Create a `deepdiffdb.config.yaml` file:
 
 ```yaml
 prod:
-  driver: "mysql"          # mysql, postgres, postgresql, sqlite, or mssql
+  driver: "mysql"          # mysql, postgres, postgresql, sqlite, mssql, or oracle
   host: "localhost"
   port: 3306
   user: "root"
@@ -218,12 +218,12 @@ conflict_resolution:
 ### Configuration Options
 
 **Database Configuration:**
-- `driver`: Database driver (`mysql`, `postgres`, `postgresql`, `sqlite`, or `mssql`)
+- `driver`: Database driver (`mysql`, `postgres`, `postgresql`, `sqlite`, `mssql`, or `oracle`)
 - `host`: Database hostname or IP address
-- `port`: Database port number (not required for SQLite; defaults to 1433 for MSSQL)
+- `port`: Database port number (not required for SQLite; defaults to 1433 for MSSQL, 1521 for Oracle)
 - `user`: Database username
 - `password`: Database password
-- `database`: Database name
+- `database`: Database name (for Oracle: the Oracle service name, e.g. `XEPDB1`)
 
 **Ignore Configuration:**
 - `tables`: List of table names to exclude from comparison
@@ -306,7 +306,7 @@ deepdiffdb schema-migrate --config deepdiffdb.config.yaml
 - `schema_migration.sql` - Transaction-wrapped SQL migration script
 
 **Features:**
-- Driver-specific SQL syntax (MySQL, PostgreSQL, SQLite, MSSQL)
+- Driver-specific SQL syntax (MySQL, PostgreSQL, SQLite, MSSQL, Oracle)
 - Safe defaults (destructive operations commented out by default)
 - Proper dependency ordering for foreign keys and constraints
 - Transaction-wrapped for atomic execution
@@ -613,7 +613,6 @@ deepdiffdb gen-pack --config deepdiffdb.config.yaml --resume
 
 Current limitations and known constraints:
 
-- **Database Support** - Oracle is not yet supported (planned for future releases)
 - **Schema Auto-merge** - Schema differences must be resolved manually
 - **Primary Key Requirement** - All tables must have primary keys (unless explicitly ignored)
 - **Large Database Performance** - Very large tables are handled with keyset-paginated batching (v0.7+); diff output files may still be large for tables with many changed rows
@@ -640,7 +639,7 @@ go test ./tests/drivers
 go test ./tests -run TestIntegration -v
 ```
 
-Integration tests use testcontainers and automatically spin up MySQL, PostgreSQL, and MSSQL containers for full workflow validation.
+Integration tests use testcontainers and automatically spin up MySQL, PostgreSQL, MSSQL, and Oracle XE containers for full workflow validation.
 
 ## Contributing
 

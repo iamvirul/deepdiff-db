@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9] - 2026-03-19
+
+### Added
+- **Oracle Database Support** (issue #14)
+  - New driver: `driver: "oracle"` in `deepdiffdb.config.yaml`; uses `sijms/go-ora/v2` (pure Go, no Oracle Instant Client required)
+  - DSN format: `oracle://user:pass@host:port/service_name`
+  - Schema introspection via `ALL_TAB_COLUMNS`, `ALL_INDEXES`, `ALL_IND_COLUMNS`, `ALL_CONSTRAINTS`, `ALL_CONS_COLUMNS`
+  - Double-quote identifier quoting: `"TABLE"`, `"COLUMN"` (same as PostgreSQL)
+  - `OFFSET 0 ROWS FETCH NEXT n ROWS ONLY` pagination (Oracle 12c+; no `LIMIT` clause)
+  - Oracle-compatible `ALTER TABLE` generation: `ADD "col"` (no `COLUMN` keyword), `MODIFY "col"` (not `ALTER COLUMN`), `DROP COLUMN "col"`, `DROP INDEX "name"` (standalone DDL, no table name), `DROP CONSTRAINT "name"`
+  - Full type support: `NUMBER`, `VARCHAR2`, `DATE`, `TIMESTAMP`, `CLOB`, `BLOB`, `CHAR`, `FLOAT`
+  - `GENERATED ALWAYS AS IDENTITY` for auto-increment columns
+  - Port is optional for Oracle (defaults to 1521 when `port: 0`)
+  - `CheckPrimaryKeys` extended with Oracle case querying `ALL_CONSTRAINTS` / `ALL_CONS_COLUMNS`
+  - Integration test `TestIntegration_Oracle_FullWorkflow` using testcontainers + `gvenzl/oracle-xe:21-slim-faststart`
+- **Sample 16: Oracle Support** (`samples/16-oracle-support/`)
+  - Docker Compose with two Oracle XE 21c containers (prod on 1521, dev on 1522)
+  - SQLPlus init scripts with deliberate schema drift: new columns, nullability changes, FK relationships
+  - Seed data with deliberate data drift: price updates, new customer, new orders
+  - Makefile targets: `up`, `wait-healthy`, `seed`, `diff`, `gen-pack`, `down`, `clean`
+
+### Changed
+- `pkg/config/config.go`: `oracle` added to valid driver list; port validation skipped for Oracle (optional, defaults to 1521)
+- `internal/drivers/drivers.go`: Oracle DSN builder added (`oracle://user:pass@host:port/service`)
+- `internal/content/hash.go` / `cursor.go`: Oracle identifier quoting and `OFFSET/FETCH` pagination
+- `internal/content/pack.go`: Oracle FK disable/enable via `DISABLE CONSTRAINT` / `ENABLE CONSTRAINT`, Oracle-specific DDL generation
+- `internal/schema/introspect.go`: Oracle catalog query path
+- `internal/schema/migrate.go`: Oracle DDL generation for all migration types
+- `internal/schema/primary_keys.go`: Oracle `ALL_CONSTRAINTS` path
+- `deepdiffdb.config.yaml.example`: Commented Oracle connection example added
+
 ## [0.8] - 2026-03-14
 
 ### Added

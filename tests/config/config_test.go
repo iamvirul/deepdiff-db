@@ -137,9 +137,9 @@ dev:
 			name: "unsupported driver",
 			config: `
 prod:
-  driver: "oracle"
+  driver: "db2"
   host: "localhost"
-  port: 1521
+  port: 50000
   database: "prod_db"
 
 dev:
@@ -953,6 +953,85 @@ func TestStrategyConstants(t *testing.T) {
 	}
 	if config.StrategyManual != "manual" {
 		t.Errorf("expected StrategyManual to be 'manual', got %q", config.StrategyManual)
+	}
+}
+
+func TestLoad_Oracle(t *testing.T) {
+	tests := []struct {
+		name      string
+		yaml      string
+		wantError bool
+	}{
+		{
+			name: "oracle with explicit port is valid",
+			yaml: `
+prod:
+  driver: "oracle"
+  host: "oracle.example.com"
+  port: 1521
+  user: "app_user"
+  password: "AppPass123"
+  database: "XEPDB1"
+
+dev:
+  driver: "oracle"
+  host: "oracle-dev.example.com"
+  port: 1521
+  user: "app_user"
+  password: "AppPass123"
+  database: "XEPDB1"
+
+output:
+  dir: "./out"
+`,
+			wantError: false,
+		},
+		{
+			name: "oracle without port is valid (defaults to 1521)",
+			yaml: `
+prod:
+  driver: "oracle"
+  host: "oracle.example.com"
+  port: 0
+  user: "app_user"
+  password: "AppPass123"
+  database: "XEPDB1"
+
+dev:
+  driver: "oracle"
+  host: "oracle-dev.example.com"
+  port: 0
+  user: "app_user"
+  password: "AppPass123"
+  database: "XEPDB1"
+
+output:
+  dir: "./out"
+`,
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, err := os.CreateTemp("", "oracle-config-*.yaml")
+			if err != nil {
+				t.Fatalf("create temp file: %v", err)
+			}
+			defer os.Remove(f.Name())
+			if _, err := f.WriteString(tt.yaml); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			f.Close()
+
+			_, loadErr := config.Load(f.Name())
+			if tt.wantError && loadErr == nil {
+				t.Error("expected error but got none")
+			}
+			if !tt.wantError && loadErr != nil {
+				t.Errorf("unexpected error: %v", loadErr)
+			}
+		})
 	}
 }
 

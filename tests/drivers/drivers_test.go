@@ -104,9 +104,9 @@ func TestBuildDSN(t *testing.T) {
 		{
 			name: "unsupported driver",
 			cfg: config.DBConfig{
-				Driver:   "oracle",
+				Driver:   "db2",
 				Host:     "localhost",
-				Port:     1521,
+				Port:     50000,
 				Database: "testdb",
 			},
 			wantError: true,
@@ -247,6 +247,93 @@ func TestBuildDSN_MSSQL(t *testing.T) {
 				"localhost:1433",
 			},
 			// Raw special chars must not appear unencoded in the DSN
+			wantDSNNot: []string{"p@ss w0rd+1", " "},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			driver, dsn, err := drivers.BuildDSN(tt.cfg)
+			if err != nil {
+				t.Fatalf("BuildDSN returned unexpected error: %v", err)
+			}
+			if driver != tt.wantDriver {
+				t.Errorf("driver = %q, want %q", driver, tt.wantDriver)
+			}
+			for _, want := range tt.wantDSNHas {
+				if !containsMiddle(dsn, want) {
+					t.Errorf("DSN %q does not contain %q", dsn, want)
+				}
+			}
+			for _, notWant := range tt.wantDSNNot {
+				if containsMiddle(dsn, notWant) {
+					t.Errorf("DSN %q should not contain %q", dsn, notWant)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildDSN_Oracle(t *testing.T) {
+	tests := []struct {
+		name       string
+		cfg        config.DBConfig
+		wantDriver string
+		wantDSNHas []string
+		wantDSNNot []string
+	}{
+		{
+			name: "oracle with port",
+			cfg: config.DBConfig{
+				Driver:   "oracle",
+				Host:     "oracle.example.com",
+				Port:     1521,
+				User:     "appuser",
+				Password: "Secret1234",
+				Database: "XEPDB1",
+			},
+			wantDriver: "oracle",
+			wantDSNHas: []string{
+				"oracle://",
+				"oracle.example.com:1521",
+				"/XEPDB1",
+			},
+		},
+		{
+			name: "oracle without port defaults to 1521",
+			cfg: config.DBConfig{
+				Driver:   "oracle",
+				Host:     "oracle.example.com",
+				Port:     0,
+				User:     "appuser",
+				Password: "pass",
+				Database: "ORCL",
+			},
+			wantDriver: "oracle",
+			wantDSNHas: []string{
+				"oracle://",
+				"oracle.example.com:1521",
+				"/ORCL",
+			},
+			// Port 0 must not appear literally in the DSN
+			wantDSNNot: []string{":0"},
+		},
+		{
+			name: "oracle URL-encodes credentials with special chars",
+			cfg: config.DBConfig{
+				Driver:   "oracle",
+				Host:     "localhost",
+				Port:     1521,
+				User:     "user@domain",
+				Password: "p@ss w0rd+1",
+				Database: "XEPDB1",
+			},
+			wantDriver: "oracle",
+			wantDSNHas: []string{
+				"oracle://",
+				"localhost:1521",
+			},
+			// Raw special chars must not appear unencoded
 			wantDSNNot: []string{"p@ss w0rd+1", " "},
 		},
 	}
