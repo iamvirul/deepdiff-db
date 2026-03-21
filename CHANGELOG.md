@@ -7,21 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0] - 2026-03-22
+## [1.0.0] - 2026-03-22
 
 ### Added
 - Multi-stage `Dockerfile` (scratch-based image, ~15 MB, `CGO_ENABLED=0`) and `docker-compose.example.yml`
-- GoReleaser configuration (`.goreleaser.yml`) — replaces manual release workflow; produces cross-platform archives, SHA256 checksums, multi-arch GHCR Docker manifests, and auto-updates Homebrew formula
+- GoReleaser configuration (`.goreleaser.yml`) — cross-platform archives, SHA256 checksums, multi-arch GHCR Docker manifests, Homebrew formula auto-update
+- Linux package installers: `.deb`, `.rpm`, `.apk` via GoReleaser `nfpms` — installs binary to `/usr/bin/` automatically
+- Windows Scoop manifest via GoReleaser `scoops` — auto-PATH setup on install
 - CI/CD integration examples: GitHub Actions PR diff check, GitLab CI MR check, pre-commit hook (`examples/cicd/`)
 - Go benchmark suite for `HashTable` at 1k/10k rows, batched and unbatched (`tests/content/bench_test.go`)
 - `MIGRATION.md` — upgrade guide from v0.x to v1.0
 - `gosec` and `govulncheck` jobs added to CI workflow
 - Docusaurus documentation site with Deployment section: Docker, CI/CD, Performance, Migration guide
+- `SECURITY.md` — full security policy: private vulnerability reporting, response timeline, least-privilege DB setup, coordinated disclosure
+- `.github/CODEOWNERS` — `@iamvirul` as owner of all files; auto-requested on every PR
+- Apache 2.0 license notice added to `README.md`
 
 ### Changed
 - Release workflow replaced with GoReleaser; archive names updated (e.g. `deepdiffdb_v1.0.0_linux_amd64.tar.gz`)
 - Homebrew formula updated to inject version via ldflags; tap updated to `iamvirul/tap`
 - Go minimum version bumped to **1.25.8** in `go.mod`; all CI jobs updated accordingly
+- Go Report Card grade raised from D → **A** (fixed all `gofmt` violations across 42 files, fixed 6 `golint` issues)
+- Unit test coverage raised from ~35% → **80%+** with 1,500+ new test cases across schema, content, drivers, checkpoint, errors, HTML, and resolve packages
+- Integration CI now compiles `tests/schema` with `-tags integration` so Docker-based schema tests are included
 
 ### Security
 - File permissions tightened: `WriteFile` `0644→0600`, `MkdirAll` `0755→0750`, log `OpenFile` `0644→0600`
@@ -367,8 +375,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.0...HEAD
-[1.0]: https://github.com/iamvirul/deepdiff-db/compare/v0.9...v1.0
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/iamvirul/deepdiff-db/compare/v0.9...v1.0.0
 [0.9]: https://github.com/iamvirul/deepdiff-db/compare/v0.8...v0.9
 [0.8]: https://github.com/iamvirul/deepdiff-db/compare/v0.7...v0.8
 [0.7]: https://github.com/iamvirul/deepdiff-db/compare/v0.6.1...v0.7
