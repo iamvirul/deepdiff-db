@@ -25,7 +25,6 @@ const (
 	queryPageSize = 10000
 )
 
-// GeneratePack builds a SQL migration pack for applying data diffs to prod.
 // GeneratePack builds a SQL migration script that applies the provided data diff to a production database,
 // using the development database as the source of truth for inserted and updated rows.
 //
