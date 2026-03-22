@@ -1,6 +1,7 @@
 name: Test GitHub Action
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - action.yml
@@ -45,7 +46,7 @@ jobs:
             INSERT INTO products VALUES (1,'Widget',9.99);
           "
 
-          # Dev SQLite database — added column, new user, price changed (conflict)
+          # Dev SQLite database — added column, new user, price changed
           sqlite3 /tmp/test-dbs/dev.db "
             CREATE TABLE users    (id INTEGER PRIMARY KEY, name TEXT, email TEXT, phone TEXT);
             CREATE TABLE products (id INTEGER PRIMARY KEY, title TEXT, price REAL);
@@ -55,18 +56,18 @@ jobs:
             INSERT INTO products VALUES (1,'Widget',12.99);
           "
 
-          cat > deepdiffdb.yaml <<'EOF'
-prod:
-  driver: sqlite
-  database: /tmp/test-dbs/prod.db
-
-dev:
-  driver: sqlite
-  database: /tmp/test-dbs/dev.db
-
-output:
-  dir: ./diff-output
-EOF
+          {
+            echo 'prod:'
+            echo '  driver: sqlite'
+            echo '  database: /tmp/test-dbs/prod.db'
+            echo ''
+            echo 'dev:'
+            echo '  driver: sqlite'
+            echo '  database: /tmp/test-dbs/dev.db'
+            echo ''
+            echo 'output:'
+            echo '  dir: ./diff-output'
+          } > deepdiffdb.yaml
 
       - name: Run check command
         uses: ./
@@ -76,6 +77,7 @@ EOF
           upload-artifacts: "false"
 
       - name: Run diff command with HTML report
+        continue-on-error: true  # exit 1 when drift detected is expected / correct behaviour
         uses: ./
         with:
           command: diff

@@ -400,9 +400,14 @@ func runFullDiff(args []string) error {
 	if err := schema.WriteReports(schemaDiff, cfg.Output.Dir); err != nil {
 		return fmt.Errorf("write schema diff: %w", err)
 	}
+	// Capture drift but continue — data diff, summary, and HTML must still be written.
+	// The error is returned at the end so the exit code is still non-zero.
+	var schemaDriftErr error
 	if schemaDiff.HasDrift() {
 		log.Warn("schema drift detected")
-		return fmt.Errorf("schema drift detected; see %s and %s", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
+		fmt.Fprintf(os.Stderr, "Warning: schema drift detected; see %s and %s\n", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
+		fmt.Fprintf(os.Stderr, "Warning: continuing with data diff. Only tables with matching schemas will be included.\n")
+		schemaDriftErr = fmt.Errorf("schema drift detected; see %s and %s", filepath.Join(cfg.Output.Dir, "schema_diff.json"), filepath.Join(cfg.Output.Dir, "schema_diff.txt"))
 	}
 
 	// Data diff
@@ -478,7 +483,9 @@ func runFullDiff(args []string) error {
 		fmt.Printf("HTML report generated: %s\n", htmlPath)
 	}
 
-	return nil
+	// Return deferred schema drift error so exit code is non-zero when drift was found,
+	// even though all output files have been written successfully.
+	return schemaDriftErr
 }
 
 // runGenPack performs the "gen-pack" command: it loads configuration, compares prod and dev schemas, and generates a migration pack for any detected data differences while writing schema and data reports to the configured output directory.
