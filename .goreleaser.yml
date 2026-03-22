@@ -134,19 +134,20 @@ dockers:
   - image_templates:
       - "ghcr.io/iamvirul/deepdiff-db:{{ .Version }}-amd64"
     use: buildx
+    dockerfile: Dockerfile.goreleaser
     build_flag_templates:
       - "--platform=linux/amd64"
-      - "--build-arg=VERSION={{ .Version }}"
       - "--label=org.opencontainers.image.title=deepdiff-db"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.source=https://github.com/iamvirul/deepdiff-db"
   - image_templates:
       - "ghcr.io/iamvirul/deepdiff-db:{{ .Version }}-arm64"
     use: buildx
+    dockerfile: Dockerfile.goreleaser
     goarch: arm64
     build_flag_templates:
       - "--platform=linux/arm64"
-      - "--build-arg=VERSION={{ .Version }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
 
 docker_manifests:
   - name_template: "ghcr.io/iamvirul/deepdiff-db:{{ .Version }}"
