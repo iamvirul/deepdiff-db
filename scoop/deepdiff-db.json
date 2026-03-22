@@ -1,0 +1,15 @@
+{
+    "version": "1.0.0",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/iamvirul/deepdiff-db/releases/download/v1.0.0/deepdiffdb_1.0.0_windows_amd64.zip",
+            "bin": [
+                "deepdiffdb.exe"
+            ],
+            "hash": "21f7267254163f6faa019c66d3f72a5bec4d4fb5fb8014aee4cedcd16d981e9d"
+        }
+    },
+    "homepage": "https://iamvirul.github.io/deepdiff-db/",
+    "license": "Apache-2.0",
+    "description": "Compare databases, detect schema drift, and generate safe SQL migration packs."
+}
