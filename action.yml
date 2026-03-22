@@ -1,7 +1,6 @@
 name: DeepDiff DB
 description: >
-  Compare two databases (schema + row-level), detect drift, generate migration packs,
-  and apply changes safely. Supports MySQL, PostgreSQL, SQLite, MSSQL, and Oracle.
+  Compare databases, detect schema drift, and generate safe SQL migration packs.
 author: iamvirul
 
 branding:
