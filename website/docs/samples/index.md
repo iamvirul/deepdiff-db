@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Samples
 
-The `samples/` directory in the repository contains 16 self-contained example projects. Each sample demonstrates a specific feature or database workflow with a working configuration, seed data, and a `Makefile` with ready-to-run targets.
+The `samples/` directory in the repository contains 17 self-contained example projects. Each sample demonstrates a specific feature or database workflow with a working configuration, seed data, and ready-to-run scripts.
 
 ## All Samples
 
@@ -26,6 +26,7 @@ The `samples/` directory in the repository contains 16 self-contained example pr
 | 14 | [streaming-large-datasets](https://github.com/iamvirul/deepdiff-db/tree/main/samples/14-streaming-large-datasets) | Large dataset streaming with batch-size and parallel flags | SQLite | No |
 | 15 | [mssql-support](https://github.com/iamvirul/deepdiff-db/tree/main/samples/15-mssql-support) | Full MSSQL workflow: schema diff, data diff, gen-pack, apply | MSSQL | Yes |
 | 16 | [oracle-support](https://github.com/iamvirul/deepdiff-db/tree/main/samples/16-oracle-support) | Full Oracle workflow: schema drift, data diff, gen-pack, apply | Oracle | Yes |
+| 17 | [git-like-versioning](https://github.com/iamvirul/deepdiff-db/tree/main/samples/17-git-like-versioning) | Git-like versioning: commit snapshots, browse history, compare versions, generate rollback SQL | MySQL | Yes |
 
 ## Running a SQLite Sample
 
@@ -75,4 +76,25 @@ make seed          # run SQLPlus init scripts
 make diff          # run deepdiffdb diff
 make gen-pack      # generate migration pack
 make down          # stop containers
+```
+
+## Sample 17: Git-like Versioning
+
+Sample 17 demonstrates the full `version` command workflow using two MySQL 8 containers. It walks through three sprint cycles — baseline, category linking, and a reviews feature — and shows how to inspect history, compare schema evolution between any two commits, and generate rollback SQL.
+
+```bash
+cd samples/17-git-like-versioning
+
+# Automated end-to-end demo (starts containers, commits 3 versions, shows log/diff/rollback)
+bash scripts/demo.sh
+
+# Or run manually step by step:
+docker-compose up -d
+deepdiffdb version init
+deepdiffdb version commit --config deepdiffdb.config.yaml --message "V1: baseline"
+# ... apply migration scripts, commit again ...
+deepdiffdb version log
+deepdiffdb version diff <hash_v1> <hash_v3>
+deepdiffdb version rollback --out diff-output/rollback_v3.sql <hash_v3>
+docker-compose down -v
 ```
