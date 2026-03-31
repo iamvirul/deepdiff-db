@@ -1,0 +1,26 @@
+prod:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3320
+  user: "root"
+  password: "rootpassword"
+  database: "shop"
+
+dev:
+  driver: "mysql"
+  host: "127.0.0.1"
+  port: 3321
+  user: "root"
+  password: "rootpassword"
+  database: "shop"
+
+ignore:
+  tables: []
+  columns: []
+
+output:
+  dir: "./diff-output"
+
+performance:
+  hash_batch_size: 1000
+  max_parallel_tables: 2

@@ -1,0 +1,44 @@
+services:
+  prod-db:
+    image: mysql:8.0
+    container_name: vcs_prod_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: shop
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_AUTHENTICATION_PLUGIN: "mysql_native_password"
+    ports:
+      - "3320:3306"
+    volumes:
+      - ./init-scripts/init_db1.sql:/docker-entrypoint-initdb.d/init.sql
+      - prod_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  dev-db:
+    image: mysql:8.0
+    container_name: vcs_dev_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: shop
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_AUTHENTICATION_PLUGIN: "mysql_native_password"
+    ports:
+      - "3321:3306"
+    volumes:
+      - ./init-scripts/init_db2.sql:/docker-entrypoint-initdb.d/init.sql
+      - dev_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  prod_data:
+  dev_data:
