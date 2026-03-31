@@ -1,6 +1,7 @@
 # DeepDiff DB
 
 [![CI](https://github.com/iamvirul/deepdiff-db/actions/workflows/ci.yml/badge.svg)](https://github.com/iamvirul/deepdiff-db/actions/workflows/ci.yml)
+[![Security Scan](https://github.com/iamvirul/deepdiff-db/actions/workflows/security.yml/badge.svg)](https://github.com/iamvirul/deepdiff-db/actions/workflows/security.yml)
 [![Release](https://img.shields.io/github/v/release/iamvirul/deepdiff-db?color=6366f1)](https://github.com/iamvirul/deepdiff-db/releases/latest)
 [![codecov](https://codecov.io/gh/iamvirul/deepdiff-db/branch/main/graph/badge.svg?token=Y9IORTUBAH)](https://codecov.io/gh/iamvirul/deepdiff-db)
 [![Go Report Card](https://goreportcard.com/badge/github.com/iamvirul/deepdiff-db)](https://goreportcard.com/report/github.com/iamvirul/deepdiff-db)
@@ -46,6 +47,7 @@ DeepDiff DB makes the entire process deterministic, reviewable, and safe by:
 - **Enhanced error handling** - Rich error messages with actionable suggestions
 - **Streaming large datasets** - Keyset-paginated batch hashing keeps memory bounded at any table size
 - **Parallel table hashing** - Hash multiple tables concurrently with configurable worker pool
+- **Git-like versioning** - Commit diff snapshots, browse history, compare versions, generate rollback SQL
 
 ### Safety Features
 
@@ -478,6 +480,61 @@ Continues from a previous session by loading existing resolutions.
 
 **Output Files:**
 - `resolutions.json` - Saved resolution decisions
+
+### version
+
+Git-like versioning for database diffs. Stores schema and data diff snapshots as commits, enabling history browsing, inter-version comparison, and rollback SQL generation — all without a live database connection.
+
+```bash
+deepdiffdb version <subcommand> [flags]
+```
+
+#### Subcommands
+
+| Subcommand | Description |
+|---|---|
+| `version init` | Initialise a `.deepdiffdb/` repository in the current directory |
+| `version commit` | Run a full diff and store the result as a new commit |
+| `version log` | Show the commit history from most recent to oldest |
+| `version diff <h1> <h2>` | Compare schema evolution between two commits |
+| `version rollback <hash>` | Generate rollback SQL to undo the changes in a commit |
+| `version branch [<name>]` | List branches, or create a new one |
+| `version checkout <branch>` | Switch to a branch |
+| `version tree` | Show ASCII commit graph for all branches |
+
+#### Example Workflow
+
+```bash
+# Initialise once per project
+deepdiffdb version init
+
+# Commit a baseline snapshot
+deepdiffdb version commit --config deepdiffdb.config.yaml --message "V1: baseline" --author "Alice"
+
+# Create a feature branch and switch to it
+deepdiffdb version branch feature
+deepdiffdb version checkout feature
+
+# After applying schema changes to dev, commit on the feature branch
+deepdiffdb version commit --config deepdiffdb.config.yaml --message "V2: add reviews table" --author "Bob"
+
+# Switch back to main and commit a hotfix
+deepdiffdb version checkout main
+deepdiffdb version commit --config deepdiffdb.config.yaml --message "V2: hotfix index" --author "Alice"
+
+# Browse history with an ASCII branch graph
+deepdiffdb version tree
+
+# See what changed between two commits
+deepdiffdb version diff <hash_v1> <hash_v2>
+
+# Generate rollback SQL for a commit
+deepdiffdb version rollback --out rollback.sql <hash_v2>
+```
+
+**Storage:** Commits are stored as zlib-compressed objects in `.deepdiffdb/objects/<2-char>/<62-char>` (Git-style fanout, content-addressable by SHA-256). Branch tips live in `.deepdiffdb/refs/heads/<name>`; HEAD is a symbolic ref (`ref: refs/heads/main`). Add `.deepdiffdb/` to your `.gitignore` or commit it to share history with your team.
+
+**Rollback SQL:** Each commit stores full schema snapshots, so rollback SQL can be generated at any time without a live database. Destructive operations (DROP TABLE, DROP COLUMN) are commented out by default — identical safety behaviour to `schema-migrate`.
 
 ## Usage Examples
 
