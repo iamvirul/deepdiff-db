@@ -14,11 +14,23 @@ import (
 // RepoDirName is the directory created by "version init" inside the working directory.
 const RepoDirName = ".deepdiffdb"
 
-// objectsDirName is the subdirectory that stores one JSON file per commit.
+// objectsDirName is the subdirectory that stores one zlib-compressed JSON file per commit.
 const objectsDirName = "objects"
 
-// headFileName holds the hash of the most recent commit (empty string when no commits yet).
+// headFileName holds either a symbolic ref ("ref: refs/heads/<name>") or a raw hash.
 const headFileName = "HEAD"
+
+// refsDirName is the subdirectory that holds refs.
+const refsDirName = "refs"
+
+// headsDirName is the subdirectory under refs/ that holds branch tip hashes.
+const headsDirName = "heads"
+
+// defaultBranch is the name of the branch created by "version init".
+const defaultBranch = "main"
+
+// symbolicRefPrefix is the literal prefix written to HEAD for symbolic refs.
+const symbolicRefPrefix = "ref: "
 
 // Commit is a versioned snapshot of a database diff.
 //

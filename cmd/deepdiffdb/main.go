@@ -1510,6 +1510,12 @@ func runVersion(args []string) error {
 		return runVersionDiff(args[1:])
 	case "rollback":
 		return runVersionRollback(args[1:])
+	case "branch":
+		return runVersionBranch(args[1:])
+	case "checkout":
+		return runVersionCheckout(args[1:])
+	case "tree":
+		return runVersionTree(args[1:])
 	case "-h", "--help", "help":
 		printVersionUsage()
 		return nil
@@ -1532,6 +1538,9 @@ Subcommands:
   log                     Show commit history
   diff  <hash1> <hash2>   Compare schema evolution between two commits
   rollback <hash>         Generate rollback SQL for a commit
+  branch [<name>]         List branches, or create a new one
+  checkout <branch>       Switch to a branch
+  tree                    Show ASCII commit graph for all branches
 
 Flags for commit:
   --config   Path to config file (default: deepdiffdb.config.yaml)
@@ -1544,6 +1553,9 @@ Flags for log:
 Flags for rollback:
   --driver   Database driver override (mysql/postgres/sqlite/mssql/oracle)
   --out      Write SQL to file instead of stdout
+
+Flags for branch:
+  --from     Hash to branch from (default: current HEAD)
 `, exe)
 }
 
@@ -1848,6 +1860,90 @@ func runVersionRollback(args []string) error {
 	}
 	fmt.Println(sql)
 	return nil
+}
+
+// runVersionBranch lists branches or creates a new one.
+func runVersionBranch(args []string) error {
+	fs := flag.NewFlagSet("version branch", flag.ContinueOnError)
+	fromFlag := fs.String("from", "", "Hash to branch from (default: current HEAD)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	dir := "."
+	if !vcs.IsInitialized(dir) {
+		return fmt.Errorf("no version repository found; run 'deepdiffdb version init' first")
+	}
+
+	if fs.NArg() == 0 {
+		// List branches.
+		branches, err := vcs.ListBranches(dir)
+		if err != nil {
+			return err
+		}
+		if len(branches) == 0 {
+			fmt.Println("(no branches)")
+			return nil
+		}
+		for _, b := range branches {
+			marker := "  "
+			if b.Current {
+				marker = "* "
+			}
+			tip := ""
+			if b.Tip != "" {
+				tip = " " + b.Tip[:min8(b.Tip)]
+			}
+			fmt.Printf("%s%s%s\n", marker, b.Name, tip)
+		}
+		return nil
+	}
+
+	// Create branch.
+	name := fs.Arg(0)
+	if err := vcs.CreateBranch(dir, name, *fromFlag); err != nil {
+		return err
+	}
+	fmt.Printf("Branch %q created.\n", name)
+	return nil
+}
+
+// runVersionCheckout switches to the named branch.
+func runVersionCheckout(args []string) error {
+	fs := flag.NewFlagSet("version checkout", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: deepdiffdb version checkout <branch>")
+	}
+
+	dir := "."
+	if !vcs.IsInitialized(dir) {
+		return fmt.Errorf("no version repository found; run 'deepdiffdb version init' first")
+	}
+
+	name := fs.Arg(0)
+	if err := vcs.Checkout(dir, name); err != nil {
+		return err
+	}
+	fmt.Printf("Switched to branch %q.\n", name)
+	return nil
+}
+
+// runVersionTree renders an ASCII commit graph for all branches.
+func runVersionTree(args []string) error {
+	fs := flag.NewFlagSet("version tree", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	dir := "."
+	if !vcs.IsInitialized(dir) {
+		return fmt.Errorf("no version repository found; run 'deepdiffdb version init' first")
+	}
+
+	return vcs.RenderTree(dir, os.Stdout)
 }
 
 // ---------------------------------------------------------------------------

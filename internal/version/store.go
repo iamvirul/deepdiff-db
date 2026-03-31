@@ -9,18 +9,25 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Init creates the .deepdiffdb repository structure in dir.
 // It is idempotent — calling it on an existing repo is a no-op.
+// HEAD is written as a symbolic ref pointing to refs/heads/main.
 func Init(dir string) error {
 	objectsPath := filepath.Join(dir, RepoDirName, objectsDirName)
 	if err := os.MkdirAll(objectsPath, 0o750); err != nil {
 		return fmt.Errorf("create version repo: %w", err)
 	}
+	headsPath := filepath.Join(dir, RepoDirName, refsDirName, headsDirName)
+	if err := os.MkdirAll(headsPath, 0o750); err != nil {
+		return fmt.Errorf("create refs/heads: %w", err)
+	}
 	headPath := filepath.Join(dir, RepoDirName, headFileName)
 	if _, err := os.Stat(headPath); os.IsNotExist(err) {
-		if err := os.WriteFile(headPath, []byte(""), 0o640); err != nil {
+		symref := symbolicRefPrefix + refsDirName + "/" + headsDirName + "/" + defaultBranch
+		if err := os.WriteFile(headPath, []byte(symref), 0o640); err != nil {
 			return fmt.Errorf("create HEAD: %w", err)
 		}
 	}
@@ -34,8 +41,9 @@ func IsInitialized(dir string) bool {
 }
 
 // SaveCommit serializes c as JSON, zlib-compresses the result, and writes it
-// to objects/<hash[:2]>/<hash[2:]> — the same fanout layout Git uses to avoid
-// directory entry limits on large object stores. HEAD is updated to c.Hash.
+// to objects/<hash[:2]>/<hash[2:]> — the same fanout layout Git uses.
+// If HEAD is a symbolic ref, the referenced branch tip is advanced to c.Hash.
+// Otherwise HEAD is updated directly (detached HEAD mode).
 func SaveCommit(dir string, c *Commit) error {
 	raw, err := json.Marshal(c)
 	if err != nil {
@@ -58,7 +66,8 @@ func SaveCommit(dir string, c *Commit) error {
 		return fmt.Errorf("write commit object: %w", err)
 	}
 
-	return writeHEAD(dir, c.Hash)
+	// Advance the current branch tip (or HEAD directly for detached HEAD).
+	return advanceHEAD(dir, c.Hash)
 }
 
 // LoadCommit reads, decompresses, and deserializes the commit identified by hash.
@@ -85,21 +94,85 @@ func LoadCommit(dir, hash string) (*Commit, error) {
 	return &c, nil
 }
 
-// ReadHEAD returns the hash stored in HEAD, or "" when the repo is empty.
+// ReadHEAD resolves HEAD and returns the current commit hash.
+// Returns "" when the repo has no commits yet.
 func ReadHEAD(dir string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(dir, RepoDirName, headFileName)) //nolint:gosec
+	raw, err := os.ReadFile(filepath.Join(dir, RepoDirName, headFileName)) //nolint:gosec
 	if err != nil {
 		return "", fmt.Errorf("read HEAD: %w", err)
 	}
-	return string(data), nil
+	content := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(content, symbolicRefPrefix) {
+		ref := strings.TrimPrefix(content, symbolicRefPrefix)
+		return readRef(dir, ref)
+	}
+	return content, nil
 }
 
-func writeHEAD(dir, hash string) error {
-	path := filepath.Join(dir, RepoDirName, headFileName)
+// CurrentBranch returns the branch name HEAD points to, or "" for detached HEAD.
+func CurrentBranch(dir string) (string, error) {
+	raw, err := os.ReadFile(filepath.Join(dir, RepoDirName, headFileName)) //nolint:gosec
+	if err != nil {
+		return "", fmt.Errorf("read HEAD: %w", err)
+	}
+	content := strings.TrimSpace(string(raw))
+	if !strings.HasPrefix(content, symbolicRefPrefix) {
+		return "", nil // detached HEAD
+	}
+	ref := strings.TrimPrefix(content, symbolicRefPrefix)
+	prefix := refsDirName + "/" + headsDirName + "/"
+	return strings.TrimPrefix(ref, prefix), nil
+}
+
+// writeRef writes hash to the ref file at refs/<refPath> inside the repo.
+func writeRef(dir, refPath, hash string) error {
+	path := filepath.Join(dir, RepoDirName, refPath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return fmt.Errorf("create ref dir: %w", err)
+	}
 	if err := os.WriteFile(path, []byte(hash), 0o640); err != nil {
+		return fmt.Errorf("write ref %s: %w", refPath, err)
+	}
+	return nil
+}
+
+// readRef reads the hash stored in a ref file. Returns "" if the file does not
+// exist yet (branch exists but has no commits).
+func readRef(dir, refPath string) (string, error) {
+	path := filepath.Join(dir, RepoDirName, refPath)
+	data, err := os.ReadFile(path) //nolint:gosec
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read ref %s: %w", refPath, err)
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// writeHEAD writes a raw value (symbolic ref or hash) into HEAD.
+func writeHEAD(dir, value string) error {
+	path := filepath.Join(dir, RepoDirName, headFileName)
+	if err := os.WriteFile(path, []byte(value), 0o640); err != nil {
 		return fmt.Errorf("write HEAD: %w", err)
 	}
 	return nil
+}
+
+// advanceHEAD advances the current branch tip to hash, or writes hash directly
+// if HEAD is in detached state.
+func advanceHEAD(dir, hash string) error {
+	raw, err := os.ReadFile(filepath.Join(dir, RepoDirName, headFileName)) //nolint:gosec
+	if err != nil {
+		return fmt.Errorf("read HEAD: %w", err)
+	}
+	content := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(content, symbolicRefPrefix) {
+		ref := strings.TrimPrefix(content, symbolicRefPrefix)
+		return writeRef(dir, ref, hash)
+	}
+	// Detached HEAD: write hash directly.
+	return writeHEAD(dir, hash)
 }
 
 // ComputeHash derives a deterministic SHA-256 hash for c.
