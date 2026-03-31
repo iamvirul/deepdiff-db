@@ -78,14 +78,12 @@ func CreateBranch(dir, name, fromHash string) error {
 	}
 
 	refPath := refsDirName + "/" + headsDirName + "/" + name
-	existing, err := readRef(dir, refPath)
-	if err != nil {
-		return err
-	}
-	if existing != "" {
+	refFile := filepath.Join(dir, RepoDirName, refPath)
+	if _, err := os.Stat(refFile); err == nil {
 		return fmt.Errorf("branch %q already exists", name)
 	}
 
+	var err error
 	if fromHash == "" {
 		fromHash, err = ReadHEAD(dir)
 		if err != nil {
