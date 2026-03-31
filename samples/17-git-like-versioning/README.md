@@ -207,9 +207,13 @@ The generated script undoes every change introduced between the V3 snapshot and 
 After running the demo, committed objects are stored in:
 ```
 .deepdiffdb/
-  HEAD              — hash of the latest commit
+  HEAD                    — symbolic ref: "ref: refs/heads/main"
   objects/
-    <sha256>.json   — one file per commit (schema diff + data diff + schemas)
+    <2-char>/
+      <62-char>           — zlib-compressed commit object (Git fanout layout)
+  refs/
+    heads/
+      main                — tip hash for the main branch
 ```
 
 ## Teardown
