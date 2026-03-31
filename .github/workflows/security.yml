@@ -1,0 +1,32 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, development ]
+  pull_request:
+    branches: [ main, development ]
+
+jobs:
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.8'
+          cache-dependency-path: go.sum
+
+      - name: Run gosec
+        uses: securego/gosec@master
+        with:
+          args: '-exclude=G304 -exclude-generated -severity medium ./...'
+
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

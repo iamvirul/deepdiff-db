@@ -1,6 +1,7 @@
 # DeepDiff DB
 
 [![CI](https://github.com/iamvirul/deepdiff-db/actions/workflows/ci.yml/badge.svg)](https://github.com/iamvirul/deepdiff-db/actions/workflows/ci.yml)
+[![Security Scan](https://github.com/iamvirul/deepdiff-db/actions/workflows/security.yml/badge.svg)](https://github.com/iamvirul/deepdiff-db/actions/workflows/security.yml)
 [![Release](https://img.shields.io/github/v/release/iamvirul/deepdiff-db?color=6366f1)](https://github.com/iamvirul/deepdiff-db/releases/latest)
 [![codecov](https://codecov.io/gh/iamvirul/deepdiff-db/branch/main/graph/badge.svg?token=Y9IORTUBAH)](https://codecov.io/gh/iamvirul/deepdiff-db)
 [![Go Report Card](https://goreportcard.com/badge/github.com/iamvirul/deepdiff-db)](https://goreportcard.com/report/github.com/iamvirul/deepdiff-db)
