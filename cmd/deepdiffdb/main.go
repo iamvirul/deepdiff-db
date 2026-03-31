@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
@@ -24,6 +25,7 @@ import (
 	"github.com/iamvirul/deepdiff-db/internal/drivers"
 	htmlreport "github.com/iamvirul/deepdiff-db/internal/report/html"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
+	vcs "github.com/iamvirul/deepdiff-db/internal/version"
 	"github.com/iamvirul/deepdiff-db/pkg/config"
 	"github.com/iamvirul/deepdiff-db/pkg/logger"
 	"github.com/iamvirul/deepdiff-db/pkg/progress"
@@ -204,10 +206,12 @@ func run(args []string) error {
 		return runApply(args[1:])
 	case "resolve-conflicts":
 		return runResolveConflicts(args[1:])
+	case "version":
+		return runVersion(args[1:])
 	case "-h", "--help", "help":
 		printUsage()
 		return nil
-	case "-v", "--version", "version":
+	case "-v", "--version":
 		printVersion()
 		return nil
 	default:
@@ -1453,6 +1457,7 @@ Commands:
   gen-pack          Generate SQL migration pack (supports --html, --resume)
   apply             Apply migration pack (supports --resume)
   resolve-conflicts Interactively resolve pending conflicts (supports --resume)
+  version           Git-like versioning for DB diffs (init/commit/log/diff/rollback)
 
 Global Flags:
   -v, --version   Show version information
@@ -1483,4 +1488,417 @@ func printVersion() {
 	if buildTime != "unknown" {
 		fmt.Printf("  Build Time: %s\n", buildTime)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// version subcommand group
+// ---------------------------------------------------------------------------
+
+func runVersion(args []string) error {
+	if len(args) == 0 {
+		printVersionUsage()
+		return nil
+	}
+	switch args[0] {
+	case "init":
+		return runVersionInit(args[1:])
+	case "commit":
+		return runVersionCommit(args[1:])
+	case "log":
+		return runVersionLog(args[1:])
+	case "diff":
+		return runVersionDiff(args[1:])
+	case "rollback":
+		return runVersionRollback(args[1:])
+	case "-h", "--help", "help":
+		printVersionUsage()
+		return nil
+	default:
+		printVersionUsage()
+		return fmt.Errorf("unknown version subcommand %q", args[0])
+	}
+}
+
+func printVersionUsage() {
+	exe := filepath.Base(os.Args[0])
+	fmt.Printf(`DeepDiff DB — version subcommands
+
+Usage:
+  %[1]s version <subcommand> [flags]
+
+Subcommands:
+  init                    Initialise a version repository in .deepdiffdb/
+  commit                  Run a diff and store the result as a new commit
+  log                     Show commit history
+  diff  <hash1> <hash2>   Compare schema evolution between two commits
+  rollback <hash>         Generate rollback SQL for a commit
+
+Flags for commit:
+  --config   Path to config file (default: deepdiffdb.config.yaml)
+  --message  Commit message (required)
+  --author   Author name (default: current user)
+
+Flags for log:
+  --limit    Maximum number of commits to show (default: 20)
+
+Flags for rollback:
+  --driver   Database driver override (mysql/postgres/sqlite/mssql/oracle)
+  --out      Write SQL to file instead of stdout
+`, exe)
+}
+
+// runVersionInit initialises a .deepdiffdb/ repo in the current directory.
+func runVersionInit(args []string) error {
+	fs := flag.NewFlagSet("version init", flag.ContinueOnError)
+	dir := fs.String("dir", ".", "Directory to initialise (default: current directory)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if vcs.IsInitialized(*dir) {
+		fmt.Println("Version repository already initialised.")
+		return nil
+	}
+	if err := vcs.Init(*dir); err != nil {
+		return err
+	}
+	fmt.Printf("Initialised version repository in %s/%s\n", *dir, vcs.RepoDirName)
+	return nil
+}
+
+// runVersionCommit runs a full schema+data diff and stores it as a new commit.
+func runVersionCommit(args []string) error {
+	fs := flag.NewFlagSet("version commit", flag.ContinueOnError)
+	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	message := fs.String("message", "", "Commit message (required)")
+	author := fs.String("author", "", "Author name")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *message == "" {
+		return fmt.Errorf("--message is required")
+	}
+
+	dir := "."
+	if !vcs.IsInitialized(dir) {
+		return fmt.Errorf("no version repository found; run 'deepdiffdb version init' first")
+	}
+
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	ctx := logger.ToContext(context.Background(), log)
+
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
+	if err != nil {
+		return fmt.Errorf("prod connection: %w", err)
+	}
+	defer prodDB.Close()
+
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
+	if err != nil {
+		return fmt.Errorf("dev connection: %w", err)
+	}
+	defer devDB.Close()
+
+	log.Info("loading schemas")
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("load prod schema: %w", err)
+	}
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables)
+	if err != nil {
+		return fmt.Errorf("load dev schema: %w", err)
+	}
+
+	log.Info("comparing schemas")
+	schemaDiff := schema.DiffSchemas(prodSchema, devSchema)
+
+	log.Info("comparing data")
+	ignoreColumn := content.IgnoreMatcher(cfg.Ignore.Columns)
+	batchSize := resolveBatchSize(0, cfg.Performance.HashBatchSize)
+	maxParallel := resolveParallel(0, cfg.Performance.MaxParallelTables)
+
+	sharedProd := make(map[string]schema.Table)
+	sharedDev := make(map[string]schema.Table)
+	for name, pt := range prodSchema.Tables {
+		if dt, ok := devSchema.Tables[name]; ok {
+			sharedProd[name] = pt
+			sharedDev[name] = dt
+		}
+	}
+
+	prodHashes, err := hashTablesParallel(ctx, sharedProd, prodDB, cfg.Prod.Driver, ignoreColumn, batchSize, maxParallel)
+	if err != nil {
+		return fmt.Errorf("hash prod tables: %w", err)
+	}
+	devHashes, err := hashTablesParallel(ctx, sharedDev, devDB, cfg.Dev.Driver, ignoreColumn, batchSize, maxParallel)
+	if err != nil {
+		return fmt.Errorf("hash dev tables: %w", err)
+	}
+	dataDiff, _ := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
+
+	head, err := vcs.ReadHEAD(dir)
+	if err != nil {
+		return fmt.Errorf("read HEAD: %w", err)
+	}
+
+	authorName := *author
+	if authorName == "" {
+		authorName = os.Getenv("USER")
+		if authorName == "" {
+			authorName = "unknown"
+		}
+	}
+
+	c := &vcs.Commit{
+		Parent:     head,
+		Timestamp:  nowUTC(),
+		Author:     authorName,
+		Message:    *message,
+		Driver:     cfg.Prod.Driver,
+		SchemaDiff: schemaDiff,
+		DataDiff:   dataDiff,
+		ProdSchema: prodSchema,
+		DevSchema:  devSchema,
+	}
+
+	hash, err := vcs.ComputeHash(c)
+	if err != nil {
+		return fmt.Errorf("compute commit hash: %w", err)
+	}
+
+	if err := vcs.SaveCommit(dir, c); err != nil {
+		return fmt.Errorf("save commit: %w", err)
+	}
+
+	fmt.Printf("[%s] %s\n", hash[:8], *message)
+	if schemaDiff.HasDrift() {
+		fmt.Println("  Schema drift detected.")
+	}
+	if dataDiff.HasChanges() {
+		fmt.Println("  Data differences detected.")
+	}
+	if !schemaDiff.HasDrift() && !dataDiff.HasChanges() {
+		fmt.Println("  No differences found (clean snapshot).")
+	}
+	return nil
+}
+
+// runVersionLog prints the commit history from HEAD backwards.
+func runVersionLog(args []string) error {
+	fs := flag.NewFlagSet("version log", flag.ContinueOnError)
+	limit := fs.Int("limit", 20, "Maximum number of commits to display")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	dir := "."
+	if !vcs.IsInitialized(dir) {
+		return fmt.Errorf("no version repository found; run 'deepdiffdb version init' first")
+	}
+
+	head, err := vcs.ReadHEAD(dir)
+	if err != nil {
+		return fmt.Errorf("read HEAD: %w", err)
+	}
+	if head == "" {
+		fmt.Println("No commits yet.")
+		return nil
+	}
+
+	hash := head
+	for i := 0; i < *limit && hash != ""; i++ {
+		c, err := vcs.LoadCommit(dir, hash)
+		if err != nil {
+			return fmt.Errorf("load commit: %w", err)
+		}
+		schemaDriftMark := ""
+		if c.SchemaDiff.HasDrift() {
+			schemaDriftMark = " [schema drift]"
+		}
+		dataMark := ""
+		if c.DataDiff.HasChanges() {
+			dataMark = " [data changes]"
+		}
+		fmt.Printf("commit %s\n", c.Hash)
+		fmt.Printf("Author: %s\n", c.Author)
+		fmt.Printf("Date:   %s\n", c.Timestamp.Format("2006-01-02 15:04:05 -0700"))
+		fmt.Printf("\n    %s%s%s\n\n", c.Message, schemaDriftMark, dataMark)
+		hash = c.Parent
+	}
+	return nil
+}
+
+// runVersionDiff compares schema evolution between two commits.
+func runVersionDiff(args []string) error {
+	fs := flag.NewFlagSet("version diff", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() < 2 {
+		return fmt.Errorf("usage: deepdiffdb version diff <hash1> <hash2>")
+	}
+
+	dir := "."
+	if !vcs.IsInitialized(dir) {
+		return fmt.Errorf("no version repository found; run 'deepdiffdb version init' first")
+	}
+
+	h1, h2 := fs.Arg(0), fs.Arg(1)
+	c1, err := vcs.LoadCommit(dir, h1)
+	if err != nil {
+		return fmt.Errorf("load commit %s: %w", h1[:min8(h1)], err)
+	}
+	c2, err := vcs.LoadCommit(dir, h2)
+	if err != nil {
+		return fmt.Errorf("load commit %s: %w", h2[:min8(h2)], err)
+	}
+
+	diff, err := vcs.InterVersionDiff(c1, c2)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Schema evolution from %s (%s) → %s (%s)\n\n",
+		c1.Hash[:8], c1.Message, c2.Hash[:8], c2.Message)
+
+	if !diff.HasDrift() {
+		fmt.Println("No schema changes between these commits.")
+		return nil
+	}
+
+	for _, t := range diff.AddedTables {
+		fmt.Printf("  + TABLE %s (added)\n", t.Name)
+	}
+	for _, name := range diff.RemovedTables {
+		fmt.Printf("  - TABLE %s (removed)\n", name)
+	}
+	for _, td := range diff.Tables {
+		if !td.HasDifferences || td.OnlyInDev || td.OnlyInProd {
+			continue
+		}
+		fmt.Printf("  ~ TABLE %s\n", td.Name)
+		for _, col := range td.AddedColumns {
+			fmt.Printf("      + COLUMN %s %s\n", col.Name, col.DataType)
+		}
+		for _, col := range td.RemovedColumns {
+			fmt.Printf("      - COLUMN %s %s\n", col.Name, col.DataType)
+		}
+		for _, cd := range td.ModifiedColumns {
+			fmt.Printf("      ~ COLUMN %s  (%s → %s)\n", cd.Column, cd.ProdType, cd.DevType)
+		}
+		for _, idx := range td.AddedIndexes {
+			fmt.Printf("      + INDEX %s\n", idx.Name)
+		}
+		for _, idx := range td.RemovedIndexes {
+			fmt.Printf("      - INDEX %s\n", idx.Name)
+		}
+	}
+	return nil
+}
+
+// runVersionRollback generates rollback SQL for a given commit.
+func runVersionRollback(args []string) error {
+	fs := flag.NewFlagSet("version rollback", flag.ContinueOnError)
+	driverFlag := fs.String("driver", "", "Database driver override (mysql/postgres/sqlite/mssql/oracle)")
+	outFlag := fs.String("out", "", "Write SQL to file (default: stdout)")
+	if err := fs.Parse(reorderFlagsFirst(args, map[string]bool{"driver": true, "out": true})); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: deepdiffdb version rollback <hash>")
+	}
+
+	dir := "."
+	if !vcs.IsInitialized(dir) {
+		return fmt.Errorf("no version repository found; run 'deepdiffdb version init' first")
+	}
+
+	hash := fs.Arg(0)
+	c, err := vcs.LoadCommit(dir, hash)
+	if err != nil {
+		return fmt.Errorf("load commit: %w", err)
+	}
+
+	sql, err := vcs.GenerateRollbackSQL(c, *driverFlag)
+	if err != nil {
+		return err
+	}
+
+	if *outFlag != "" {
+		if err := os.WriteFile(*outFlag, []byte(sql), 0o640); err != nil {
+			return fmt.Errorf("write rollback SQL: %w", err)
+		}
+		fmt.Printf("Rollback SQL written to %s\n", *outFlag)
+		return nil
+	}
+	fmt.Println(sql)
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// helpers used by version commands
+// ---------------------------------------------------------------------------
+
+func nowUTC() time.Time {
+	return time.Now().UTC()
+}
+
+func min8(s string) int {
+	if len(s) >= 8 {
+		return 8
+	}
+	return len(s)
+}
+
+// reorderFlagsFirst moves flag tokens (--flag [value]) before positional args
+// so that the standard flag.FlagSet can parse them even when the user places
+// positional args before flags (e.g. "rollback <hash> --out file").
+//
+// The knownValueFlags set lists flags that consume the next token as their
+// value.  Bool flags (no value token) must NOT be listed there.
+func reorderFlagsFirst(args []string, knownValueFlags map[string]bool) []string {
+	var flagTokens []string
+	var positionals []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if len(arg) > 1 && arg[0] == '-' {
+			// Strip leading dashes to get the flag name.
+			name := arg[1:]
+			if len(name) > 0 && name[0] == '-' {
+				name = name[1:] // handle --flag
+			}
+			// Strip =value if present (--flag=value form).
+			if idx := len(name); idx > 0 {
+				for j, c := range name {
+					if c == '=' {
+						name = name[:j]
+						break
+					}
+				}
+			}
+			flagTokens = append(flagTokens, arg)
+			if knownValueFlags[name] && i+1 < len(args) && (len(args[i+1]) == 0 || args[i+1][0] != '-') {
+				i++
+				flagTokens = append(flagTokens, args[i])
+			}
+		} else {
+			positionals = append(positionals, arg)
+		}
+	}
+	return append(flagTokens, positionals...)
 }
