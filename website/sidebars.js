@@ -8,7 +8,7 @@ const sidebars = {
     },
     {
       type: 'category', label: 'Commands',
-      items: ['commands/index', 'commands/check', 'commands/schema-diff', 'commands/schema-migrate', 'commands/diff', 'commands/gen-pack', 'commands/apply', 'commands/resolve-conflicts'],
+      items: ['commands/index', 'commands/check', 'commands/schema-diff', 'commands/schema-migrate', 'commands/diff', 'commands/gen-pack', 'commands/apply', 'commands/resolve-conflicts', 'commands/version'],
     },
     {
       type: 'category', label: 'Database Support',
@@ -16,7 +16,7 @@ const sidebars = {
     },
     {
       type: 'category', label: 'Features',
-      items: ['features/streaming', 'features/html-reports', 'features/conflict-resolution', 'features/checkpoint-resume', 'features/logging'],
+      items: ['features/git-versioning', 'features/streaming', 'features/html-reports', 'features/conflict-resolution', 'features/checkpoint-resume', 'features/logging'],
     },
     {
       type: 'category', label: 'Deployment',
