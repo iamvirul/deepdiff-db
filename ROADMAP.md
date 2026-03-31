@@ -8,7 +8,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v1.5.0 — Git-like Versioning 🎉
+## Current Status: v1.1.0 — Git-like Versioning 🎉
 
 **Last Release:** 2026-03-31
 
@@ -38,7 +38,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ## Completed Releases
 
-### v1.5.0: Git-like Versioning for DB Diffs (Released 2026-03-31)
+### v1.1.0: Git-like Versioning for DB Diffs (Released 2026-04-01)
 
 **Features Delivered:**
 - `version init` — initialises `.deepdiffdb/` repository (objects store + HEAD file) in the working directory
@@ -181,7 +181,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ### Phase 2 Features
 
-1. ~~**Git-like Versioning for DB Diffs**~~ ✅ **Released in v1.5.0 (2026-03-31)**
+1. ~~**Git-like Versioning for DB Diffs**~~ ✅ **Released in v1.1.0 (2026-04-01)**
    - ~~Store diff history~~ → `version commit` — SHA-256 content-addressable commit objects in `.deepdiffdb/objects/`
    - ~~Diff between any two versions~~ → `version diff <h1> <h2>` — schema evolution comparison
    - ~~Rollback capabilities~~ → `version rollback <hash>` — driver-aware rollback SQL generation
