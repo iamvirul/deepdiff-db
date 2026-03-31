@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Git-like branch support for `version`** — `version branch`, `version checkout`, `version tree`
+  - `version branch` — lists all branches with current marker and tip hash; creates a new branch when a name is given; `--from <hash>` to branch from a specific commit
+  - `version checkout <branch>` — switches HEAD to a symbolic ref pointing to the named branch; new commits advance only the checked-out branch tip
+  - `version tree` — ASCII commit graph showing all branches with lane columns, `HEAD -> branch` decoration, short hash, date, and message (newest-first)
+  - HEAD is now stored as a Git-style symbolic ref (`ref: refs/heads/main`) rather than a bare hash; branch tips live in `.deepdiffdb/refs/heads/<name>`
+  - New `internal/version` files: `branch.go`, `tree.go`
+  - 39 new unit tests covering store symbolic refs, branch lifecycle, and tree rendering (`tests/version/`)
+
 ## [1.5.0] - 2026-03-31
 
 ### Added

@@ -17,7 +17,7 @@ DeepDiff DB exposes a set of focused commands. Each command does one thing; chai
 | `gen-pack` | Generate a complete SQL migration pack (schema + data) |
 | `apply` | Apply a migration pack to the production database |
 | `resolve-conflicts` | Interactively (or automatically) resolve data conflicts |
-| `version` | Git-like versioning: commit diff snapshots, browse history, compare versions, generate rollback SQL |
+| `version` | Git-like versioning: commit diff snapshots, browse history, compare versions, generate rollback SQL, manage branches, visualise commit graph |
 
 ## Global Flags
 

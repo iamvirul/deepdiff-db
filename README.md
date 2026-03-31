@@ -497,6 +497,9 @@ deepdiffdb version <subcommand> [flags]
 | `version log` | Show the commit history from most recent to oldest |
 | `version diff <h1> <h2>` | Compare schema evolution between two commits |
 | `version rollback <hash>` | Generate rollback SQL to undo the changes in a commit |
+| `version branch [<name>]` | List branches, or create a new one |
+| `version checkout <branch>` | Switch to a branch |
+| `version tree` | Show ASCII commit graph for all branches |
 
 #### Example Workflow
 
@@ -504,23 +507,31 @@ deepdiffdb version <subcommand> [flags]
 # Initialise once per project
 deepdiffdb version init
 
-# Commit a snapshot whenever prod/dev diverges
+# Commit a baseline snapshot
 deepdiffdb version commit --config deepdiffdb.config.yaml --message "V1: baseline" --author "Alice"
 
-# After applying schema changes to dev:
+# Create a feature branch and switch to it
+deepdiffdb version branch feature
+deepdiffdb version checkout feature
+
+# After applying schema changes to dev, commit on the feature branch
 deepdiffdb version commit --config deepdiffdb.config.yaml --message "V2: add reviews table" --author "Bob"
 
-# Browse history
-deepdiffdb version log
+# Switch back to main and commit a hotfix
+deepdiffdb version checkout main
+deepdiffdb version commit --config deepdiffdb.config.yaml --message "V2: hotfix index" --author "Alice"
+
+# Browse history with an ASCII branch graph
+deepdiffdb version tree
 
 # See what changed between two commits
 deepdiffdb version diff <hash_v1> <hash_v2>
 
-# Generate rollback SQL for a commit (flags before positional hash)
+# Generate rollback SQL for a commit
 deepdiffdb version rollback --out rollback.sql <hash_v2>
 ```
 
-**Storage:** Commits are stored as JSON files in `.deepdiffdb/objects/` (content-addressable by SHA-256 hash). Add `.deepdiffdb/` to your `.gitignore` or commit it to share history with your team.
+**Storage:** Commits are stored as zlib-compressed objects in `.deepdiffdb/objects/<2-char>/<62-char>` (Git-style fanout, content-addressable by SHA-256). Branch tips live in `.deepdiffdb/refs/heads/<name>`; HEAD is a symbolic ref (`ref: refs/heads/main`). Add `.deepdiffdb/` to your `.gitignore` or commit it to share history with your team.
 
 **Rollback SQL:** Each commit stores full schema snapshots, so rollback SQL can be generated at any time without a live database. Destructive operations (DROP TABLE, DROP COLUMN) are commented out by default — identical safety behaviour to `schema-migrate`.
 

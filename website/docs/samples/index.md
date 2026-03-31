@@ -26,7 +26,7 @@ The `samples/` directory in the repository contains 17 self-contained example pr
 | 14 | [streaming-large-datasets](https://github.com/iamvirul/deepdiff-db/tree/main/samples/14-streaming-large-datasets) | Large dataset streaming with batch-size and parallel flags | SQLite | No |
 | 15 | [mssql-support](https://github.com/iamvirul/deepdiff-db/tree/main/samples/15-mssql-support) | Full MSSQL workflow: schema diff, data diff, gen-pack, apply | MSSQL | Yes |
 | 16 | [oracle-support](https://github.com/iamvirul/deepdiff-db/tree/main/samples/16-oracle-support) | Full Oracle workflow: schema drift, data diff, gen-pack, apply | Oracle | Yes |
-| 17 | [git-like-versioning](https://github.com/iamvirul/deepdiff-db/tree/main/samples/17-git-like-versioning) | Git-like versioning: commit snapshots, browse history, compare versions, generate rollback SQL | MySQL | Yes |
+| 17 | [git-like-versioning](https://github.com/iamvirul/deepdiff-db/tree/main/samples/17-git-like-versioning) | Git-like versioning: commit snapshots, branches, checkout, ASCII tree graph, compare versions, generate rollback SQL | MySQL | Yes |
 
 ## Running a SQLite Sample
 

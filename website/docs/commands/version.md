@@ -4,7 +4,7 @@ sidebar_position: 9
 
 # version
 
-Git-like versioning for database diffs. Stores schema and data diff snapshots as commits so you can browse history, compare any two points in time, and generate rollback SQL — all without a live database connection after the commit is taken.
+Git-like versioning for database diffs. Stores schema and data diff snapshots as commits so you can browse history, compare any two points in time, generate rollback SQL, and manage parallel lines of schema evolution through branches — all without a live database connection after the commit is taken.
 
 ## Overview
 
@@ -19,6 +19,9 @@ deepdiffdb version <subcommand> [flags]
 | [`version log`](#version-log) | Show commit history from newest to oldest |
 | [`version diff`](#version-diff) | Compare schema evolution between two commits |
 | [`version rollback`](#version-rollback) | Generate rollback SQL to undo the changes in a commit |
+| [`version branch`](#version-branch) | List branches, or create a new one |
+| [`version checkout`](#version-checkout) | Switch to a branch |
+| [`version tree`](#version-tree) | Show ASCII commit graph for all branches |
 
 ---
 
@@ -42,8 +45,11 @@ deepdiffdb version init
 
 ```
 .deepdiffdb/
-  HEAD              ← hash of the latest commit (empty on a fresh repo)
-  objects/          ← one JSON file per commit
+  HEAD                  ← symbolic ref: "ref: refs/heads/main"
+  objects/              ← zlib-compressed commit objects (Git fanout layout)
+  refs/
+    heads/
+      main              ← tip hash for the main branch (created on first commit)
 ```
 
 ### Example
@@ -58,13 +64,13 @@ deepdiffdb version init
 
 ## version commit
 
-Connects to both databases, runs a full schema and data diff (identical to the `diff` command), and stores the result as a new commit object.
+Connects to both databases, runs a full schema and data diff (identical to the `diff` command), and stores the result as a new commit object on the **currently checked-out branch**.
 
 Each commit records:
 - Author, message, timestamp
 - The full `schema.DiffResult` and `content.DataDiff`
 - Both `ProdSchema` and `DevSchema` snapshots (used for offline rollback generation)
-- A SHA-256 hash derived from the metadata and diff content
+- A SHA-256 hash derived from the content (Git-style `"commit <size>\x00<json>"` header)
 
 ### Usage
 
@@ -99,8 +105,10 @@ deepdiffdb version commit \
 
 ### Commit object location
 
+Objects are stored using Git's 2-character fanout layout to avoid directory entry limits:
+
 ```
-.deepdiffdb/objects/<sha256>.json
+.deepdiffdb/objects/<first-2-chars-of-hash>/<remaining-62-chars>
 ```
 
 ---
@@ -198,7 +206,7 @@ Requires no live database connection.
 # Print rollback SQL to stdout
 deepdiffdb version rollback <hash>
 
-# Write to file (flags must come before the hash)
+# Write to file
 deepdiffdb version rollback --out rollback.sql <hash>
 
 # Override the SQL dialect
@@ -211,10 +219,6 @@ deepdiffdb version rollback --driver postgres <hash>
 |---|---|---|
 | `--out` | _(stdout)_ | Write SQL to this file instead of printing |
 | `--driver` | _(from commit)_ | Override the database driver (`mysql`, `postgres`, `sqlite`, `mssql`, `oracle`) |
-
-:::note Flag ordering
-Due to Go's standard flag parser, `--out` and `--driver` must appear **before** the positional hash argument.
-:::
 
 ### Example
 
@@ -248,16 +252,118 @@ Uncomment the statements you want to apply, review, and execute against the targ
 
 ---
 
+## version branch
+
+Lists all branches in the repository, or creates a new one.
+
+### Usage
+
+```bash
+# List branches
+deepdiffdb version branch
+
+# Create a new branch from current HEAD
+deepdiffdb version branch <name>
+
+# Create a new branch from a specific commit
+deepdiffdb version branch <name> --from <hash>
+```
+
+### Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--from` | _(current HEAD)_ | Hash to branch from |
+
+### Example
+
+```bash
+# After committing V1 on main, create a feature branch
+deepdiffdb version branch feature
+
+# Branch list shows current branch with *
+deepdiffdb version branch
+#   feature 18bf631b
+# * main    18bf631b
+
+# Create a hotfix branch branching off an older commit
+deepdiffdb version branch hotfix --from cad39fda
+```
+
+---
+
+## version checkout
+
+Switches HEAD to point to the named branch. All subsequent `version commit` calls advance only the checked-out branch tip — other branches remain at their last commit.
+
+### Usage
+
+```bash
+deepdiffdb version checkout <branch>
+```
+
+### Example
+
+```bash
+deepdiffdb version checkout feature
+# Switched to branch "feature".
+
+# Commits now go to feature branch
+deepdiffdb version commit --message "V2: experimental index" --author "Bob"
+
+# Switch back to main
+deepdiffdb version checkout main
+# Switched to branch "main".
+```
+
+:::note
+Returns an error if the branch does not exist. Create it first with `version branch <name>`.
+:::
+
+---
+
+## version tree
+
+Renders an ASCII commit graph showing all branches, their lane columns, HEAD decoration, short hash, date, and message — newest commit at the top.
+
+### Usage
+
+```bash
+deepdiffdb version tree
+```
+
+### Example output
+
+```
+| * e2a3d002 (feature)        2026-03-31  V2: category link + customer email
+* | 761e26c5 (HEAD -> main)   2026-03-31  V3: reviews + avg_rating
+* | 18bf631b                  2026-03-31  V1: baseline schema
+```
+
+Each column in the graph represents a branch lane:
+- `*` — the commit belongs to this lane's branch
+- `|` — this lane is active but the commit is on another branch
+- `(HEAD -> main)` — the current branch and its latest commit
+- `(feature)` — a non-current branch tip
+
+---
+
 ## Storage Layout
 
 ```
 .deepdiffdb/
-  HEAD                          ← current commit hash (or empty string)
+  HEAD                          ← symbolic ref: "ref: refs/heads/<branch>"
   objects/
-    <sha256>.json               ← one file per commit
+    <2-hex>/
+      <62-hex>                  ← zlib-compressed commit object (Git fanout)
+  refs/
+    heads/
+      main                      ← tip hash for the main branch
+      feature                   ← tip hash for the feature branch
+      <branch>                  ← one file per branch
 ```
 
-Each commit file is self-contained JSON — it includes all diff results and schema snapshots, so the entire history is portable (commit the `.deepdiffdb/` directory to share with your team, or add it to `.gitignore` to keep it local).
+Each commit object is self-contained — it includes all diff results and schema snapshots, so the entire history is portable. Commit the `.deepdiffdb/` directory to share history with your team, or add it to `.gitignore` to keep it local.
 
 ---
 
@@ -270,19 +376,27 @@ deepdiffdb version init
 # 2. Commit baseline (prod == dev)
 deepdiffdb version commit --message "V1: baseline" --author "Alice"
 
-# 3. Developer applies schema changes to dev database
+# 3. Create a feature branch for experimental schema work
+deepdiffdb version branch feature
+deepdiffdb version checkout feature
+
+# 4. Developer applies schema changes to dev database
 #    (ALTER TABLE, CREATE TABLE, etc.)
 
-# 4. Commit the drift
+# 5. Commit the drift on the feature branch
 deepdiffdb version commit --message "V2: add reviews table" --author "Bob"
 
-# 5. Review history
-deepdiffdb version log
+# 6. Switch back to main for a production hotfix
+deepdiffdb version checkout main
+deepdiffdb version commit --message "V2: hotfix — drop unused index" --author "Alice"
 
-# 6. See exactly what changed sprint-over-sprint
+# 7. Visualise the full branch history
+deepdiffdb version tree
+
+# 8. See exactly what changed between two commits
 deepdiffdb version diff <hash_v1> <hash_v2>
 
-# 7. If V2 needs to be rolled back, generate the SQL
+# 9. If a commit needs to be rolled back, generate the SQL
 deepdiffdb version rollback --out rollback_v2.sql <hash_v2>
 ```
 
@@ -290,6 +404,6 @@ deepdiffdb version rollback --out rollback_v2.sql <hash_v2>
 
 ## See Also
 
-- [Sample 17: Git-like Versioning](https://github.com/iamvirul/deepdiff-db/tree/main/samples/17-git-like-versioning) — full end-to-end demo with MySQL containers
+- [Sample 17: Git-like Versioning](https://github.com/iamvirul/deepdiff-db/tree/main/samples/17-git-like-versioning) — full end-to-end demo with MySQL containers, branches, and ASCII tree
 - [`diff`](./diff.md) — the underlying diff command used by `version commit`
 - [`schema-migrate`](./schema-migrate.md) — standalone schema migration (same SQL generator as `version rollback`)
