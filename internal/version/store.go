@@ -27,7 +27,7 @@ func Init(dir string) error {
 	headPath := filepath.Join(dir, RepoDirName, headFileName)
 	if _, err := os.Stat(headPath); os.IsNotExist(err) {
 		symref := symbolicRefPrefix + refsDirName + "/" + headsDirName + "/" + defaultBranch
-		if err := os.WriteFile(headPath, []byte(symref), 0o640); err != nil {
+		if err := os.WriteFile(headPath, []byte(symref), 0o600); err != nil {
 			return fmt.Errorf("create HEAD: %w", err)
 		}
 	}
@@ -45,6 +45,9 @@ func IsInitialized(dir string) bool {
 // If HEAD is a symbolic ref, the referenced branch tip is advanced to c.Hash.
 // Otherwise HEAD is updated directly (detached HEAD mode).
 func SaveCommit(dir string, c *Commit) error {
+	if err := validateHex(c.Hash); err != nil {
+		return fmt.Errorf("invalid commit hash: %w", err)
+	}
 	raw, err := json.Marshal(c)
 	if err != nil {
 		return fmt.Errorf("marshal commit: %w", err)
@@ -62,7 +65,7 @@ func SaveCommit(dir string, c *Commit) error {
 	}
 
 	objPath := filepath.Join(objDir, c.Hash[2:])
-	if err := os.WriteFile(objPath, compressed, 0o440); err != nil {
+	if err := os.WriteFile(objPath, compressed, 0o400); err != nil { // #nosec G306 -- objects are intentionally read-only
 		return fmt.Errorf("write commit object: %w", err)
 	}
 
@@ -75,9 +78,12 @@ func LoadCommit(dir, hash string) (*Commit, error) {
 	if len(hash) < 3 {
 		return nil, fmt.Errorf("hash too short: %q", hash)
 	}
+	if err := validateHex(hash); err != nil {
+		return nil, fmt.Errorf("invalid hash: %w", err)
+	}
 
 	objPath := filepath.Join(dir, RepoDirName, objectsDirName, hash[:2], hash[2:])
-	compressed, err := os.ReadFile(objPath) //nolint:gosec
+	compressed, err := os.ReadFile(objPath) // #nosec G703 -- path constructed from hex-validated hash
 	if err != nil {
 		return nil, fmt.Errorf("read commit %s: %w", shortHash(hash), err)
 	}
@@ -125,12 +131,13 @@ func CurrentBranch(dir string) (string, error) {
 }
 
 // writeRef writes hash to the ref file at refs/<refPath> inside the repo.
+// refPath is always constructed from validated internal constants + branch names.
 func writeRef(dir, refPath, hash string) error {
 	path := filepath.Join(dir, RepoDirName, refPath)
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil { // #nosec G703 -- path constructed from internal constants
 		return fmt.Errorf("create ref dir: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(hash), 0o640); err != nil {
+	if err := os.WriteFile(path, []byte(hash), 0o600); err != nil { // #nosec G703 -- path constructed from internal constants
 		return fmt.Errorf("write ref %s: %w", refPath, err)
 	}
 	return nil
@@ -138,9 +145,10 @@ func writeRef(dir, refPath, hash string) error {
 
 // readRef reads the hash stored in a ref file. Returns "" if the file does not
 // exist yet (branch exists but has no commits).
+// refPath is always constructed from validated internal constants + branch names.
 func readRef(dir, refPath string) (string, error) {
 	path := filepath.Join(dir, RepoDirName, refPath)
-	data, err := os.ReadFile(path) //nolint:gosec
+	data, err := os.ReadFile(path) // #nosec G703 -- path constructed from internal constants
 	if os.IsNotExist(err) {
 		return "", nil
 	}
@@ -153,7 +161,7 @@ func readRef(dir, refPath string) (string, error) {
 // writeHEAD writes a raw value (symbolic ref or hash) into HEAD.
 func writeHEAD(dir, value string) error {
 	path := filepath.Join(dir, RepoDirName, headFileName)
-	if err := os.WriteFile(path, []byte(value), 0o640); err != nil {
+	if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
 		return fmt.Errorf("write HEAD: %w", err)
 	}
 	return nil
@@ -232,4 +240,19 @@ func shortHash(h string) string {
 		return h[:8]
 	}
 	return h
+}
+
+// validateHex returns an error if s contains any character outside [0-9a-f].
+// This is called before using a hash as a filesystem path component to prevent
+// path traversal via crafted hash strings.
+func validateHex(s string) error {
+	if s == "" {
+		return fmt.Errorf("empty hash")
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return fmt.Errorf("invalid character %q in hash", c)
+		}
+	}
+	return nil
 }

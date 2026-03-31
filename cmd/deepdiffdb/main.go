@@ -1852,7 +1852,7 @@ func runVersionRollback(args []string) error {
 	}
 
 	if *outFlag != "" {
-		if err := os.WriteFile(*outFlag, []byte(sql), 0o640); err != nil {
+		if err := os.WriteFile(*outFlag, []byte(sql), 0o600); err != nil {
 			return fmt.Errorf("write rollback SQL: %w", err)
 		}
 		fmt.Printf("Rollback SQL written to %s\n", *outFlag)
