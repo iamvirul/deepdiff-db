@@ -14,6 +14,7 @@ DeepDiff DB is a high-performance Go CLI tool for comparing two databases, detec
 - **Row-level diffing** — SHA-256 hashing per row for accurate change detection across any table size
 - **Conflict detection** — Identifies rows that exist in both databases with differing values, before any write
 - **Safe migration generation** — Produces transactional SQL packs reviewable before apply; destructive operations are off by default
+- **Git-like versioning** — Commit schema+data diff snapshots, browse history, compare any two commits, generate rollback SQL, and manage parallel lines of schema evolution through branches (`version init/commit/log/diff/rollback/branch/checkout/tree`)
 - **Streaming large tables** — Keyset-paginated batch hashing keeps heap flat at O(batch\_size) regardless of row count (v0.7+)
 - **Parallel table hashing** — Hash multiple tables concurrently with a configurable worker pool
 - **Interactive conflict resolution** — Side-by-side row comparison with per-conflict decisions or auto strategies
@@ -54,7 +55,7 @@ sudo mv deepdiffdb-linux-amd64 /usr/local/bin/deepdiffdb
 **Verify:**
 
 ```bash
-deepdiffdb version
+deepdiffdb --version
 ```
 
 ## Next Steps
