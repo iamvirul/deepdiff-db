@@ -46,6 +46,7 @@ DeepDiff DB makes the entire process deterministic, reviewable, and safe by:
 - **Enhanced error handling** - Rich error messages with actionable suggestions
 - **Streaming large datasets** - Keyset-paginated batch hashing keeps memory bounded at any table size
 - **Parallel table hashing** - Hash multiple tables concurrently with configurable worker pool
+- **Git-like versioning** - Commit diff snapshots, browse history, compare versions, generate rollback SQL
 
 ### Safety Features
 
@@ -478,6 +479,50 @@ Continues from a previous session by loading existing resolutions.
 
 **Output Files:**
 - `resolutions.json` - Saved resolution decisions
+
+### version
+
+Git-like versioning for database diffs. Stores schema and data diff snapshots as commits, enabling history browsing, inter-version comparison, and rollback SQL generation — all without a live database connection.
+
+```bash
+deepdiffdb version <subcommand> [flags]
+```
+
+#### Subcommands
+
+| Subcommand | Description |
+|---|---|
+| `version init` | Initialise a `.deepdiffdb/` repository in the current directory |
+| `version commit` | Run a full diff and store the result as a new commit |
+| `version log` | Show the commit history from most recent to oldest |
+| `version diff <h1> <h2>` | Compare schema evolution between two commits |
+| `version rollback <hash>` | Generate rollback SQL to undo the changes in a commit |
+
+#### Example Workflow
+
+```bash
+# Initialise once per project
+deepdiffdb version init
+
+# Commit a snapshot whenever prod/dev diverges
+deepdiffdb version commit --config deepdiffdb.config.yaml --message "V1: baseline" --author "Alice"
+
+# After applying schema changes to dev:
+deepdiffdb version commit --config deepdiffdb.config.yaml --message "V2: add reviews table" --author "Bob"
+
+# Browse history
+deepdiffdb version log
+
+# See what changed between two commits
+deepdiffdb version diff <hash_v1> <hash_v2>
+
+# Generate rollback SQL for a commit (flags before positional hash)
+deepdiffdb version rollback --out rollback.sql <hash_v2>
+```
+
+**Storage:** Commits are stored as JSON files in `.deepdiffdb/objects/` (content-addressable by SHA-256 hash). Add `.deepdiffdb/` to your `.gitignore` or commit it to share history with your team.
+
+**Rollback SQL:** Each commit stores full schema snapshots, so rollback SQL can be generated at any time without a live database. Destructive operations (DROP TABLE, DROP COLUMN) are commented out by default — identical safety behaviour to `schema-migrate`.
 
 ## Usage Examples
 

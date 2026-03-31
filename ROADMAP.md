@@ -8,9 +8,9 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v1.0 — Production Ready 🎉
+## Current Status: v1.5.0 — Git-like Versioning 🎉
 
-**Last Release:** 2026-03-22
+**Last Release:** 2026-03-31
 
 **Current Features:**
 - Schema drift detection and standalone schema migration (`schema-migrate`)
@@ -31,11 +31,23 @@ We release a new version every **Saturday**. Each release includes one or more f
 - Parallel table hashing — `--parallel N` / `performance.max_parallel_tables`
 - Bounded O(batch_size) memory during hashing regardless of table size
 - Per-batch memory telemetry at DEBUG log level (`alloc_mb`, `batch`)
-- **NEW:** Oracle Database support — pure Go driver, no Instant Client required
+- Oracle Database support — pure Go driver, no Instant Client required
+- **NEW:** Git-like versioning — `version init/commit/log/diff/rollback` with SHA-256 content-addressable commit objects and offline rollback SQL generation
 
 ---
 
 ## Completed Releases
+
+### v1.5.0: Git-like Versioning for DB Diffs (Released 2026-03-31)
+
+**Features Delivered:**
+- `version init` — initialises `.deepdiffdb/` repository (objects store + HEAD file) in the working directory
+- `version commit` — runs a full schema+data diff and stores a SHA-256 content-addressable commit object capturing both schema snapshots, drift result, and data diff
+- `version log` — walks the commit chain from HEAD with author, timestamp, and drift markers
+- `version diff <h1> <h2>` — compares dev schema snapshots of two commits and reports schema evolution (added/removed tables, column/index changes)
+- `version rollback <hash>` — generates driver-aware rollback SQL offline by inverting the stored diff; same safety defaults as `schema-migrate` (destructive ops commented out by default); `--out` and `--driver` flags
+- New `internal/version` package: `model.go`, `store.go`, `rollback.go`
+- Sample 17: Git-like Versioning — two MySQL 8 containers, three-sprint demo, automated `demo.sh`
 
 ### v0.6: Enhanced Error Handling & Logging (Released 2026-01-06)
 
@@ -169,10 +181,13 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ### Phase 2 Features
 
-1. **Git-like Versioning for DB Diffs**
-   - Store diff history
-   - Diff between any two versions
-   - Rollback capabilities
+1. ~~**Git-like Versioning for DB Diffs**~~ ✅ **Released in v1.5.0 (2026-03-31)**
+   - ~~Store diff history~~ → `version commit` — SHA-256 content-addressable commit objects in `.deepdiffdb/objects/`
+   - ~~Diff between any two versions~~ → `version diff <h1> <h2>` — schema evolution comparison
+   - ~~Rollback capabilities~~ → `version rollback <hash>` — driver-aware rollback SQL generation
+   - `version init` — repository initialisation
+   - `version log` — full commit history with drift markers
+   - See [Sample 17](https://github.com/iamvirul/deepdiff-db/tree/main/samples/17-git-like-versioning) for end-to-end demo
 
 2. **CI/CD Integration**
    - GitHub Actions plugin

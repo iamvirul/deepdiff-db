@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-03-31
+
+### Added
+- **Git-like versioning for DB diffs** (issue #16)
+  - New `version` command group: `init`, `commit`, `log`, `diff`, `rollback`
+  - `version init` — creates a `.deepdiffdb/` repository (objects store + HEAD pointer) in the current directory
+  - `version commit` — runs a full schema+data diff and stores the result as a SHA-256 content-addressable commit; records both schema snapshots so rollback SQL can be generated offline
+  - `version log` — walks the commit chain from HEAD, showing author, date, and drift markers (`[schema drift]`, `[data changes]`)
+  - `version diff <hash1> <hash2>` — compares dev schema snapshots of two commits; reports added/removed tables and column/index changes
+  - `version rollback <hash>` — generates driver-aware rollback SQL by inverting the stored diff; inherits safety defaults from `schema-migrate` (destructive ops commented out); supports `--out <file>` and `--driver` overrides
+  - Commit objects stored as JSON in `.deepdiffdb/objects/<sha256>.json`
+  - New `internal/version` package (`model.go`, `store.go`, `rollback.go`)
+- **Sample 17: Git-like Versioning** (`samples/17-git-like-versioning/`)
+  - Two MySQL 8 containers (prod 3320, dev 3321) with a `shop` e-commerce schema
+  - Three migration scripts simulating a real sprint cycle (V1 baseline → V2 FK+email → V3 reviews table)
+  - Automated `scripts/demo.sh` end-to-end walkthrough writing rollback SQL to `diff-output/`
+
 ## [1.0.0] - 2026-03-22
 
 ### Added
