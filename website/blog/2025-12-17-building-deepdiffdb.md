@@ -5,6 +5,9 @@ authors:
   - name: Virul Nirmala
     title: Creator of DeepDiff DB
     url: https://github.com/iamvirul
+  - name: Kaviru Hapuarachchi
+    title: The Idea Behind DeepDiff DB
+    url: https://github.com/Kavirubc
 date: 2025-12-17
 tags: [origin, story, databases, go, open-source]
 ---
