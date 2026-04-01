@@ -20,7 +20,13 @@ const config = {
       editUrl: 'https://github.com/iamvirul/deepdiff-db/edit/main/website/',
       showLastUpdateTime: true,
     },
-    blog: false,
+    blog: {
+      showReadingTime: true,
+      blogTitle: 'DeepDiff DB Blog',
+      blogDescription: 'Behind the scenes of building DeepDiff DB',
+      postsPerPage: 10,
+      editUrl: 'https://github.com/iamvirul/deepdiff-db/edit/main/website/',
+    },
     theme: { customCss: require.resolve('./src/css/custom.css') },
   }]],
   themeConfig: {
@@ -29,6 +35,7 @@ const config = {
       logo: { alt: 'DeepDiff DB', src: 'img/logo.svg' },
       items: [
         { type: 'docSidebar', sidebarId: 'docs', position: 'left', label: 'Docs' },
+        { to: '/blog', label: 'Blog', position: 'left' },
         { href: 'https://github.com/iamvirul/deepdiff-db', label: 'GitHub', position: 'right' },
         { href: 'https://github.com/iamvirul/deepdiff-db/releases', label: 'v1.1', position: 'right' },
       ],
