@@ -5,14 +5,11 @@ authors:
   - name: Virul Nirmala
     title: Creator of DeepDiff DB
     url: https://github.com/iamvirul
-  - name: Kaviru Hapuarachchi
-    title: The Idea Behind DeepDiff DB
-    url: https://github.com/Kavirubc
 date: 2025-12-17
 tags: [origin, story, databases, go, open-source]
 ---
 
-On the 17th of December 2025, I walked into WSO2 as a fresh intern. Two days later, I met **Kaviru Hapuarachchi** — a chance introduction that would eventually turn into the project you are reading about right now.
+On the 17th of December 2025, I walked into WSO2 as a fresh intern. Two days later, I met **[Kaviru Hapuarachchi](https://github.com/Kavirubc)** — a chance introduction that would eventually turn into the project you are reading about right now.
 
 <!-- truncate -->
 
@@ -50,11 +47,11 @@ A few months and many commits later, DeepDiff DB does quite a lot more than that
 - HTML diff reports
 - A full **Git-like versioning system** — `version commit`, `version branch`, `version checkout`, `version tree` — so you can track your database's history the same way you track code
 
-But the foundation is still exactly what Kaviru described in that hallway: a tool that makes the space between prod and dev legible and manageable.
+But the foundation is still exactly what [Kaviru](https://github.com/Kavirubc) described in that hallway: a tool that makes the space between prod and dev legible and manageable.
 
 ## Credits
 
-The idea belongs to **Kaviru Hapuarachchi**. I built it, but the insight that this gap existed and was worth solving came from him. If DeepDiff DB ever saves you from a production incident, a good chunk of that credit goes to a conversation that almost didn't happen because I was running late to a meeting.
+The idea belongs to **[Kaviru Hapuarachchi](https://github.com/Kavirubc)**. I built it, but the insight that this gap existed and was worth solving came from him. If DeepDiff DB ever saves you from a production incident, a good chunk of that credit goes to a conversation that almost didn't happen because I was running late to a meeting.
 
 ---
 
