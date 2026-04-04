@@ -8,13 +8,13 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v1.2.0 — Verified Authorship & CI/CD Hardening
+## Current Status: v1.2.0 — Verified Authorship & CI/CD Hardening 🎉
 
-**In Development** — targeting next Saturday release.
+**Released:** 2026-04-05
 
-**Scope:**
-- GitHub OAuth author verification for `version commit` (issue #77) ✅ merged
-- Documentation & website updates for v1.2.0
+**Features:**
+- GitHub OAuth author verification for `version commit` (issue #77) ✅
+- Documentation & website updates throughout
 
 ---
 
@@ -60,7 +60,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 - New `internal/version` package: `model.go`, `store.go`, `rollback.go`
 - Sample 17: Git-like Versioning — two MySQL 8 containers, three-sprint demo, automated `demo.sh`
 
-### v1.2.0: Verified Authorship & CI/CD Hardening (In Progress)
+### v1.2.0: Verified Authorship & CI/CD Hardening (Released 2026-04-05)
 
 **Scope:**
 - **GitHub OAuth author verification** (issue #77) — `version init` prompts GitHub device flow; verified `github:<username>` stored in `.deepdiffdb/config` (`0o600`); used automatically by `version commit`; `--skip-auth` for CI; `DEEPDIFFDB_GITHUB_CLIENT_ID` env var or build-time `-ldflags` injection
