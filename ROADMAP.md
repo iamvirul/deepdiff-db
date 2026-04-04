@@ -43,7 +43,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 - Per-batch memory telemetry at DEBUG log level (`alloc_mb`, `batch`)
 - Oracle Database support — pure Go driver, no Instant Client required
 - Git-like versioning — `version init/commit/log/diff/rollback` with SHA-256 content-addressable commit objects and offline rollback SQL generation
-- **NEW:** GitHub OAuth author verification — device flow auth in `version init`; verified `github:<username>` used automatically in `version commit`
+- **NEW in v1.2.0:** GitHub OAuth author verification — device flow auth in `version init`; verified `github:<username>` used automatically in `version commit`
 
 ---
 
@@ -291,5 +291,5 @@ If you'd like to contribute to any of these features, please:
 
 ---
 
-**Last Updated:** 2026-03-22
+**Last Updated:** 2026-04-05
 
