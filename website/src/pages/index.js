@@ -131,7 +131,7 @@ export default function Home() {
       <div className={styles.hero}>
         <div className={styles.heroBg} />
         <div className={styles.heroContent}>
-          <div className={styles.heroBadge}>v1.1 — Production ready release</div>
+          <div className={styles.heroBadge}>v1.2 — Verified authorship & CI/CD hardening</div>
           <h1 className={styles.heroTitle}>
             Database diff that<br />
             <span className={styles.heroGradient}>actually ships</span>
