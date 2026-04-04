@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `version commit` reads verified identity from config and uses `github:<username>` as author automatically; `--author` flag still accepted when no config identity exists (backward compatible)
   - Client ID configured via `DEEPDIFFDB_GITHUB_CLIENT_ID` env var or build-time `-ldflags` injection
   - New `internal/version/auth.go`: `RunGitHubDeviceFlow`, `LoadIdentity`, `SaveIdentity`, `ResolveClientID`
-  - 5 new unit tests in `tests/version/auth_test.go`
+  - 6 new unit tests in `tests/version/auth_test.go`
 
 ## [1.1.0] - 2026-04-01
 

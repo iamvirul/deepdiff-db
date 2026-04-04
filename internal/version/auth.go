@@ -69,6 +69,10 @@ func SaveIdentity(dir, username string) error {
 	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil { // #nosec G306
 		return fmt.Errorf("writing identity config: %w", err)
 	}
+	// WriteFile only applies permissions on creation, not on overwrite — chmod explicitly.
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("setting identity config permissions: %w", err)
+	}
 	return nil
 }
 

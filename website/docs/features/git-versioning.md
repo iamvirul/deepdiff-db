@@ -63,7 +63,7 @@ HEAD is a symbolic ref that points to the active branch. `version commit` always
 # 1. Initialise once per project — authenticate with GitHub for verified authorship
 deepdiffdb version init
 # → prompts for GitHub device flow (no browser redirect needed)
-# → stores github:iamvirul in .deepdiffdb/config; token discarded
+# → stores {"github_user":"iamvirul"} in .deepdiffdb/config; token discarded
 
 # 2. Commit baseline snapshot (prod == dev at project start)
 #    Author resolved automatically from .deepdiffdb/config

@@ -1571,14 +1571,15 @@ func runVersionInit(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if vcs.IsInitialized(*dir) {
+	alreadyInit := vcs.IsInitialized(*dir)
+	if alreadyInit {
 		fmt.Println("Version repository already initialised.")
-		return nil
+	} else {
+		if err := vcs.Init(*dir); err != nil {
+			return err
+		}
+		fmt.Printf("Initialised version repository in %s/%s\n", *dir, vcs.RepoDirName)
 	}
-	if err := vcs.Init(*dir); err != nil {
-		return err
-	}
-	fmt.Printf("Initialised version repository in %s/%s\n", *dir, vcs.RepoDirName)
 
 	if *skipAuth {
 		fmt.Println("Skipping GitHub authentication. Use --author on version commit to set your name.")
@@ -1717,9 +1718,6 @@ func runVersionCommit(args []string) error {
 		}
 	} else {
 		authorName = *author
-		if authorName == "" {
-			authorName = os.Getenv("USER")
-		}
 		if authorName == "" {
 			return fmt.Errorf("no author set: authenticate with 'version init' or pass --author <name>")
 		}

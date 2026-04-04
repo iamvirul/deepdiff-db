@@ -86,6 +86,15 @@ func TestSaveIdentityOverwrite(t *testing.T) {
 	if got != "new-user" {
 		t.Errorf("LoadIdentity = %q, want %q", got, "new-user")
 	}
+
+	// Overwrite must preserve 0600 permissions on the existing file.
+	info, err := os.Stat(filepath.Join(dir, vcs.RepoDirName, "config"))
+	if err != nil {
+		t.Fatalf("Stat config after overwrite: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("config permissions after overwrite = %o, want 0600", perm)
+	}
 }
 
 // TestLoadIdentityCorruptFile returns an error on malformed JSON.
@@ -110,24 +119,28 @@ func TestLoadIdentityCorruptFile(t *testing.T) {
 func TestResolveClientID(t *testing.T) {
 	const envKey = "DEEPDIFFDB_GITHUB_CLIENT_ID"
 
-	// Save and restore original value
-	original := os.Getenv(envKey)
+	// Save and restore original env var and GitHubClientID package variable.
+	originalEnv := os.Getenv(envKey)
+	originalClientID := vcs.GitHubClientID
 	defer func() {
-		if original == "" {
+		vcs.GitHubClientID = originalClientID
+		if originalEnv == "" {
 			os.Unsetenv(envKey) //nolint:errcheck
 		} else {
-			os.Setenv(envKey, original) //nolint:errcheck
+			os.Setenv(envKey, originalEnv) //nolint:errcheck
 		}
 	}()
 
-	// When env var is set it should take precedence
+	// When env var is set it should take precedence over the build-time default.
+	vcs.GitHubClientID = "build-client-id"
 	os.Setenv(envKey, "env-client-id") //nolint:errcheck
 	if got := vcs.ResolveClientID(); got != "env-client-id" {
 		t.Errorf("ResolveClientID with env = %q, want %q", got, "env-client-id")
 	}
 
-	// When env var is cleared, falls back to GitHubClientID (may be empty in CI)
+	// When env var is cleared, falls back to GitHubClientID.
 	os.Unsetenv(envKey) //nolint:errcheck
-	// We just assert it doesn't panic — the value depends on build-time injection
-	_ = vcs.ResolveClientID()
+	if got := vcs.ResolveClientID(); got != "build-client-id" {
+		t.Errorf("ResolveClientID fallback = %q, want %q", got, "build-client-id")
+	}
 }
