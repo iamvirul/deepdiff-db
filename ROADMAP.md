@@ -8,11 +8,21 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v1.1.0 — Git-like Versioning 🎉
+## Current Status: v1.2.0 — Verified Authorship & CI/CD Hardening 🎉
 
-**Last Release:** 2026-03-31
+**Released:** 2026-04-05
 
-**Current Features:**
+**Features:**
+- GitHub OAuth author verification for `version commit` (issue #77) ✅
+- Documentation & website updates throughout
+
+---
+
+## Previous Release: v1.1.0 — Git-like Versioning 🎉
+
+**Released:** 2026-04-01
+
+**Features:**
 - Schema drift detection and standalone schema migration (`schema-migrate`)
 - Row-level data comparison with SHA-256 hashing
 - Migration pack generation and transactional apply mode
@@ -32,7 +42,8 @@ We release a new version every **Saturday**. Each release includes one or more f
 - Bounded O(batch_size) memory during hashing regardless of table size
 - Per-batch memory telemetry at DEBUG log level (`alloc_mb`, `batch`)
 - Oracle Database support — pure Go driver, no Instant Client required
-- **NEW:** Git-like versioning — `version init/commit/log/diff/rollback` with SHA-256 content-addressable commit objects and offline rollback SQL generation
+- Git-like versioning — `version init/commit/log/diff/rollback` with SHA-256 content-addressable commit objects and offline rollback SQL generation
+- **NEW in v1.2.0:** GitHub OAuth author verification — device flow auth in `version init`; verified `github:<username>` used automatically in `version commit`
 
 ---
 
@@ -48,6 +59,12 @@ We release a new version every **Saturday**. Each release includes one or more f
 - `version rollback <hash>` — generates driver-aware rollback SQL offline by inverting the stored diff; same safety defaults as `schema-migrate` (destructive ops commented out by default); `--out` and `--driver` flags
 - New `internal/version` package: `model.go`, `store.go`, `rollback.go`
 - Sample 17: Git-like Versioning — two MySQL 8 containers, three-sprint demo, automated `demo.sh`
+
+### v1.2.0: Verified Authorship & CI/CD Hardening (Released 2026-04-05)
+
+**Scope:**
+- **GitHub OAuth author verification** (issue #77) — `version init` prompts GitHub device flow; verified `github:<username>` stored in `.deepdiffdb/config` (`0o600`); used automatically by `version commit`; `--skip-auth` for CI; `DEEPDIFFDB_GITHUB_CLIENT_ID` env var or build-time `-ldflags` injection
+- Documentation and website updated throughout for v1.2.0
 
 ### v0.6: Enhanced Error Handling & Logging (Released 2026-01-06)
 
@@ -190,31 +207,25 @@ We release a new version every **Saturday**. Each release includes one or more f
    - ~~`version branch` / `version checkout` / `version tree`~~ — branching and ASCII graph
    - See [Sample 17](https://github.com/iamvirul/deepdiff-db/tree/main/samples/17-git-like-versioning) for end-to-end demo
 
-2. **GitHub OAuth Author Verification** ✅ **Done (issue #77)**
+2. ~~**GitHub OAuth Author Verification**~~ ✅ **Shipping in v1.2.0 (issue #77)**
    - ~~`version init` GitHub device flow authentication~~
    - ~~`version commit` reads verified `github:<username>` from `.deepdiffdb/config`~~
    - ~~Build-time client ID injection via `-ldflags` in `release.yml`~~
    - ~~`DEEPDIFFDB_GITHUB_CLIENT_ID` env var override for local use~~
 
-3. **CI/CD Integration**
-   - GitHub Actions plugin
-   - GitLab CI integration
-   - Jenkins plugin
-   - Pre-commit hooks
-
-3. **Advanced Schema Features**
+3. **Advanced Schema Features** _(v1.3.0 candidate)_
    - View and stored procedure diff
    - Trigger comparison
    - Function/procedure diff
    - Sequence comparison
 
-4. **Performance & Scalability**
+4. **Performance & Scalability** _(v1.4.0 candidate)_
    - Parallel table processing
    - Distributed diff processing
    - Incremental diff (only changed tables)
    - Diff caching
 
-5. **Developer Experience**
+5. **Developer Experience** _(v1.5.0 candidate)_
    - VS Code extension
    - CLI autocomplete
    - Configuration wizard
@@ -280,5 +291,5 @@ If you'd like to contribute to any of these features, please:
 
 ---
 
-**Last Updated:** 2026-03-22
+**Last Updated:** 2026-04-05
 

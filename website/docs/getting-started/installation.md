@@ -148,7 +148,7 @@ deepdiffdb --version
 Expected output:
 
 ```
-DeepDiff DB v1.1.0
+DeepDiff DB v1.2.0
 ```
 
 ---

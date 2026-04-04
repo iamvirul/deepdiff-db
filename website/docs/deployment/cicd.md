@@ -144,7 +144,7 @@ jobs:
 
 ## Tips
 
-- **Pin the version** in CI with `DEEPDIFFDB_VERSION: v1.1.0` to avoid unexpected upgrades.
+- **Pin the version** in CI with `DEEPDIFFDB_VERSION: v1.2.0` to avoid unexpected upgrades.
 - **Cache the binary** between runs using your CI platform's cache action.
 - **Fail fast on schema changes** — set `--exit-code` (coming in a future release) to fail CI if any drift is detected.
 - **Use Docker** in CI for a hermetic environment: `docker run ghcr.io/iamvirul/deepdiff-db:latest diff`.
