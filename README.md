@@ -505,22 +505,24 @@ deepdiffdb version <subcommand> [flags]
 #### Example Workflow
 
 ```bash
-# Initialise once per project
+# Initialise once per project — authenticate with GitHub for verified authorship
 deepdiffdb version init
+# → GitHub device flow: visit URL, enter code, author stored as github:<username>
+# → use --skip-auth in CI or if GitHub auth is not needed
 
-# Commit a baseline snapshot
-deepdiffdb version commit --config deepdiffdb.config.yaml --message "V1: baseline" --author "Alice"
+# Commit a baseline snapshot (author resolved automatically when authenticated)
+deepdiffdb version commit --config deepdiffdb.config.yaml --message "V1: baseline"
 
 # Create a feature branch and switch to it
 deepdiffdb version branch feature
 deepdiffdb version checkout feature
 
 # After applying schema changes to dev, commit on the feature branch
-deepdiffdb version commit --config deepdiffdb.config.yaml --message "V2: add reviews table" --author "Bob"
+deepdiffdb version commit --config deepdiffdb.config.yaml --message "V2: add reviews table"
 
 # Switch back to main and commit a hotfix
 deepdiffdb version checkout main
-deepdiffdb version commit --config deepdiffdb.config.yaml --message "V2: hotfix index" --author "Alice"
+deepdiffdb version commit --config deepdiffdb.config.yaml --message "V2: hotfix index"
 
 # Browse history with an ASCII branch graph
 deepdiffdb version tree
@@ -532,7 +534,9 @@ deepdiffdb version diff <hash_v1> <hash_v2>
 deepdiffdb version rollback --out rollback.sql <hash_v2>
 ```
 
-**Storage:** Commits are stored as zlib-compressed objects in `.deepdiffdb/objects/<2-char>/<62-char>` (Git-style fanout, content-addressable by SHA-256). Branch tips live in `.deepdiffdb/refs/heads/<name>`; HEAD is a symbolic ref (`ref: refs/heads/main`). Add `.deepdiffdb/` to your `.gitignore` or commit it to share history with your team.
+**Storage:** Commits are stored as zlib-compressed objects in `.deepdiffdb/objects/<2-char>/<62-char>` (Git-style fanout, content-addressable by SHA-256). Branch tips live in `.deepdiffdb/refs/heads/<name>`; HEAD is a symbolic ref (`ref: refs/heads/main`). `.deepdiffdb/config` holds the verified GitHub identity (token never stored). Add `.deepdiffdb/config` to `.gitignore` to keep your identity local; commit the rest to share history with your team.
+
+**Verified authorship:** `version init` authenticates via GitHub device flow. Once authenticated, every commit is attributed to `github:<username>` automatically — no `--author` flag needed. Pass `--author` explicitly when not authenticated.
 
 **Rollback SQL:** Each commit stores full schema snapshots, so rollback SQL can be generated at any time without a live database. Destructive operations (DROP TABLE, DROP COLUMN) are commented out by default — identical safety behaviour to `schema-migrate`.
 

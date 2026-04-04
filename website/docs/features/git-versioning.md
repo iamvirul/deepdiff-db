@@ -17,6 +17,7 @@ Added in **v1.1.0**. DeepDiff DB ships a full Git-inspired versioning system for
 ```
 .deepdiffdb/
   HEAD                          ← symbolic ref: "ref: refs/heads/main"
+  config                        ← verified GitHub identity (0o600, token never stored)
   objects/
     <2-hex>/
       <62-hex>                  ← zlib-compressed commit object (Git fanout layout)
@@ -26,7 +27,11 @@ Added in **v1.1.0**. DeepDiff DB ships a full Git-inspired versioning system for
       <branch>                  ← one file per branch
 ```
 
-Each commit object is self-contained: it stores the full `schema.DiffResult`, `content.DataDiff`, both schema snapshots (prod + dev), author, message, timestamp, parent hash, and a SHA-256 content-addressable hash. The entire history is portable — commit `.deepdiffdb/` to share it with your team, or add it to `.gitignore` to keep it local.
+Each commit object is self-contained: it stores the full `schema.DiffResult`, `content.DataDiff`, both schema snapshots (prod + dev), author, message, timestamp, parent hash, and a SHA-256 content-addressable hash. The entire history is portable — commit `.deepdiffdb/` to share it with your team, or add `.deepdiffdb/config` to `.gitignore` to keep your identity local.
+
+### Verified Authorship
+
+`version init` prompts you to authenticate with GitHub via the device flow. Once authenticated, every `version commit` automatically uses `github:<username>` as the author — no `--author` flag needed. The access token is discarded after identity verification; only the username is stored.
 
 ### Commits
 
@@ -55,14 +60,16 @@ HEAD is a symbolic ref that points to the active branch. `version commit` always
 ## Typical Workflow
 
 ```bash
-# 1. Initialise once per project
+# 1. Initialise once per project — authenticate with GitHub for verified authorship
 deepdiffdb version init
+# → prompts for GitHub device flow (no browser redirect needed)
+# → stores github:iamvirul in .deepdiffdb/config; token discarded
 
 # 2. Commit baseline snapshot (prod == dev at project start)
+#    Author resolved automatically from .deepdiffdb/config
 deepdiffdb version commit \
   --config deepdiffdb.config.yaml \
-  --message "V1: baseline e-commerce schema" \
-  --author "Alice"
+  --message "V1: baseline e-commerce schema"
 
 # 3. Create a feature branch for experimental schema work
 deepdiffdb version branch feature
@@ -74,15 +81,13 @@ deepdiffdb version checkout feature
 # 5. Commit the drift on the feature branch
 deepdiffdb version commit \
   --config deepdiffdb.config.yaml \
-  --message "V2: add reviews table and avg_rating column" \
-  --author "Bob"
+  --message "V2: add reviews table and avg_rating column"
 
 # 6. Switch back to main for a production hotfix
 deepdiffdb version checkout main
 deepdiffdb version commit \
   --config deepdiffdb.config.yaml \
-  --message "V2: hotfix — drop unused index" \
-  --author "Alice"
+  --message "V2: hotfix — drop unused index"
 
 # 7. Visualise the full branch history
 deepdiffdb version tree

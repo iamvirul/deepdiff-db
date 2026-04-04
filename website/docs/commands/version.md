@@ -40,12 +40,36 @@ deepdiffdb version init
 | Flag | Default | Description |
 |---|---|---|
 | `--dir` | `.` | Directory to initialise |
+| `--skip-auth` | `false` | Skip the GitHub authentication prompt |
+
+### GitHub Authentication
+
+After initialising the repo, `version init` prompts you to authenticate with GitHub using the **device flow** (no browser redirect required):
+
+```
+Authenticate with GitHub to verify commit authorship? [Y/n]:
+
+  Open:  https://github.com/login/device
+  Code:  ABCD-1234
+
+  Waiting for authorization ........ ✓
+Authenticated as github:iamvirul — your commits will be signed automatically.
+```
+
+The verified username is stored in `.deepdiffdb/config` as `{"github_user": "iamvirul"}`. The access token is used only to confirm identity and is **never written to disk**.
+
+Use `--skip-auth` to bypass the prompt in CI pipelines or scripted environments — and use `--author` on `version commit` instead.
+
+:::info Setting up the OAuth App
+`version init` requires `DEEPDIFFDB_GITHUB_CLIENT_ID` to be set (or baked into the binary at build time). See the [GitHub OAuth setup guide](#github-oauth-setup) below.
+:::
 
 ### What it creates
 
 ```
 .deepdiffdb/
   HEAD                  ← symbolic ref: "ref: refs/heads/main"
+  config                ← verified identity: {"github_user": "..."}  (0o600)
   objects/              ← zlib-compressed commit objects (Git fanout layout)
   refs/
     heads/
@@ -58,6 +82,12 @@ deepdiffdb version init
 cd my-project
 deepdiffdb version init
 # Initialised version repository in ./.deepdiffdb
+# Authenticate with GitHub to verify commit authorship? [Y/n]: y
+# ...
+# Authenticated as github:iamvirul
+
+# Skip auth (CI)
+deepdiffdb version init --skip-auth
 ```
 
 ---
@@ -84,23 +114,39 @@ deepdiffdb version commit --message "describe the change" [flags]
 |---|---|---|
 | `--config` | `deepdiffdb.config.yaml` | Path to configuration file |
 | `--message` | _(required)_ | Commit message |
-| `--author` | `$USER` | Author name |
+| `--author` | `$USER` | Author name — **ignored** when GitHub identity is stored in `.deepdiffdb/config` |
 | `--verbose` | `false` | Enable debug-level logging |
 | `--log-file` | _(none)_ | Write logs to file |
 | `--log-level` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `--log-format` | `text` | Log format: `text` or `json` |
 
+### Author resolution
+
+The author is resolved in this order:
+
+1. **Verified GitHub identity** — if `.deepdiffdb/config` contains a `github_user`, the author is set to `github:<username>` automatically. Passing `--author` alongside a stored identity prints a warning and the flag is ignored.
+2. **`--author` flag** — used when no config identity exists.
+3. **`$USER` environment variable** — fallback when neither is set.
+4. **Error** — if none of the above are available, `version commit` exits with an error asking you to authenticate or pass `--author`.
+
 ### Example
 
 ```bash
+# With GitHub authentication (author set automatically)
+deepdiffdb version commit \
+  --config deepdiffdb.config.yaml \
+  --message "V2: add category_id FK and customer_email column"
+
+# [e35c16c9] V2: add category_id FK and customer_email column
+#   Author: github:iamvirul
+#   Schema drift detected.
+#   Data differences detected.
+
+# Without authentication (explicit author)
 deepdiffdb version commit \
   --config deepdiffdb.config.yaml \
   --message "V2: add category_id FK and customer_email column" \
   --author "Alice"
-
-# [e35c16c9] V2: add category_id FK and customer_email column
-#   Schema drift detected.
-#   Data differences detected.
 ```
 
 ### Commit object location
@@ -353,6 +399,7 @@ Each column in the graph represents a branch lane:
 ```
 .deepdiffdb/
   HEAD                          ← symbolic ref: "ref: refs/heads/<branch>"
+  config                        ← verified identity {"github_user": "..."} (0o600)
   objects/
     <2-hex>/
       <62-hex>                  ← zlib-compressed commit object (Git fanout)
@@ -365,16 +412,59 @@ Each column in the graph represents a branch lane:
 
 Each commit object is self-contained — it includes all diff results and schema snapshots, so the entire history is portable. Commit the `.deepdiffdb/` directory to share history with your team, or add it to `.gitignore` to keep it local.
 
+:::tip
+Add `.deepdiffdb/config` to your `.gitignore` — it contains your personal identity and should not be shared.
+:::
+
+---
+
+## GitHub OAuth Setup
+
+To enable author verification, register a GitHub OAuth App:
+
+1. Go to [github.com/settings/applications/new](https://github.com/settings/applications/new)
+2. Fill in:
+   - **Application name:** `DeepDiff DB`
+   - **Homepage URL:** `https://github.com/iamvirul/deepdiff-db`
+   - **Authorization callback URL:** `http://localhost` _(not used by device flow)_
+3. Tick **Enable Device Flow**
+4. Click **Register application** and copy the **Client ID**
+
+Then set the client ID in one of two ways:
+
+**Environment variable (personal use):**
+```bash
+# ~/.zshrc or ~/.bashrc
+export DEEPDIFFDB_GITHUB_CLIENT_ID="your_client_id"
+```
+
+**Baked into released binaries (build-time injection):**
+```yaml
+# In .github/workflows/release.yml
+- name: Build
+  run: |
+    go build \
+      -ldflags "-X github.com/iamvirul/deepdiff-db/internal/version.GitHubClientID=${{ secrets.DEEPDIFFDB_GITHUB_CLIENT_ID }}" \
+      -o deepdiffdb \
+      ./cmd/deepdiffdb
+```
+
+Add `DEEPDIFFDB_GITHUB_CLIENT_ID` as a repository secret in **Settings → Secrets and variables → Actions**.
+
 ---
 
 ## Typical Workflow
 
 ```bash
-# 1. Initialise once
+# 1. Initialise once — authenticate with GitHub for verified authorship
 deepdiffdb version init
+# → prompts for GitHub device flow auth
+# → stores github:iamvirul in .deepdiffdb/config
 
-# 2. Commit baseline (prod == dev)
-deepdiffdb version commit --message "V1: baseline" --author "Alice"
+# 2. Commit baseline (prod == dev) — author resolved automatically
+deepdiffdb version commit \
+  --config deepdiffdb.config.yaml \
+  --message "V1: baseline e-commerce schema"
 
 # 3. Create a feature branch for experimental schema work
 deepdiffdb version branch feature
@@ -384,11 +474,15 @@ deepdiffdb version checkout feature
 #    (ALTER TABLE, CREATE TABLE, etc.)
 
 # 5. Commit the drift on the feature branch
-deepdiffdb version commit --message "V2: add reviews table" --author "Bob"
+deepdiffdb version commit \
+  --config deepdiffdb.config.yaml \
+  --message "V2: add reviews table and avg_rating column"
 
 # 6. Switch back to main for a production hotfix
 deepdiffdb version checkout main
-deepdiffdb version commit --message "V2: hotfix — drop unused index" --author "Alice"
+deepdiffdb version commit \
+  --config deepdiffdb.config.yaml \
+  --message "V2: hotfix — drop unused index"
 
 # 7. Visualise the full branch history
 deepdiffdb version tree
@@ -396,7 +490,7 @@ deepdiffdb version tree
 # 8. See exactly what changed between two commits
 deepdiffdb version diff <hash_v1> <hash_v2>
 
-# 9. If a commit needs to be rolled back, generate the SQL
+# 9. Generate rollback SQL for a commit
 deepdiffdb version rollback --out rollback_v2.sql <hash_v2>
 ```
 

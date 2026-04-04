@@ -185,11 +185,18 @@ We release a new version every **Saturday**. Each release includes one or more f
    - ~~Store diff history~~ → `version commit` — SHA-256 content-addressable commit objects in `.deepdiffdb/objects/`
    - ~~Diff between any two versions~~ → `version diff <h1> <h2>` — schema evolution comparison
    - ~~Rollback capabilities~~ → `version rollback <hash>` — driver-aware rollback SQL generation
-   - `version init` — repository initialisation
-   - `version log` — full commit history with drift markers
+   - ~~`version init`~~ — repository initialisation
+   - ~~`version log`~~ — full commit history with drift markers
+   - ~~`version branch` / `version checkout` / `version tree`~~ — branching and ASCII graph
    - See [Sample 17](https://github.com/iamvirul/deepdiff-db/tree/main/samples/17-git-like-versioning) for end-to-end demo
 
-2. **CI/CD Integration**
+2. **GitHub OAuth Author Verification** 🚧 **In Progress (issue #77)**
+   - ~~`version init` GitHub device flow authentication~~ → implemented
+   - ~~`version commit` reads verified `github:<username>` from `.deepdiffdb/config`~~ → implemented
+   - Build-time client ID injection via `-ldflags` in `release.yml` → pending
+   - GitHub OAuth App registration and client ID baked into releases → pending
+
+3. **CI/CD Integration**
    - GitHub Actions plugin
    - GitLab CI integration
    - Jenkins plugin
