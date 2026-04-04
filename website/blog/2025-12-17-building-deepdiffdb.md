@@ -64,3 +64,5 @@ brew install iamvirul/deepdiff-db/deepdiff-db
 Or grab a binary from the [releases page](https://github.com/iamvirul/deepdiff-db/releases).
 
 The code is open source at [github.com/iamvirul/deepdiff-db](https://github.com/iamvirul/deepdiff-db). Issues, PRs, and feedback are all welcome.
+
+*Happy diffing — and may your prod and dev schemas never drift apart. 🚀*

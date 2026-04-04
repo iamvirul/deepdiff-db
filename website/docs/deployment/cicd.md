@@ -98,9 +98,54 @@ repos:
         pass_filenames: false
 ```
 
+## Using `version commit` in CI
+
+To record a versioned snapshot on every merge to main, add a `version commit` step to your pipeline. Use `--skip-auth` to bypass the GitHub device flow prompt and `--author` to identify the pipeline:
+
+```yaml
+# GitHub Actions — snapshot on merge to main
+name: Version Snapshot
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  version-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install DeepDiff DB
+        run: |
+          VERSION=$(curl -s https://api.github.com/repos/iamvirul/deepdiff-db/releases/latest \
+            | grep '"tag_name"' | cut -d'"' -f4)
+          curl -fsSL \
+            "https://github.com/iamvirul/deepdiff-db/releases/download/${VERSION}/deepdiffdb_${VERSION}_linux_amd64.tar.gz" \
+            | tar -xz deepdiffdb
+          sudo mv deepdiffdb /usr/local/bin/deepdiffdb
+
+      - name: Init version repo (skip auth in CI)
+        run: deepdiffdb version init --skip-auth
+
+      - name: Commit version snapshot
+        run: |
+          deepdiffdb version commit \
+            --config deepdiffdb.config.yaml \
+            --message "CI snapshot: ${{ github.sha }}" \
+            --author "ci/github-actions"
+```
+
+:::tip
+`--skip-auth` must be passed on the first `version init` run. Subsequent runs on the same checkout are idempotent. If `.deepdiffdb/` is committed to the repo, `version init` is only needed once locally.
+:::
+
+---
+
 ## Tips
 
 - **Pin the version** in CI with `DEEPDIFFDB_VERSION: v1.1.0` to avoid unexpected upgrades.
 - **Cache the binary** between runs using your CI platform's cache action.
 - **Fail fast on schema changes** — set `--exit-code` (coming in a future release) to fail CI if any drift is detected.
 - **Use Docker** in CI for a hermetic environment: `docker run ghcr.io/iamvirul/deepdiff-db:latest diff`.
+- **Skip GitHub auth in CI** — always pass `--skip-auth` to `version init` in pipelines; use `--author "ci/<platform>"` on `version commit` to identify the pipeline as the committer.
