@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -1542,10 +1543,13 @@ Subcommands:
   checkout <branch>       Switch to a branch
   tree                    Show ASCII commit graph for all branches
 
+Flags for init:
+  --skip-auth  Skip GitHub authentication prompt
+
 Flags for commit:
   --config   Path to config file (default: deepdiffdb.config.yaml)
   --message  Commit message (required)
-  --author   Author name (default: current user)
+  --author   Author name (used only when not authenticated via GitHub)
 
 Flags for log:
   --limit    Maximum number of commits to show (default: 20)
@@ -1563,6 +1567,7 @@ Flags for branch:
 func runVersionInit(args []string) error {
 	fs := flag.NewFlagSet("version init", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "Directory to initialise (default: current directory)")
+	skipAuth := fs.Bool("skip-auth", false, "Skip GitHub authentication (use --author flag on commits instead)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1574,6 +1579,36 @@ func runVersionInit(args []string) error {
 		return err
 	}
 	fmt.Printf("Initialised version repository in %s/%s\n", *dir, vcs.RepoDirName)
+
+	if *skipAuth {
+		fmt.Println("Skipping GitHub authentication. Use --author on version commit to set your name.")
+		return nil
+	}
+
+	clientID := vcs.ResolveClientID()
+	if clientID == "" {
+		fmt.Println("\nNote: GitHub authentication unavailable (DEEPDIFFDB_GITHUB_CLIENT_ID not set).")
+		fmt.Println("      Use --author on version commit to identify yourself.")
+		return nil
+	}
+
+	fmt.Print("\nAuthenticate with GitHub to verify commit authorship? [Y/n]: ")
+	var answer string
+	fmt.Scanln(&answer) //nolint:errcheck
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer != "" && answer != "y" {
+		fmt.Println("Skipped. Use --author on version commit to set your name.")
+		return nil
+	}
+
+	username, err := vcs.RunGitHubDeviceFlow(clientID)
+	if err != nil {
+		return fmt.Errorf("GitHub authentication failed: %w", err)
+	}
+	if err := vcs.SaveIdentity(*dir, username); err != nil {
+		return fmt.Errorf("saving identity: %w", err)
+	}
+	fmt.Printf("Authenticated as github:%s — your commits will be signed automatically.\n", username)
 	return nil
 }
 
@@ -1668,11 +1703,25 @@ func runVersionCommit(args []string) error {
 		return fmt.Errorf("read HEAD: %w", err)
 	}
 
-	authorName := *author
-	if authorName == "" {
-		authorName = os.Getenv("USER")
+	// Resolve author: verified GitHub identity takes priority over the --author flag.
+	// If neither is set, fall back to $USER for convenience. Unauthenticated commits
+	// are allowed but the author is clearly unverified.
+	authorName, err := vcs.LoadIdentity(dir)
+	if err != nil {
+		return fmt.Errorf("loading identity: %w", err)
+	}
+	if authorName != "" {
+		authorName = "github:" + authorName
+		if *author != "" {
+			fmt.Fprintf(os.Stderr, "Warning: --author flag ignored; using verified identity %s\n", authorName)
+		}
+	} else {
+		authorName = *author
 		if authorName == "" {
-			authorName = "unknown"
+			authorName = os.Getenv("USER")
+		}
+		if authorName == "" {
+			return fmt.Errorf("no author set: authenticate with 'version init' or pass --author <name>")
 		}
 	}
 
