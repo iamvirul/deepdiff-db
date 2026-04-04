@@ -29,7 +29,7 @@ const (
 	configFileName = "config"
 
 	githubDeviceURL = "https://github.com/login/device/code"
-	githubTokenURL  = "https://github.com/login/oauth/access_token"
+	githubTokenURL  = "https://github.com/login/oauth/access_token" // #nosec G101 -- URL endpoint, not a credential
 	githubUserURL   = "https://api.github.com/user"
 )
 
