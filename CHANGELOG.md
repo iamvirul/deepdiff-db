@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `examples/cicd/github-actions.yml` — removed reference to non-existent `--output-format json` flag; updated to read `schema_diff.json` and `content_diff.json` written to disk, with correct `jq` queries matching the actual JSON structure (`[.tables[] | select(.has_differences == true)] | length`).
 - `examples/cicd/gitlab-ci.yml` — same fix: `result.json` reference replaced with `schema_diff.json` and corrected `jq` query.
 
+### Security
+- Upgraded Go from **1.25.8 → 1.25.9** to resolve four stdlib CVEs: GO-2026-4947 and GO-2026-4946 (`crypto/x509` chain building / policy validation), GO-2026-4870 (`crypto/tls` TLS 1.3 KeyUpdate DoS), GO-2026-4865 (`html/template` XSS via JsBraceDepth).
+
 ## [1.2.0] - 2026-04-05
 
 ### Added

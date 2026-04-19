@@ -1,6 +1,6 @@
 module github.com/iamvirul/deepdiff-db
 
-go 1.25.8
+go 1.25.9
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3
