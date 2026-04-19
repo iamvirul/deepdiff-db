@@ -8,7 +8,20 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Current Status: v1.2.0 — Verified Authorship & CI/CD Hardening 🎉
+## Current Status: v1.3.0 — CI/CD Integration 🎉
+
+**Released:** 2026-04-19
+
+**Features:**
+- `schema-diff --quiet` and `--output-dir` flags for CI/pre-commit use (issue #17) ✅
+- Official `.pre-commit-hooks.yaml` for the pre-commit framework ✅
+- Jenkins Declarative Pipeline example ✅
+- Fixed CI/CD example files to use correct JSON output structure ✅
+- Documentation updated across commands, deployment guide, changelog, and roadmap ✅
+
+---
+
+## Previous Release: v1.2.0 — Verified Authorship & CI/CD Hardening 🎉
 
 **Released:** 2026-04-05
 
@@ -18,7 +31,7 @@ We release a new version every **Saturday**. Each release includes one or more f
 
 ---
 
-## Previous Release: v1.1.0 — Git-like Versioning 🎉
+## Earlier Release: v1.1.0 — Git-like Versioning 🎉
 
 **Released:** 2026-04-01
 
@@ -59,6 +72,15 @@ We release a new version every **Saturday**. Each release includes one or more f
 - `version rollback <hash>` — generates driver-aware rollback SQL offline by inverting the stored diff; same safety defaults as `schema-migrate` (destructive ops commented out by default); `--out` and `--driver` flags
 - New `internal/version` package: `model.go`, `store.go`, `rollback.go`
 - Sample 17: Git-like Versioning — two MySQL 8 containers, three-sprint demo, automated `demo.sh`
+
+### v1.3.0: CI/CD Integration (Released 2026-04-19)
+
+**Features Delivered:**
+- `schema-diff --quiet`: suppresses all progress/informational output; automatically raises effective log level to `warn`; explicit `--log-level debug` overrides
+- `schema-diff --output-dir <path>`: overrides `output.dir` at runtime without editing the config file — essential for pre-commit hooks using temp dirs
+- `.pre-commit-hooks.yaml`: official pre-commit framework hooks definition at repo root; users reference the repo directly instead of copying the shell script
+- `examples/cicd/Jenkinsfile`: Declarative Pipeline with masked credential injection, schema-diff, data diff, result evaluation (UNSTABLE on drift), and artifact archiving
+- Fixed `examples/cicd/github-actions.yml` and `gitlab-ci.yml`: removed references to non-existent `--output-format json` flag; updated `jq` queries to match actual JSON structure
 
 ### v1.2.0: Verified Authorship & CI/CD Hardening (Released 2026-04-05)
 
@@ -213,7 +235,14 @@ We release a new version every **Saturday**. Each release includes one or more f
    - ~~Build-time client ID injection via `-ldflags` in `release.yml`~~
    - ~~`DEEPDIFFDB_GITHUB_CLIENT_ID` env var override for local use~~
 
-3. **Advanced Schema Features** _(v1.3.0 candidate)_
+3. ~~**CI/CD Integration**~~ ✅ **Released in v1.3.0 (issue #17)**
+   - ~~`schema-diff --quiet` for silent CI checks~~
+   - ~~`schema-diff --output-dir` for temp dir output~~
+   - ~~Official `.pre-commit-hooks.yaml`~~
+   - ~~Jenkins Declarative Pipeline example~~
+   - ~~Fixed GitHub Actions and GitLab CI example files~~
+
+4. **Advanced Schema Features** _(v1.4.0 candidate)_
    - View and stored procedure diff
    - Trigger comparison
    - Function/procedure diff
