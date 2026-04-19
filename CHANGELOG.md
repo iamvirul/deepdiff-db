@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-04-19
+
+### Added
+- **CI/CD Integration** (issue #17)
+  - `schema-diff --quiet` flag: suppresses progress bars, metrics summary, and informational stdout output; automatically raises the effective log level from `info` → `warn` so pipelines are silent on success without extra flags. Explicit `--log-level debug` still overrides when set.
+  - `schema-diff --output-dir <path>` flag: overrides `output.dir` from config at runtime, enabling pre-commit hooks and CI steps to redirect reports to a temporary directory without touching the config file.
+  - `.pre-commit-hooks.yaml` in the repo root — official [pre-commit framework](https://pre-commit.com/) hooks definition; users can now reference the repo directly in `.pre-commit-config.yaml` instead of copying the shell script manually.
+  - `examples/cicd/Jenkinsfile` — Declarative Pipeline covering install, masked-credential config write, schema-diff, data diff, result evaluation, and artifact archiving; marks build `UNSTABLE` on drift rather than `FAILED` so downstream stages still run.
+
+### Fixed
+- `examples/cicd/github-actions.yml` — removed reference to non-existent `--output-format json` flag; updated to read `schema_diff.json` and `content_diff.json` written to disk, with correct `jq` queries matching the actual JSON structure (`[.tables[] | select(.has_differences == true)] | length`).
+- `examples/cicd/gitlab-ci.yml` — same fix: `result.json` reference replaced with `schema_diff.json` and corrected `jq` query.
+
 ## [1.2.0] - 2026-04-05
 
 ### Added
@@ -406,7 +419,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/iamvirul/deepdiff-db/compare/v0.9...v1.0.0
