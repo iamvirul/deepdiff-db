@@ -29,6 +29,8 @@ Tables listed in `ignore.tables` are excluded entirely.
 | Flag | Description |
 |---|---|
 | `--config` | Path to the configuration file (default: `deepdiffdb.config.yaml`) |
+| `--output-dir` | Override `output.dir` from config at runtime (e.g. point to a temp dir in CI or pre-commit hooks) |
+| `--quiet` | Suppress progress bars, metrics summary, and informational output. Automatically raises log level to `warn` so the tool is fully silent on success. Explicit `--log-level debug` overrides this. |
 | `--verbose` | Enable debug-level logging |
 | `--log-level` | Minimum log level: `debug`, `info`, `warn`, `error` (default: `info`) |
 | `--log-format` | Log output format: `text` or `json` (default: `text`) |
@@ -43,10 +45,19 @@ Both files are written to `output.dir` (default: `./diff-output`).
 | `schema_diff.json` | Machine-readable schema differences, suitable for programmatic processing or CI checks |
 | `schema_diff.txt` | Human-readable schema diff report |
 
-## Example
+## Examples
 
 ```bash
+# Standard usage
 deepdiffdb schema-diff --config deepdiffdb.config.yaml --log-level warn
+
+# CI / pre-commit: fully silent on success, non-zero exit on drift
+deepdiffdb schema-diff --config deepdiffdb.config.yaml --quiet
+
+# Redirect output to a temp dir (pre-commit hooks, ephemeral CI runners)
+deepdiffdb schema-diff --config deepdiffdb.config.yaml \
+  --output-dir /tmp/deepdiff-$$ \
+  --quiet
 ```
 
 Example `schema_diff.txt` output:
