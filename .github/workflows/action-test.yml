@@ -11,6 +11,9 @@ on:
       - action.yml
       - .github/workflows/action-test.yml
 
+permissions:
+  contents: read
+
 jobs:
   test-action:
     name: Test deepdiff-db action (SQLite)
