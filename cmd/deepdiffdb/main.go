@@ -1202,6 +1202,8 @@ func countDecisionResolutions(resolutions []resolve.Resolution, decision resolve
 func runSchemaDiff(args []string) error {
 	fs := flag.NewFlagSet("schema-diff", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	outputDir := fs.String("output-dir", "", "Override output directory from config (useful for temp dirs in CI/pre-commit hooks)")
+	quiet := fs.Bool("quiet", false, "Suppress progress bars and informational output (for CI/pre-commit use)")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	logFile := fs.String("log-file", "", "Write logs to file")
 	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
@@ -1210,8 +1212,16 @@ func runSchemaDiff(args []string) error {
 		return err
 	}
 
+	// --quiet suppresses INFO-level log lines unless the caller explicitly requested
+	// a more verbose level (debug). This makes the tool fully silent on success when
+	// used in pre-commit hooks or CI pipelines that control their own UX.
+	effectiveLogLevel := *logLevel
+	if *quiet && effectiveLogLevel == "info" {
+		effectiveLogLevel = "warn"
+	}
+
 	// Initialize logger
-	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
+	log, logCloser, err := initializeLogger(*verbose, *logFile, effectiveLogLevel, *logFormat)
 	if err != nil {
 		return err
 	}
@@ -1221,18 +1231,20 @@ func runSchemaDiff(args []string) error {
 
 	log.Info("starting schema diff")
 
-	// Initialize progress manager (disabled in verbose mode to avoid conflicts)
+	// Initialize progress manager; disabled in verbose or quiet mode to avoid interleaved output.
 	progressMgr := progress.NewManager(progress.Config{
-		Enabled:     !*verbose,
-		ShowMetrics: true,
+		Enabled:     !*verbose && !*quiet,
+		ShowMetrics: !*quiet,
 	})
 	defer func() {
 		progressMgr.Finish()
-		// Print metrics summary if available
-		if metrics := progressMgr.GetMetrics(); metrics != nil {
-			summary := metrics.Summary()
-			if summary != "" {
-				fmt.Println(summary)
+		// Print metrics summary unless quiet mode suppresses UI output.
+		if !*quiet {
+			if metrics := progressMgr.GetMetrics(); metrics != nil {
+				summary := metrics.Summary()
+				if summary != "" {
+					fmt.Println(summary)
+				}
 			}
 		}
 	}()
@@ -1240,6 +1252,12 @@ func runSchemaDiff(args []string) error {
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// --output-dir overrides the directory from config, allowing callers such as
+	// pre-commit hooks to redirect output to a temporary directory.
+	if *outputDir != "" {
+		cfg.Output.Dir = *outputDir
 	}
 
 	log.Debug("configuration loaded", "config_path", *configPath)
@@ -1283,7 +1301,9 @@ func runSchemaDiff(args []string) error {
 	}
 
 	log.Info("schema diff complete - no drift detected")
-	fmt.Println("Schema match confirmed. No drift detected.")
+	if !*quiet {
+		fmt.Println("Schema match confirmed. No drift detected.")
+	}
 	return nil
 }
 
