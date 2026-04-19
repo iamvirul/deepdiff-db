@@ -1,0 +1,27 @@
+# DeepDiff DB — official pre-commit hooks definition.
+#
+# To use these hooks, add the following to your .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/iamvirul/deepdiff-db
+#       rev: v0.9.0   # pin to a release tag
+#       hooks:
+#         - id: deepdiff-db-schema
+#           # Optional: override the config path
+#           # args: [--config, path/to/deepdiffdb.config.yaml]
+#
+# Environment variables:
+#   DEEPDIFFDB_CONFIG      Path to config file (default: deepdiffdb.config.yaml)
+#   DEEPDIFFDB_ALLOW_DRIFT Set to "1" to warn instead of blocking on schema drift
+
+- id: deepdiff-db-schema
+  name: DeepDiff DB — schema drift check
+  language: script
+  entry: examples/cicd/pre-commit-hook.sh
+  pass_filenames: false
+  always_run: false
+  files: \.(sql|go|py|rb|java|ts|js)$
+  description: >
+    Runs deepdiffdb schema-diff before every commit. Blocks the commit if
+    unexpected schema drift is detected between your production and development
+    databases. Set DEEPDIFFDB_ALLOW_DRIFT=1 to warn instead of block.

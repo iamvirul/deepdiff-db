@@ -1,0 +1,166 @@
+// DeepDiff DB — Jenkins Declarative Pipeline Example
+//
+// This pipeline runs a schema and data diff on every pull request.
+// It archives the diff reports as build artifacts and marks the build
+// unstable (rather than failed) when schema drift is detected so that
+// downstream stages can still run.
+//
+// Prerequisites:
+//   1. Create Jenkins credentials (Manage Jenkins → Credentials):
+//        PROD_DB_HOST, PROD_DB_PORT, PROD_DB_USER, PROD_DB_PASSWORD, PROD_DB_NAME
+//        DEV_DB_HOST,  DEV_DB_PORT,  DEV_DB_USER,  DEV_DB_PASSWORD,  DEV_DB_NAME
+//   2. Set DEEPDIFFDB_VERSION in Jenkins → Manage Jenkins → System → Global properties
+//      (environment variable), or pin it here.
+//   3. Ensure the agent has curl, tar, and jq available (or use the Docker agent below).
+
+pipeline {
+    agent {
+        // Option A: run on any agent that has curl + jq installed.
+        label 'linux'
+
+        // Option B: use the official Docker image (no tool installation needed).
+        // Uncomment the block below and comment out the `label` line above.
+        //
+        // docker {
+        //     image 'ghcr.io/iamvirul/deepdiff-db:latest'
+        //     args  '--entrypoint='
+        // }
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        DEEPDIFFDB_VERSION = "${env.DEEPDIFFDB_VERSION ?: 'latest'}"
+        OUTPUT_DIR         = 'diff-output'
+    }
+
+    stages {
+        stage('Install DeepDiff DB') {
+            // Skip this stage when using the Docker agent (tool is already on PATH).
+            when { not { environment name: 'DEEPDIFFDB_SKIP_INSTALL', value: 'true' } }
+            steps {
+                sh '''
+                    set -euo pipefail
+                    VERSION="${DEEPDIFFDB_VERSION}"
+                    if [ "${VERSION}" = "latest" ]; then
+                        VERSION=$(curl -fsSL https://api.github.com/repos/iamvirul/deepdiff-db/releases/latest \
+                            | grep '"tag_name"' | cut -d'"' -f4)
+                    fi
+                    curl -fsSL \
+                        "https://github.com/iamvirul/deepdiff-db/releases/download/${VERSION}/deepdiffdb_${VERSION}_linux_amd64.tar.gz" \
+                        | tar -xz deepdiffdb
+                    chmod +x deepdiffdb
+                    mv deepdiffdb /usr/local/bin/deepdiffdb
+                    deepdiffdb --version
+                '''
+            }
+        }
+
+        stage('Write Config') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'PROD_DB_HOST',     variable: 'PROD_HOST'),
+                    string(credentialsId: 'PROD_DB_PORT',     variable: 'PROD_PORT'),
+                    string(credentialsId: 'PROD_DB_USER',     variable: 'PROD_USER'),
+                    string(credentialsId: 'PROD_DB_PASSWORD', variable: 'PROD_PASS'),
+                    string(credentialsId: 'PROD_DB_NAME',     variable: 'PROD_NAME'),
+                    string(credentialsId: 'DEV_DB_HOST',      variable: 'DEV_HOST'),
+                    string(credentialsId: 'DEV_DB_PORT',      variable: 'DEV_PORT'),
+                    string(credentialsId: 'DEV_DB_USER',      variable: 'DEV_USER'),
+                    string(credentialsId: 'DEV_DB_PASSWORD',  variable: 'DEV_PASS'),
+                    string(credentialsId: 'DEV_DB_NAME',      variable: 'DEV_NAME'),
+                ]) {
+                    // Write config to disk. Credentials are injected via env vars and
+                    // never logged (Jenkins masks them automatically).
+                    sh '''
+                        mkdir -p "${OUTPUT_DIR}"
+                        cat > deepdiffdb.config.yaml <<EOF
+production:
+  driver: mysql
+  host: "${PROD_HOST}"
+  port: ${PROD_PORT}
+  user: "${PROD_USER}"
+  password: "${PROD_PASS}"
+  database: "${PROD_NAME}"
+development:
+  driver: mysql
+  host: "${DEV_HOST}"
+  port: ${DEV_PORT}
+  user: "${DEV_USER}"
+  password: "${DEV_PASS}"
+  database: "${DEV_NAME}"
+output:
+  dir: "${OUTPUT_DIR}"
+EOF
+                    '''
+                }
+            }
+        }
+
+        stage('Schema Diff') {
+            steps {
+                // Exit code 0 = no drift. Non-zero = drift detected or tool error.
+                // `|| true` lets the pipeline continue; the post section marks the
+                // build unstable based on the report content.
+                sh 'deepdiffdb schema-diff --config deepdiffdb.config.yaml || true'
+            }
+        }
+
+        stage('Data Diff') {
+            steps {
+                sh 'deepdiffdb diff --config deepdiffdb.config.yaml || true'
+            }
+        }
+
+        stage('Evaluate Results') {
+            steps {
+                script {
+                    def schemaDriftFile = "${OUTPUT_DIR}/schema_diff.json"
+                    if (fileExists(schemaDriftFile)) {
+                        def driftCount = sh(
+                            script: "jq '[.tables[] | select(.has_differences == true)] | length' ${schemaDriftFile}",
+                            returnStdout: true
+                        ).trim().toInteger()
+
+                        if (driftCount > 0) {
+                            echo "WARNING: ${driftCount} table(s) have schema drift."
+                            // Mark unstable rather than failed — downstream stages still run.
+                            currentBuild.result = 'UNSTABLE'
+                        } else {
+                            echo 'Schema: OK (no drift detected)'
+                        }
+                    }
+
+                    def summaryFile = "${OUTPUT_DIR}/summary.txt"
+                    if (fileExists(summaryFile)) {
+                        echo "=== Diff Summary ===\n${readFile(summaryFile)}"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts(
+                artifacts: "${OUTPUT_DIR}/**",
+                allowEmptyArchive: true,
+                fingerprint: true
+            )
+            // Clean up the generated config — it contains credentials placeholders
+            // that should not persist between runs.
+            sh 'rm -f deepdiffdb.config.yaml'
+        }
+
+        unstable {
+            echo 'Build is UNSTABLE: schema drift or data changes detected. Review the archived diff-output artifacts.'
+        }
+
+        failure {
+            echo 'Build FAILED: check the console log for deepdiffdb errors.'
+        }
+    }
+}

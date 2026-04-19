@@ -108,11 +108,15 @@ jobs:
       - name: Run diff
         id: diff
         run: |
-          deepdiffdb diff --config deepdiffdb.config.yaml \
-            --output-format json > diff-output/result.json 2>&1 || true
-          # Capture summary for PR comment
-          TABLES_CHANGED=$(jq '.schema_changes | length' diff-output/result.json 2>/dev/null || echo 0)
-          DATA_CHANGES=$(jq '.data_changes | length' diff-output/result.json 2>/dev/null || echo 0)
+          mkdir -p diff-output
+          deepdiffdb diff --config deepdiffdb.config.yaml || true
+          # Parse the JSON reports written to diff-output/ by the tool.
+          # schema_diff.json: tables[] with has_differences=true → schema changes.
+          # content_diff.json: tables[] entries are only present when rows differ.
+          TABLES_CHANGED=$(jq '[.tables[] | select(.has_differences == true)] | length' \
+            diff-output/schema_diff.json 2>/dev/null || echo 0)
+          DATA_CHANGES=$(jq '.tables | length' \
+            diff-output/content_diff.json 2>/dev/null || echo 0)
           echo "tables_changed=$TABLES_CHANGED" >> $GITHUB_OUTPUT
           echo "data_changes=$DATA_CHANGES" >> $GITHUB_OUTPUT
 
@@ -130,10 +134,10 @@ jobs:
               `| Schema changes | ${tablesChanged} |`,
               `| Tables with data changes | ${dataChanges} |`,
               '',
-              '<details><summary>Full diff output</summary>',
+              '<details><summary>Full schema diff</summary>',
               '',
               '```',
-              require("fs").readFileSync("diff-output/result.json", "utf8").slice(0, 4000),
+              require("fs").readFileSync("diff-output/schema_diff.txt", "utf8").slice(0, 4000),
               '```',
               '</details>',
             ].join('\n');
