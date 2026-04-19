@@ -70,8 +70,8 @@ db-diff:
   after_script:
     - |
       # Post diff summary as MR note via GitLab API
-      if [ -f diff-output/result.json ]; then
-        TABLES=$(jq '.schema_changes | length' diff-output/result.json 2>/dev/null || echo 0)
+      if [ -f diff-output/schema_diff.json ]; then
+        TABLES=$(jq '[.tables[] | select(.has_differences == true)] | length' diff-output/schema_diff.json 2>/dev/null || echo 0)
         NOTE="**DeepDiff DB Report**\n\nSchema changes: ${TABLES}\n\nSee artifacts for full output."
         curl -s --request POST \
           --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
