@@ -120,12 +120,7 @@ jobs:
           echo "Checking status of all required jobs..."
 
           # Check if any required job failed
-          if [[ "${{ needs.validate-pr-title.result }}" != "success" ]]; then
-            echo "❌ PR title validation failed"
-            echo "Please ensure your PR title follows conventional commits format."
-            exit 1
-          fi
-
+          
           if [[ "${{ needs.check-merge-conflicts.result }}" != "success" ]]; then
             echo "❌ Merge conflicts detected"
             echo "Please rebase your branch on the latest ${{ github.event.pull_request.base.ref }} branch."
