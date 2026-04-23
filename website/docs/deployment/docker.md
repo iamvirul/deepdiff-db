@@ -13,7 +13,7 @@ DeepDiff DB ships a minimal, scratch-based Docker image with zero native depende
 docker pull ghcr.io/iamvirul/deepdiff-db:latest
 
 # Specific version
-docker pull ghcr.io/iamvirul/deepdiff-db:v1.2.0
+docker pull ghcr.io/iamvirul/deepdiff-db:v1.3.0
 ```
 
 ## Run a diff
@@ -52,8 +52,8 @@ Copy and adapt `docker-compose.example.yml` to point at your real databases.
 
 ```bash
 docker build \
-  --build-arg VERSION=v1.2.0 \
-  -t deepdiff-db:v1.2.0 \
+  --build-arg VERSION=v1.3.0 \
+  -t deepdiff-db:v1.3.0 \
   .
 ```
 
@@ -70,8 +70,8 @@ The multi-stage build compiles a statically linked binary with `CGO_ENABLED=0`, 
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v1.2.0` | Specific version |
-| `v1.2.0-amd64` | Architecture-specific manifest |
-| `v1.2.0-arm64` | Architecture-specific manifest |
+| `v1.3.0` | Specific version |
+| `v1.3.0-amd64` | Architecture-specific manifest |
+| `v1.3.0-arm64` | Architecture-specific manifest |
 
 Multi-arch manifests cover `linux/amd64` and `linux/arm64`.
