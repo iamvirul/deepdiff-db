@@ -339,7 +339,7 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 				case "mysql", "sqlite", "mssql", "sqlserver":
 					// These drivers don't support materialized views - emit manual review comment
 					stmts = append(stmts, fmt.Sprintf("-- Manual review required to determine materialized view support for %s", driver))
-					stmts = append(stmts, fmt.Sprintf("-- Materialized view requested but not supported; creating standard view instead:"))
+					stmts = append(stmts, "-- Materialized view requested but not supported; creating standard view instead:")
 					createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
 				default:
 					// Unknown driver - emit manual review comment

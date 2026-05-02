@@ -75,7 +75,7 @@ func TestGenerateMigration_NewObjectTypesOnly_NoError(t *testing.T) {
 		ModifiedRoutines: []schema.RoutineDiff{
 			{Name: "fn_price", DefinitionDiffers: true},
 		},
-		AddedTriggers:   []schema.Trigger{{Name: "trg_audit", Table: "orders", Timing: "AFTER", Event: "INSERT"}},
+		AddedTriggers:   []schema.Trigger{{Name: "trg_audit", Table: "orders", Timing: "AFTER", Event: "INSERT", Definition: "BEGIN INSERT INTO audit_log(action) VALUES('INSERT'); END"}},
 		RemovedTriggers: []string{"trg_old"},
 		ModifiedTriggers: []schema.TriggerDiff{
 			{Name: "trg_sync", EventDiffers: true},
