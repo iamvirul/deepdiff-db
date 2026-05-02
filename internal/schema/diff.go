@@ -101,21 +101,24 @@ type ViewDiff struct {
 
 // RoutineDiff captures differences for a stored procedure or function across prod/dev.
 type RoutineDiff struct {
-	Name              string `json:"routine_name"`
-	MissingInProd     bool   `json:"missing_in_prod,omitempty"`
-	MissingInDev      bool   `json:"missing_in_dev,omitempty"`
-	DefinitionDiffers bool   `json:"definition_differs,omitempty"`
-	ProdDefinition    string `json:"prod_definition,omitempty"`
-	DevDefinition     string `json:"dev_definition,omitempty"`
-	KindDiffers       bool   `json:"kind_differs,omitempty"`
-	ProdKind          string `json:"prod_kind,omitempty"`
-	DevKind           string `json:"dev_kind,omitempty"`
-	ReturnTypeDiffers bool   `json:"return_type_differs,omitempty"`
-	ProdReturnType    string `json:"prod_return_type,omitempty"`
-	DevReturnType     string `json:"dev_return_type,omitempty"`
-	LanguageDiffers   bool   `json:"language_differs,omitempty"`
-	ProdLanguage      string `json:"prod_language,omitempty"`
-	DevLanguage       string `json:"dev_language,omitempty"`
+	Name              string             `json:"routine_name"`
+	MissingInProd     bool               `json:"missing_in_prod,omitempty"`
+	MissingInDev      bool               `json:"missing_in_dev,omitempty"`
+	DefinitionDiffers bool               `json:"definition_differs,omitempty"`
+	ProdDefinition    string             `json:"prod_definition,omitempty"`
+	DevDefinition     string             `json:"dev_definition,omitempty"`
+	KindDiffers       bool               `json:"kind_differs,omitempty"`
+	ProdKind          string             `json:"prod_kind,omitempty"`
+	DevKind           string             `json:"dev_kind,omitempty"`
+	ReturnTypeDiffers bool               `json:"return_type_differs,omitempty"`
+	ProdReturnType    string             `json:"prod_return_type,omitempty"`
+	DevReturnType     string             `json:"dev_return_type,omitempty"`
+	LanguageDiffers   bool               `json:"language_differs,omitempty"`
+	ProdLanguage      string             `json:"prod_language,omitempty"`
+	DevLanguage       string             `json:"dev_language,omitempty"`
+	ParametersDiffers bool               `json:"parameters_differs,omitempty"`
+	ProdParameters    []RoutineParameter `json:"prod_parameters,omitempty"`
+	DevParameters     []RoutineParameter `json:"dev_parameters,omitempty"`
 }
 
 // TriggerDiff captures differences for a trigger across prod/dev.
@@ -135,6 +138,9 @@ type TriggerDiff struct {
 	ForEachRowDiffers bool   `json:"for_each_row_differs,omitempty"`
 	ProdForEachRow    *bool  `json:"prod_for_each_row,omitempty"`
 	DevForEachRow     *bool  `json:"dev_for_each_row,omitempty"`
+	OwnerTableDiffers bool   `json:"owner_table_differs,omitempty"`
+	ProdOwnerTable    string `json:"prod_owner_table,omitempty"`
+	DevOwnerTable     string `json:"dev_owner_table,omitempty"`
 }
 
 // SequenceDiff captures differences for a sequence object across prod/dev.

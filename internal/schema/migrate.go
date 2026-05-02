@@ -308,6 +308,219 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 		stmts = append(stmts, "")
 	}
 
+	// Process removed views (DROP VIEW)
+	if len(diff.RemovedViews) > 0 {
+		stmts = append(stmts, "-- DROP VIEWS (present in prod but not in dev)")
+		stmts = append(stmts, "-- WARNING: These operations will delete view definitions!")
+		if opts.ConfirmDestructive {
+			stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
+		}
+		for _, viewName := range diff.RemovedViews {
+			dropStmt := fmt.Sprintf("DROP VIEW %s;", quoteIdentifier(viewName, driver))
+			if !opts.AllowDropView {
+				dropStmt = "-- " + dropStmt
+			}
+			stmts = append(stmts, dropStmt)
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process added views (CREATE VIEW)
+	if len(diff.AddedViews) > 0 {
+		stmts = append(stmts, "-- CREATE VIEWS (present in dev but not in prod)")
+		for _, view := range diff.AddedViews {
+			var createStmt string
+			if view.IsMaterialized {
+				createStmt = fmt.Sprintf("CREATE MATERIALIZED VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+			} else {
+				createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+			}
+			stmts = append(stmts, createStmt)
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process modified views
+	if len(diff.ModifiedViews) > 0 {
+		stmts = append(stmts, "-- MODIFIED VIEWS (differ between prod and dev)")
+		stmts = append(stmts, "-- NOTE: To modify a view, drop and recreate it. Manual review required.")
+		for _, viewDiff := range diff.ModifiedViews {
+			stmts = append(stmts, fmt.Sprintf("-- View %s differs between prod and dev", viewDiff.Name))
+			if viewDiff.DefinitionDiffers {
+				stmts = append(stmts, "--   Definition differs")
+			}
+			if viewDiff.IsMaterializedDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   IsMaterialized: prod=%v dev=%v", *viewDiff.ProdIsMaterialized, *viewDiff.DevIsMaterialized))
+			}
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process removed routines (DROP PROCEDURE/FUNCTION)
+	if len(diff.RemovedRoutines) > 0 {
+		stmts = append(stmts, "-- DROP ROUTINES (present in prod but not in dev)")
+		stmts = append(stmts, "-- WARNING: These operations will delete stored procedures/functions!")
+		if opts.ConfirmDestructive {
+			stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
+		}
+		for _, routineName := range diff.RemovedRoutines {
+			// Note: We don't know the routine kind here, so we use a generic comment
+			dropStmt := fmt.Sprintf("-- DROP PROCEDURE/FUNCTION %s; -- Manual review required to determine routine type", quoteIdentifier(routineName, driver))
+			if !opts.AllowDropRoutine {
+				dropStmt = "-- " + dropStmt
+			}
+			stmts = append(stmts, dropStmt)
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process added routines (CREATE PROCEDURE/FUNCTION)
+	if len(diff.AddedRoutines) > 0 {
+		stmts = append(stmts, "-- CREATE ROUTINES (present in dev but not in prod)")
+		for _, routine := range diff.AddedRoutines {
+			stmts = append(stmts, routine.Definition)
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process modified routines
+	if len(diff.ModifiedRoutines) > 0 {
+		stmts = append(stmts, "-- MODIFIED ROUTINES (differ between prod and dev)")
+		stmts = append(stmts, "-- NOTE: To modify a routine, drop and recreate it. Manual review required.")
+		for _, routineDiff := range diff.ModifiedRoutines {
+			stmts = append(stmts, fmt.Sprintf("-- Routine %s differs between prod and dev", routineDiff.Name))
+			if routineDiff.DefinitionDiffers {
+				stmts = append(stmts, "--   Definition differs")
+			}
+			if routineDiff.KindDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   Kind: prod=%s dev=%s", routineDiff.ProdKind, routineDiff.DevKind))
+			}
+			if routineDiff.ReturnTypeDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   ReturnType: prod=%s dev=%s", routineDiff.ProdReturnType, routineDiff.DevReturnType))
+			}
+			if routineDiff.LanguageDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   Language: prod=%s dev=%s", routineDiff.ProdLanguage, routineDiff.DevLanguage))
+			}
+			if routineDiff.ParametersDiffers {
+				stmts = append(stmts, "--   Parameters differ")
+			}
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process removed triggers (DROP TRIGGER)
+	if len(diff.RemovedTriggers) > 0 {
+		stmts = append(stmts, "-- DROP TRIGGERS (present in prod but not in dev)")
+		stmts = append(stmts, "-- WARNING: These operations will delete triggers!")
+		if opts.ConfirmDestructive {
+			stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
+		}
+		for _, triggerName := range diff.RemovedTriggers {
+			dropStmt := fmt.Sprintf("DROP TRIGGER %s;", quoteIdentifier(triggerName, driver))
+			if !opts.AllowDropTrigger {
+				dropStmt = "-- " + dropStmt
+			}
+			stmts = append(stmts, dropStmt)
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process added triggers (CREATE TRIGGER)
+	if len(diff.AddedTriggers) > 0 {
+		stmts = append(stmts, "-- CREATE TRIGGERS (present in dev but not in prod)")
+		for _, trigger := range diff.AddedTriggers {
+			stmts = append(stmts, trigger.Definition)
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process modified triggers
+	if len(diff.ModifiedTriggers) > 0 {
+		stmts = append(stmts, "-- MODIFIED TRIGGERS (differ between prod and dev)")
+		stmts = append(stmts, "-- NOTE: To modify a trigger, drop and recreate it. Manual review required.")
+		for _, triggerDiff := range diff.ModifiedTriggers {
+			stmts = append(stmts, fmt.Sprintf("-- Trigger %s differs between prod and dev", triggerDiff.Name))
+			if triggerDiff.DefinitionDiffers {
+				stmts = append(stmts, "--   Definition differs")
+			}
+			if triggerDiff.TimingDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   Timing: prod=%s dev=%s", triggerDiff.ProdTiming, triggerDiff.DevTiming))
+			}
+			if triggerDiff.EventDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   Event: prod=%s dev=%s", triggerDiff.ProdEvent, triggerDiff.DevEvent))
+			}
+			if triggerDiff.ForEachRowDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   ForEachRow: prod=%v dev=%v", *triggerDiff.ProdForEachRow, *triggerDiff.DevForEachRow))
+			}
+			if triggerDiff.OwnerTableDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   OwnerTable: prod=%s dev=%s", triggerDiff.ProdOwnerTable, triggerDiff.DevOwnerTable))
+			}
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process removed sequences (DROP SEQUENCE)
+	if len(diff.RemovedSequences) > 0 {
+		stmts = append(stmts, "-- DROP SEQUENCES (present in prod but not in dev)")
+		stmts = append(stmts, "-- WARNING: These operations will delete sequences!")
+		if opts.ConfirmDestructive {
+			stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
+		}
+		for _, sequenceName := range diff.RemovedSequences {
+			dropStmt := fmt.Sprintf("DROP SEQUENCE %s;", quoteIdentifier(sequenceName, driver))
+			if !opts.AllowDropSequence {
+				dropStmt = "-- " + dropStmt
+			}
+			stmts = append(stmts, dropStmt)
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process added sequences (CREATE SEQUENCE)
+	if len(diff.AddedSequences) > 0 {
+		stmts = append(stmts, "-- CREATE SEQUENCES (present in dev but not in prod)")
+		for _, seq := range diff.AddedSequences {
+			createStmt := fmt.Sprintf("CREATE SEQUENCE %s START WITH %d INCREMENT BY %d MINVALUE %d MAXVALUE %d CACHE %d",
+				quoteIdentifier(seq.Name, driver), seq.StartValue, seq.Increment, seq.MinValue, seq.MaxValue, seq.CacheSize)
+			if seq.Cycle {
+				createStmt += " CYCLE"
+			} else {
+				createStmt += " NO CYCLE"
+			}
+			createStmt += ";"
+			stmts = append(stmts, createStmt)
+		}
+		stmts = append(stmts, "")
+	}
+
+	// Process modified sequences
+	if len(diff.ModifiedSequences) > 0 {
+		stmts = append(stmts, "-- MODIFIED SEQUENCES (differ between prod and dev)")
+		stmts = append(stmts, "-- NOTE: Sequence modifications may require manual intervention. Review carefully.")
+		for _, seqDiff := range diff.ModifiedSequences {
+			stmts = append(stmts, fmt.Sprintf("-- Sequence %s differs between prod and dev", seqDiff.Name))
+			if seqDiff.StartValueDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   StartValue: prod=%d dev=%d", seqDiff.ProdStartValue, seqDiff.DevStartValue))
+			}
+			if seqDiff.IncrementDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   Increment: prod=%d dev=%d", seqDiff.ProdIncrement, seqDiff.DevIncrement))
+			}
+			if seqDiff.MinValueDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   MinValue: prod=%d dev=%d", seqDiff.ProdMinValue, seqDiff.DevMinValue))
+			}
+			if seqDiff.MaxValueDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   MaxValue: prod=%d dev=%d", seqDiff.ProdMaxValue, seqDiff.DevMaxValue))
+			}
+			if seqDiff.CacheSizeDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   CacheSize: prod=%d dev=%d", seqDiff.ProdCacheSize, seqDiff.DevCacheSize))
+			}
+			if seqDiff.CycleDiffers {
+				stmts = append(stmts, fmt.Sprintf("--   Cycle: prod=%v dev=%v", *seqDiff.ProdCycle, *seqDiff.DevCycle))
+			}
+		}
+		stmts = append(stmts, "")
+	}
+
 	// Add transaction commit
 	stmts = append(stmts, "COMMIT;")
 
