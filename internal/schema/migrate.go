@@ -29,6 +29,22 @@ type MigrationOptions struct {
 	// When false (default), PRIMARY KEY modification statements are commented out for safety.
 	AllowModifyPrimaryKey bool
 
+	// AllowDropView controls whether DROP VIEW statements are uncommented.
+	// When false (default), DROP VIEW statements are commented out for safety.
+	AllowDropView bool
+
+	// AllowDropRoutine controls whether DROP PROCEDURE/FUNCTION statements are uncommented.
+	// When false (default), DROP PROCEDURE/FUNCTION statements are commented out for safety.
+	AllowDropRoutine bool
+
+	// AllowDropTrigger controls whether DROP TRIGGER statements are uncommented.
+	// When false (default), DROP TRIGGER statements are commented out for safety.
+	AllowDropTrigger bool
+
+	// AllowDropSequence controls whether DROP SEQUENCE statements are uncommented.
+	// When false (default), DROP SEQUENCE statements are commented out for safety.
+	AllowDropSequence bool
+
 	// ConfirmDestructive adds additional warnings for destructive operations.
 	ConfirmDestructive bool
 }

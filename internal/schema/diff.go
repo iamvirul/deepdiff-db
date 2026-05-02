@@ -86,11 +86,99 @@ type PrimaryKeyDiff struct {
 	DevColumns  []string `json:"dev_columns,omitempty"`
 }
 
-// DiffResult aggregates all table diffs.
+// ViewDiff captures differences for a single view across prod/dev.
+type ViewDiff struct {
+	Name                  string `json:"view_name"`
+	MissingInProd         bool   `json:"missing_in_prod,omitempty"`
+	MissingInDev          bool   `json:"missing_in_dev,omitempty"`
+	DefinitionDiffers     bool   `json:"definition_differs,omitempty"`
+	ProdDefinition        string `json:"prod_definition,omitempty"`
+	DevDefinition         string `json:"dev_definition,omitempty"`
+	IsMaterializedDiffers bool   `json:"is_materialized_differs,omitempty"`
+	ProdIsMaterialized    *bool  `json:"prod_is_materialized,omitempty"`
+	DevIsMaterialized     *bool  `json:"dev_is_materialized,omitempty"`
+}
+
+// RoutineDiff captures differences for a stored procedure or function across prod/dev.
+type RoutineDiff struct {
+	Name              string `json:"routine_name"`
+	MissingInProd     bool   `json:"missing_in_prod,omitempty"`
+	MissingInDev      bool   `json:"missing_in_dev,omitempty"`
+	DefinitionDiffers bool   `json:"definition_differs,omitempty"`
+	ProdDefinition    string `json:"prod_definition,omitempty"`
+	DevDefinition     string `json:"dev_definition,omitempty"`
+	KindDiffers       bool   `json:"kind_differs,omitempty"`
+	ProdKind          string `json:"prod_kind,omitempty"`
+	DevKind           string `json:"dev_kind,omitempty"`
+	ReturnTypeDiffers bool   `json:"return_type_differs,omitempty"`
+	ProdReturnType    string `json:"prod_return_type,omitempty"`
+	DevReturnType     string `json:"dev_return_type,omitempty"`
+	LanguageDiffers   bool   `json:"language_differs,omitempty"`
+	ProdLanguage      string `json:"prod_language,omitempty"`
+	DevLanguage       string `json:"dev_language,omitempty"`
+}
+
+// TriggerDiff captures differences for a trigger across prod/dev.
+type TriggerDiff struct {
+	Name              string `json:"trigger_name"`
+	MissingInProd     bool   `json:"missing_in_prod,omitempty"`
+	MissingInDev      bool   `json:"missing_in_dev,omitempty"`
+	DefinitionDiffers bool   `json:"definition_differs,omitempty"`
+	ProdDefinition    string `json:"prod_definition,omitempty"`
+	DevDefinition     string `json:"dev_definition,omitempty"`
+	TimingDiffers     bool   `json:"timing_differs,omitempty"`
+	ProdTiming        string `json:"prod_timing,omitempty"`
+	DevTiming         string `json:"dev_timing,omitempty"`
+	EventDiffers      bool   `json:"event_differs,omitempty"`
+	ProdEvent         string `json:"prod_event,omitempty"`
+	DevEvent          string `json:"dev_event,omitempty"`
+	ForEachRowDiffers bool   `json:"for_each_row_differs,omitempty"`
+	ProdForEachRow    *bool  `json:"prod_for_each_row,omitempty"`
+	DevForEachRow     *bool  `json:"dev_for_each_row,omitempty"`
+}
+
+// SequenceDiff captures differences for a sequence object across prod/dev.
+type SequenceDiff struct {
+	Name              string `json:"sequence_name"`
+	MissingInProd     bool   `json:"missing_in_prod,omitempty"`
+	MissingInDev      bool   `json:"missing_in_dev,omitempty"`
+	StartValueDiffers bool   `json:"start_value_differs,omitempty"`
+	ProdStartValue    int64  `json:"prod_start_value,omitempty"`
+	DevStartValue     int64  `json:"dev_start_value,omitempty"`
+	IncrementDiffers  bool   `json:"increment_differs,omitempty"`
+	ProdIncrement     int64  `json:"prod_increment,omitempty"`
+	DevIncrement      int64  `json:"dev_increment,omitempty"`
+	MinValueDiffers   bool   `json:"min_value_differs,omitempty"`
+	ProdMinValue      int64  `json:"prod_min_value,omitempty"`
+	DevMinValue       int64  `json:"dev_min_value,omitempty"`
+	MaxValueDiffers   bool   `json:"max_value_differs,omitempty"`
+	ProdMaxValue      int64  `json:"prod_max_value,omitempty"`
+	DevMaxValue       int64  `json:"dev_max_value,omitempty"`
+	CacheSizeDiffers  bool   `json:"cache_size_differs,omitempty"`
+	ProdCacheSize     int64  `json:"prod_cache_size,omitempty"`
+	DevCacheSize      int64  `json:"dev_cache_size,omitempty"`
+	CycleDiffers      bool   `json:"cycle_differs,omitempty"`
+	ProdCycle         *bool  `json:"prod_cycle,omitempty"`
+	DevCycle          *bool  `json:"dev_cycle,omitempty"`
+}
+
+// DiffResult aggregates all schema-level diffs.
 type DiffResult struct {
-	Tables        []TableDiff `json:"tables"`
-	AddedTables   []Table     `json:"added_tables,omitempty"`   // Full table definitions for CREATE TABLE
-	RemovedTables []string    `json:"removed_tables,omitempty"` // Table names for DROP TABLE
+	Tables           []TableDiff    `json:"tables"`
+	AddedTables      []Table        `json:"added_tables,omitempty"`    // Full table definitions for CREATE TABLE
+	RemovedTables    []string       `json:"removed_tables,omitempty"`  // Table names for DROP TABLE
+	AddedViews       []View         `json:"added_views,omitempty"`     // Full view definitions for CREATE VIEW
+	RemovedViews     []string       `json:"removed_views,omitempty"`   // View names for DROP VIEW
+	ModifiedViews    []ViewDiff     `json:"modified_views,omitempty"`  // Views present in both but differing
+	AddedRoutines    []Routine      `json:"added_routines,omitempty"`  // Full routine definitions for CREATE
+	RemovedRoutines  []string       `json:"removed_routines,omitempty"`  // Routine names for DROP
+	ModifiedRoutines []RoutineDiff  `json:"modified_routines,omitempty"` // Routines present in both but differing
+	AddedTriggers    []Trigger      `json:"added_triggers,omitempty"`  // Full trigger definitions for CREATE
+	RemovedTriggers  []string       `json:"removed_triggers,omitempty"`  // Trigger names for DROP
+	ModifiedTriggers []TriggerDiff  `json:"modified_triggers,omitempty"` // Triggers present in both but differing
+	AddedSequences   []Sequence     `json:"added_sequences,omitempty"`   // Full sequence definitions for CREATE
+	RemovedSequences []string       `json:"removed_sequences,omitempty"` // Sequence names for DROP
+	ModifiedSequences []SequenceDiff `json:"modified_sequences,omitempty"` // Sequences present in both but differing
 }
 
 // DiffSchemas compares two Schema values and returns a DiffResult that describes table- and column-level differences between them.
@@ -163,14 +251,18 @@ func DiffSchemas(prod, dev *Schema) DiffResult {
 	return result
 }
 
-// HasDrift indicates whether any differences were found.
+// HasDrift indicates whether any differences were found across tables, views,
+// routines, triggers, or sequences.
 func (d DiffResult) HasDrift() bool {
 	for _, t := range d.Tables {
 		if t.HasDifferences {
 			return true
 		}
 	}
-	return false
+	return len(d.AddedViews) > 0 || len(d.RemovedViews) > 0 || len(d.ModifiedViews) > 0 ||
+		len(d.AddedRoutines) > 0 || len(d.RemovedRoutines) > 0 || len(d.ModifiedRoutines) > 0 ||
+		len(d.AddedTriggers) > 0 || len(d.RemovedTriggers) > 0 || len(d.ModifiedTriggers) > 0 ||
+		len(d.AddedSequences) > 0 || len(d.RemovedSequences) > 0 || len(d.ModifiedSequences) > 0
 }
 
 // diffColumns computes column-level differences between prodCols and devCols.
