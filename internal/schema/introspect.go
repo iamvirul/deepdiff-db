@@ -393,9 +393,8 @@ func loadSQLiteViews(ctx context.Context, db *sql.DB, s *Schema, ignore map[stri
 			// Extract only the query body after "AS"
 			sqlText := sqlDef.String
 			// Find the first case-insensitive "AS" token
-			asIdx := -1
 			lowerSQL := strings.ToLower(sqlText)
-			asIdx = strings.Index(lowerSQL, " as ")
+			asIdx := strings.Index(lowerSQL, " as ")
 			if asIdx != -1 {
 				// Take everything after " AS "
 				definition = strings.TrimSpace(sqlText[asIdx+4:])

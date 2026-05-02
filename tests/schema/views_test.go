@@ -57,7 +57,7 @@ func TestDiffViews_RemovedView(t *testing.T) {
 	dev := &schema.Schema{Tables: map[string]schema.Table{}, Views: map[string]schema.View{}}
 	result := schema.DiffSchemas(prod, dev)
 
-	if len(result.RemovedViews) != 1 || result.RemovedViews[0] != "v_legacy" {
+	if len(result.RemovedViews) != 1 || result.RemovedViews[0].Name != "v_legacy" {
 		t.Errorf("expected RemovedViews=[v_legacy], got %v", result.RemovedViews)
 	}
 	if !result.HasDrift() {
@@ -238,7 +238,7 @@ func TestGenerateMigration_AddView_PostgreSQL_Materialized(t *testing.T) {
 }
 
 func TestGenerateMigration_DropView_CommentedByDefault(t *testing.T) {
-	diff := schema.DiffResult{RemovedViews: []string{"v_old"}}
+	diff := schema.DiffResult{RemovedViews: []schema.View{{Name: "v_old"}}}
 	sql, err := schema.GenerateMigration(diff, "sqlite", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -252,7 +252,7 @@ func TestGenerateMigration_DropView_CommentedByDefault(t *testing.T) {
 }
 
 func TestGenerateMigration_DropView_UncommentedWhenAllowed(t *testing.T) {
-	diff := schema.DiffResult{RemovedViews: []string{"v_old"}}
+	diff := schema.DiffResult{RemovedViews: []schema.View{{Name: "v_old"}}}
 	opts := &schema.MigrationOptions{AllowDropView: true}
 	sql, err := schema.GenerateMigration(diff, "sqlite", opts)
 	if err != nil {
