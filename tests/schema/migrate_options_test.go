@@ -66,7 +66,7 @@ func TestMigrationOptions_NewFields_CanBeSetTrue(t *testing.T) {
 func TestGenerateMigration_NewObjectTypesOnly_NoError(t *testing.T) {
 	diff := schema.DiffResult{
 		AddedViews:   []schema.View{{Name: "v_active", Definition: "SELECT 1"}},
-		RemovedViews: []string{"v_old"},
+		RemovedViews: []schema.View{{Name: "v_old"}},
 		ModifiedViews: []schema.ViewDiff{
 			{Name: "v_summary", DefinitionDiffers: true},
 		},
@@ -107,7 +107,7 @@ func TestGenerateMigration_NewObjectTypesOnly_NoError(t *testing.T) {
 // implementation for these types yet.
 func TestGenerateMigration_AllowDropNewTypes_NoError(t *testing.T) {
 	diff := schema.DiffResult{
-		RemovedViews:    []string{"v_old"},
+		RemovedViews:    []schema.View{{Name: "v_old"}},
 		RemovedRoutines: []string{"fn_old"},
 		RemovedTriggers: []string{"trg_old"},
 		RemovedSequences: []string{"seq_old"},
@@ -163,7 +163,7 @@ func TestGenerateMigration_TableOutputUnaffectedByNewObjectTypes(t *testing.T) {
 func TestGenerateMigration_AllowDropTable_WithNewTypesPresent(t *testing.T) {
 	diff := schema.DiffResult{
 		RemovedTables: []string{"legacy_tbl"},
-		RemovedViews:  []string{"v_old"},
+		RemovedViews:  []schema.View{{Name: "v_old"}},
 	}
 
 	opts := &schema.MigrationOptions{

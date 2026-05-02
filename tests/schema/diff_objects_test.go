@@ -49,7 +49,7 @@ func TestDiffResult_OmitemptySlices_PresentWhenPopulated(t *testing.T) {
 		AddedViews: []schema.View{
 			{Name: "v_active", Definition: "SELECT 1", IsMaterialized: false},
 		},
-		RemovedViews: []string{"v_old"},
+		RemovedViews: []schema.View{{Name: "v_old"}},
 		ModifiedViews: []schema.ViewDiff{
 			{Name: "v_summary", DefinitionDiffers: true, ProdDefinition: "SELECT 1", DevDefinition: "SELECT 2"},
 		},
@@ -114,7 +114,7 @@ func TestHasDrift_TrueForAddedView(t *testing.T) {
 }
 
 func TestHasDrift_TrueForRemovedView(t *testing.T) {
-	result := schema.DiffResult{RemovedViews: []string{"v_old"}}
+	result := schema.DiffResult{RemovedViews: []schema.View{{Name: "v_old"}}}
 	if !result.HasDrift() {
 		t.Error("HasDrift() should be true when RemovedViews is non-empty")
 	}
