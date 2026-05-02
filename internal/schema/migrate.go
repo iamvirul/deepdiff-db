@@ -340,14 +340,23 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 					// These drivers don't support materialized views - emit manual review comment
 					stmts = append(stmts, fmt.Sprintf("-- Manual review required to determine materialized view support for %s", driver))
 					stmts = append(stmts, "-- Materialized view requested but not supported; creating standard view instead:")
-					createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+					if driver == "sqlite" {
+						createStmt = fmt.Sprintf("CREATE VIEW IF NOT EXISTS %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+					} else {
+						createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+					}
 				default:
 					// Unknown driver - emit manual review comment
 					stmts = append(stmts, fmt.Sprintf("-- Manual review required to determine materialized view support for %s", driver))
 					createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
 				}
 			} else {
-				createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+				switch driver {
+				case "sqlite":
+					createStmt = fmt.Sprintf("CREATE VIEW IF NOT EXISTS %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+				default:
+					createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+				}
 			}
 			stmts = append(stmts, createStmt)
 		}
@@ -357,14 +366,27 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 	// Process modified views
 	if len(diff.ModifiedViews) > 0 {
 		stmts = append(stmts, "-- MODIFIED VIEWS (differ between prod and dev)")
-		stmts = append(stmts, "-- NOTE: To modify a view, drop and recreate it. Manual review required.")
-		for _, viewDiff := range diff.ModifiedViews {
-			stmts = append(stmts, fmt.Sprintf("-- View %s differs between prod and dev", viewDiff.Name))
-			if viewDiff.DefinitionDiffers {
-				stmts = append(stmts, "--   Definition differs")
+		for _, vd := range diff.ModifiedViews {
+			stmts = append(stmts, fmt.Sprintf("-- View: %s", vd.Name))
+			if vd.IsMaterializedDiffers && vd.ProdIsMaterialized != nil && vd.DevIsMaterialized != nil {
+				stmts = append(stmts, fmt.Sprintf("--   IsMaterialized: prod=%v dev=%v (manual review required)", *vd.ProdIsMaterialized, *vd.DevIsMaterialized))
 			}
-			if viewDiff.IsMaterializedDiffers {
-				stmts = append(stmts, fmt.Sprintf("--   IsMaterialized: prod=%v dev=%v", *viewDiff.ProdIsMaterialized, *viewDiff.DevIsMaterialized))
+			if vd.DefinitionDiffers && vd.DevDefinition != "" {
+				switch driver {
+				case "postgres", "postgresql":
+					// PostgreSQL supports CREATE OR REPLACE VIEW
+					stmts = append(stmts, fmt.Sprintf("CREATE OR REPLACE VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition))
+				default:
+					// MySQL and SQLite require DROP + CREATE
+					dropStmt := fmt.Sprintf("DROP VIEW %s;", quoteIdentifier(vd.Name, driver))
+					if !opts.AllowDropView {
+						dropStmt = "-- " + dropStmt
+					}
+					stmts = append(stmts, dropStmt)
+					stmts = append(stmts, fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition))
+				}
+			} else if vd.DefinitionDiffers {
+				stmts = append(stmts, fmt.Sprintf("-- View %s definition differs but dev definition is empty; manual review required", vd.Name))
 			}
 		}
 		stmts = append(stmts, "")

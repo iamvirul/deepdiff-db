@@ -11,11 +11,16 @@ import (
 	"github.com/iamvirul/deepdiff-db/pkg/progress"
 )
 
+// LoadSchemaOptions provides optional configuration for LoadSchema.
+type LoadSchemaOptions struct {
+	IgnoreViews []string // View names to exclude (case-insensitive)
+}
+
 // LoadSchema loads table and column metadata for the specified SQL driver into a Schema,
 // building Table entries with Columns and ordered PrimaryKey values and respecting the provided ignoreTables (case-insensitive).
 // Supported drivers: "mysql", "postgres"/"postgresql", and "sqlite"; the database parameter is used for MySQL queries.
 // Returns an error if the driver is unsupported or if any database query or row scanning fails.
-func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string, ignoreTables []string) (*Schema, error) {
+func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string, ignoreTables []string, opts ...LoadSchemaOptions) (*Schema, error) {
 	// Get logger and progress manager from context
 	log := logger.FromContext(ctx).WithDatabase(driver, database)
 	progressMgr := progress.FromContext(ctx)
@@ -228,6 +233,16 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 		return nil, fmt.Errorf("load foreign keys: %w", err)
 	}
 
+	// Load views
+	var ignoreViews []string
+	if len(opts) > 0 {
+		ignoreViews = opts[0].IgnoreViews
+	}
+	log.Debug("loading views")
+	if err := loadViews(ctx, db, driver, database, s, ignoreViews); err != nil {
+		return nil, fmt.Errorf("load views: %w", err)
+	}
+
 	// Calculate total columns
 	totalColumns := 0
 	for _, tbl := range s.Tables {
@@ -239,6 +254,145 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 		"columns", totalColumns)
 
 	return s, nil
+}
+
+// loadViews queries the database for view metadata and populates the Views map in the schema.
+// It dispatches to driver-specific view loading functions. MSSQL and Oracle are no-ops in Phase 2.
+func loadViews(ctx context.Context, db *sql.DB, driver string, database string, s *Schema, ignoreViews []string) error {
+	ignore := make(map[string]struct{}, len(ignoreViews))
+	for _, v := range ignoreViews {
+		ignore[strings.ToLower(v)] = struct{}{}
+	}
+	switch driver {
+	case "mysql":
+		return loadMySQLViews(ctx, db, database, s, ignore)
+	case "postgres", "postgresql":
+		return loadPostgreSQLViews(ctx, db, s, ignore)
+	case "sqlite":
+		return loadSQLiteViews(ctx, db, s, ignore)
+	case "mssql", "oracle":
+		return nil // not implemented in Phase 2
+	default:
+		return fmt.Errorf("view introspection unsupported for driver: %s", driver)
+	}
+}
+
+// loadMySQLViews queries information_schema.views to load view metadata.
+func loadMySQLViews(ctx context.Context, db *sql.DB, database string, s *Schema, ignore map[string]struct{}) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT table_name, view_definition
+		FROM information_schema.views
+		WHERE table_schema = ?
+		ORDER BY table_name
+	`, database)
+	if err != nil {
+		return fmt.Errorf("mysql views: %w", err)
+	}
+	defer rows.Close()
+
+	if s.Views == nil {
+		s.Views = make(map[string]View)
+	}
+	for rows.Next() {
+		var name, definition string
+		if err := rows.Scan(&name, &definition); err != nil {
+			return fmt.Errorf("mysql views scan: %w", err)
+		}
+		if _, skip := ignore[strings.ToLower(name)]; skip {
+			continue
+		}
+		s.Views[name] = View{Name: name, Definition: definition, IsMaterialized: false}
+	}
+	return rows.Err()
+}
+
+// loadPostgreSQLViews queries pg_views and pg_matviews to load all views (including materialized).
+func loadPostgreSQLViews(ctx context.Context, db *sql.DB, s *Schema, ignore map[string]struct{}) error {
+	if s.Views == nil {
+		s.Views = make(map[string]View)
+	}
+
+	// Regular views
+	rows, err := db.QueryContext(ctx, `
+		SELECT viewname, definition
+		FROM pg_views
+		WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+		ORDER BY viewname
+	`)
+	if err != nil {
+		return fmt.Errorf("postgresql views: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name, definition string
+		if err := rows.Scan(&name, &definition); err != nil {
+			return fmt.Errorf("postgresql views scan: %w", err)
+		}
+		if _, skip := ignore[strings.ToLower(name)]; skip {
+			continue
+		}
+		s.Views[name] = View{Name: name, Definition: strings.TrimSpace(definition), IsMaterialized: false}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Materialized views
+	matRows, err := db.QueryContext(ctx, `
+		SELECT matviewname, definition
+		FROM pg_matviews
+		WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+		ORDER BY matviewname
+	`)
+	if err != nil {
+		return fmt.Errorf("postgresql materialized views: %w", err)
+	}
+	defer matRows.Close()
+	for matRows.Next() {
+		var name, definition string
+		if err := matRows.Scan(&name, &definition); err != nil {
+			return fmt.Errorf("postgresql materialized views scan: %w", err)
+		}
+		if _, skip := ignore[strings.ToLower(name)]; skip {
+			continue
+		}
+		s.Views[name] = View{Name: name, Definition: strings.TrimSpace(definition), IsMaterialized: true}
+	}
+	return matRows.Err()
+}
+
+// loadSQLiteViews queries sqlite_master to load view metadata.
+func loadSQLiteViews(ctx context.Context, db *sql.DB, s *Schema, ignore map[string]struct{}) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT name, sql
+		FROM sqlite_master
+		WHERE type = 'view'
+		ORDER BY name
+	`)
+	if err != nil {
+		return fmt.Errorf("sqlite views: %w", err)
+	}
+	defer rows.Close()
+
+	if s.Views == nil {
+		s.Views = make(map[string]View)
+	}
+	for rows.Next() {
+		var name string
+		var sqlDef sql.NullString
+		if err := rows.Scan(&name, &sqlDef); err != nil {
+			return fmt.Errorf("sqlite views scan: %w", err)
+		}
+		if _, skip := ignore[strings.ToLower(name)]; skip {
+			continue
+		}
+		definition := ""
+		if sqlDef.Valid {
+			definition = sqlDef.String
+		}
+		s.Views[name] = View{Name: name, Definition: definition, IsMaterialized: false}
+	}
+	return rows.Err()
 }
 
 // scanColumns reads column metadata from rows and populates s.Tables with Table and Column entries.

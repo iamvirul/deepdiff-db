@@ -254,6 +254,9 @@ func DiffSchemas(prod, dev *Schema) DiffResult {
 		result.Tables = append(result.Tables, td)
 	}
 
+	// Diff views
+	result.AddedViews, result.RemovedViews, result.ModifiedViews = diffViews(prod.Views, dev.Views)
+
 	return result
 }
 
@@ -615,4 +618,72 @@ func diffPrimaryKey(prodPK, devPK []string) *PrimaryKeyDiff {
 		ProdColumns: prodPK,
 		DevColumns:  devPK,
 	}
+}
+
+// diffViews compares views between prod and dev.
+// Returns added views (in dev only), removed view names (in prod only), and
+// modified views (in both but with differing definition or materialization).
+// View definitions are normalized before comparison to reduce false positives.
+func diffViews(prodViews, devViews map[string]View) (added []View, removed []string, modified []ViewDiff) {
+	if prodViews == nil {
+		prodViews = make(map[string]View)
+	}
+	if devViews == nil {
+		devViews = make(map[string]View)
+	}
+
+	seen := make(map[string]struct{})
+	for name := range prodViews {
+		seen[name] = struct{}{}
+	}
+	for name := range devViews {
+		seen[name] = struct{}{}
+	}
+
+	var names []string
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		pv, prodOK := prodViews[name]
+		dv, devOK := devViews[name]
+
+		if prodOK && !devOK {
+			removed = append(removed, name)
+			continue
+		}
+		if !prodOK && devOK {
+			added = append(added, dv)
+			continue
+		}
+
+		// Both exist — check for differences
+		vd := ViewDiff{Name: name}
+		hasDiff := false
+
+		if normalizeViewDefinition(pv.Definition) != normalizeViewDefinition(dv.Definition) {
+			vd.DefinitionDiffers = true
+			vd.ProdDefinition = pv.Definition
+			vd.DevDefinition = dv.Definition
+			hasDiff = true
+		}
+		if pv.IsMaterialized != dv.IsMaterialized {
+			vd.IsMaterializedDiffers = true
+			vd.ProdIsMaterialized = &pv.IsMaterialized
+			vd.DevIsMaterialized = &dv.IsMaterialized
+			hasDiff = true
+		}
+		if hasDiff {
+			modified = append(modified, vd)
+		}
+	}
+	return
+}
+
+// normalizeViewDefinition normalizes a view definition for comparison.
+// Trims whitespace, collapses runs of whitespace to a single space, and lowercases.
+func normalizeViewDefinition(def string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(def)), " "))
 }
