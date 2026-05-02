@@ -314,9 +314,9 @@ func loadPostgreSQLViews(ctx context.Context, db *sql.DB, s *Schema, ignore map[
 
 	// Regular views
 	rows, err := db.QueryContext(ctx, `
-		SELECT viewname, definition
+		SELECT schemaname, viewname, definition
 		FROM pg_views
-		WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+		WHERE schemaname = current_schema()
 		ORDER BY viewname
 	`)
 	if err != nil {
@@ -324,14 +324,15 @@ func loadPostgreSQLViews(ctx context.Context, db *sql.DB, s *Schema, ignore map[
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var name, definition string
-		if err := rows.Scan(&name, &definition); err != nil {
+		var schema, name, definition string
+		if err := rows.Scan(&schema, &name, &definition); err != nil {
 			return fmt.Errorf("postgresql views scan: %w", err)
 		}
 		if _, skip := ignore[strings.ToLower(name)]; skip {
 			continue
 		}
-		s.Views[name] = View{Name: name, Definition: strings.TrimSpace(definition), IsMaterialized: false}
+		qualifiedName := fmt.Sprintf("%s.%s", schema, name)
+		s.Views[qualifiedName] = View{Name: qualifiedName, Definition: strings.TrimSpace(definition), IsMaterialized: false}
 	}
 	if err := rows.Err(); err != nil {
 		return err
@@ -339,9 +340,9 @@ func loadPostgreSQLViews(ctx context.Context, db *sql.DB, s *Schema, ignore map[
 
 	// Materialized views
 	matRows, err := db.QueryContext(ctx, `
-		SELECT matviewname, definition
+		SELECT schemaname, matviewname, definition
 		FROM pg_matviews
-		WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+		WHERE schemaname = current_schema()
 		ORDER BY matviewname
 	`)
 	if err != nil {
@@ -349,14 +350,15 @@ func loadPostgreSQLViews(ctx context.Context, db *sql.DB, s *Schema, ignore map[
 	}
 	defer matRows.Close()
 	for matRows.Next() {
-		var name, definition string
-		if err := matRows.Scan(&name, &definition); err != nil {
+		var schema, name, definition string
+		if err := matRows.Scan(&schema, &name, &definition); err != nil {
 			return fmt.Errorf("postgresql materialized views scan: %w", err)
 		}
 		if _, skip := ignore[strings.ToLower(name)]; skip {
 			continue
 		}
-		s.Views[name] = View{Name: name, Definition: strings.TrimSpace(definition), IsMaterialized: true}
+		qualifiedName := fmt.Sprintf("%s.%s", schema, name)
+		s.Views[qualifiedName] = View{Name: qualifiedName, Definition: strings.TrimSpace(definition), IsMaterialized: true}
 	}
 	return matRows.Err()
 }
@@ -388,7 +390,22 @@ func loadSQLiteViews(ctx context.Context, db *sql.DB, s *Schema, ignore map[stri
 		}
 		definition := ""
 		if sqlDef.Valid {
-			definition = sqlDef.String
+			// Extract only the query body after "AS"
+			sqlText := sqlDef.String
+			// Find the first case-insensitive "AS" token
+			asIdx := -1
+			lowerSQL := strings.ToLower(sqlText)
+			asIdx = strings.Index(lowerSQL, " as ")
+			if asIdx != -1 {
+				// Take everything after " AS "
+				definition = strings.TrimSpace(sqlText[asIdx+4:])
+				// Remove trailing semicolon if present
+				definition = strings.TrimSuffix(definition, ";")
+				definition = strings.TrimSpace(definition)
+			} else {
+				// Fallback: if no "AS" found, use the whole definition
+				definition = sqlText
+			}
 		}
 		s.Views[name] = View{Name: name, Definition: definition, IsMaterialized: false}
 	}

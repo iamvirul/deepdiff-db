@@ -315,8 +315,13 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 		if opts.ConfirmDestructive {
 			stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
 		}
-		for _, viewName := range diff.RemovedViews {
-			dropStmt := fmt.Sprintf("DROP VIEW %s;", quoteIdentifier(viewName, driver))
+		for _, view := range diff.RemovedViews {
+			var dropStmt string
+			if view.IsMaterialized {
+				dropStmt = fmt.Sprintf("DROP MATERIALIZED VIEW %s;", quoteIdentifier(view.Name, driver))
+			} else {
+				dropStmt = fmt.Sprintf("DROP VIEW %s;", quoteIdentifier(view.Name, driver))
+			}
 			if !opts.AllowDropView {
 				dropStmt = "-- " + dropStmt
 			}
@@ -368,22 +373,94 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 		stmts = append(stmts, "-- MODIFIED VIEWS (differ between prod and dev)")
 		for _, vd := range diff.ModifiedViews {
 			stmts = append(stmts, fmt.Sprintf("-- View: %s", vd.Name))
+
+			// Check if materialization differs
 			if vd.IsMaterializedDiffers && vd.ProdIsMaterialized != nil && vd.DevIsMaterialized != nil {
-				stmts = append(stmts, fmt.Sprintf("--   IsMaterialized: prod=%v dev=%v (manual review required)", *vd.ProdIsMaterialized, *vd.DevIsMaterialized))
-			}
-			if vd.DefinitionDiffers && vd.DevDefinition != "" {
-				switch driver {
-				case "postgres", "postgresql":
-					// PostgreSQL supports CREATE OR REPLACE VIEW
-					stmts = append(stmts, fmt.Sprintf("CREATE OR REPLACE VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition))
-				default:
-					// MySQL and SQLite require DROP + CREATE
-					dropStmt := fmt.Sprintf("DROP VIEW %s;", quoteIdentifier(vd.Name, driver))
-					if !opts.AllowDropView {
-						dropStmt = "-- " + dropStmt
+				stmts = append(stmts, fmt.Sprintf("--   IsMaterialized: prod=%v dev=%v", *vd.ProdIsMaterialized, *vd.DevIsMaterialized))
+
+				// When materialization differs, we need to DROP the old object and CREATE the new one
+				var dropStmt string
+				if *vd.ProdIsMaterialized {
+					dropStmt = fmt.Sprintf("DROP MATERIALIZED VIEW %s;", quoteIdentifier(vd.Name, driver))
+				} else {
+					dropStmt = fmt.Sprintf("DROP VIEW %s;", quoteIdentifier(vd.Name, driver))
+				}
+				if !opts.AllowDropView {
+					dropStmt = "-- " + dropStmt
+				}
+				stmts = append(stmts, dropStmt)
+
+				// Create the new object
+				if vd.DevDefinition != "" {
+					var createStmt string
+					if *vd.DevIsMaterialized {
+						// Creating materialized view
+						switch driver {
+						case "postgres", "postgresql":
+							createStmt = fmt.Sprintf("CREATE MATERIALIZED VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition)
+						default:
+							stmts = append(stmts, fmt.Sprintf("-- Manual review required: %s does not support materialized views", driver))
+							createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition)
+						}
+					} else {
+						createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition)
 					}
-					stmts = append(stmts, dropStmt)
-					stmts = append(stmts, fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition))
+					if !opts.AllowDropView {
+						createStmt = "-- " + createStmt
+					}
+					stmts = append(stmts, createStmt)
+				}
+			} else if vd.DefinitionDiffers && vd.DevDefinition != "" {
+				// Definition differs but materialization is the same
+				devIsMaterialized := vd.DevIsMaterialized != nil && *vd.DevIsMaterialized
+
+				if devIsMaterialized {
+					// Handle materialized view replacement
+					switch driver {
+					case "postgres", "postgresql":
+						// PostgreSQL does not support CREATE OR REPLACE for materialized views
+						dropStmt := fmt.Sprintf("DROP MATERIALIZED VIEW %s;", quoteIdentifier(vd.Name, driver))
+						if !opts.AllowDropView {
+							dropStmt = "-- " + dropStmt
+						}
+						stmts = append(stmts, dropStmt)
+						createStmt := fmt.Sprintf("CREATE MATERIALIZED VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition)
+						if !opts.AllowDropView {
+							createStmt = "-- " + createStmt
+						}
+						stmts = append(stmts, createStmt)
+					default:
+						stmts = append(stmts, fmt.Sprintf("-- Manual review required: %s does not support materialized views", driver))
+						dropStmt := fmt.Sprintf("DROP VIEW %s;", quoteIdentifier(vd.Name, driver))
+						if !opts.AllowDropView {
+							dropStmt = "-- " + dropStmt
+						}
+						stmts = append(stmts, dropStmt)
+						createStmt := fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition)
+						if !opts.AllowDropView {
+							createStmt = "-- " + createStmt
+						}
+						stmts = append(stmts, createStmt)
+					}
+				} else {
+					// Handle regular view replacement
+					switch driver {
+					case "postgres", "postgresql":
+						// PostgreSQL supports CREATE OR REPLACE VIEW
+						stmts = append(stmts, fmt.Sprintf("CREATE OR REPLACE VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition))
+					default:
+						// MySQL and SQLite require DROP + CREATE
+						dropStmt := fmt.Sprintf("DROP VIEW %s;", quoteIdentifier(vd.Name, driver))
+						if !opts.AllowDropView {
+							dropStmt = "-- " + dropStmt
+						}
+						stmts = append(stmts, dropStmt)
+						createStmt := fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(vd.Name, driver), vd.DevDefinition)
+						if !opts.AllowDropView {
+							createStmt = "-- " + createStmt
+						}
+						stmts = append(stmts, createStmt)
+					}
 				}
 			} else if vd.DefinitionDiffers {
 				stmts = append(stmts, fmt.Sprintf("-- View %s definition differs but dev definition is empty; manual review required", vd.Name))
