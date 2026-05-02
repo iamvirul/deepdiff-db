@@ -48,10 +48,14 @@ type DBConfig struct {
 	Database string `yaml:"database"`
 }
 
-// IgnoreConfig defines tables/columns to skip.
+// IgnoreConfig defines tables/columns/views/routines/triggers/sequences to skip during diff.
 type IgnoreConfig struct {
-	Tables  []string `yaml:"tables"`
-	Columns []string `yaml:"columns"`
+	Tables    []string `yaml:"tables"`
+	Columns   []string `yaml:"columns"`
+	Views     []string `yaml:"views,omitempty"`     // View names to exclude from diff
+	Routines  []string `yaml:"routines,omitempty"`  // Routine names to exclude from diff
+	Triggers  []string `yaml:"triggers,omitempty"`  // Trigger names to exclude from diff
+	Sequences []string `yaml:"sequences,omitempty"` // Sequence names to exclude from diff
 }
 
 // OutputConfig defines the output directory for reports and packs.
@@ -80,6 +84,22 @@ type MigrationConfig struct {
 	// AllowModifyPrimaryKey controls whether primary key modification statements are uncommented.
 	// When false (default), PRIMARY KEY modification statements are commented out for safety.
 	AllowModifyPrimaryKey bool `yaml:"allow_modify_primary_key"`
+
+	// AllowDropView controls whether DROP VIEW statements are uncommented.
+	// When false (default), DROP VIEW statements are commented out for safety.
+	AllowDropView bool `yaml:"allow_drop_view"`
+
+	// AllowDropRoutine controls whether DROP PROCEDURE/FUNCTION statements are uncommented.
+	// When false (default), DROP PROCEDURE/FUNCTION statements are commented out for safety.
+	AllowDropRoutine bool `yaml:"allow_drop_routine"`
+
+	// AllowDropTrigger controls whether DROP TRIGGER statements are uncommented.
+	// When false (default), DROP TRIGGER statements are commented out for safety.
+	AllowDropTrigger bool `yaml:"allow_drop_trigger"`
+
+	// AllowDropSequence controls whether DROP SEQUENCE statements are uncommented.
+	// When false (default), DROP SEQUENCE statements are commented out for safety.
+	AllowDropSequence bool `yaml:"allow_drop_sequence"`
 
 	// ConfirmDestructive requires manual confirmation for destructive operations.
 	// When true, destructive operations include additional warnings.
