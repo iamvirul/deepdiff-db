@@ -331,7 +331,21 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 		for _, view := range diff.AddedViews {
 			var createStmt string
 			if view.IsMaterialized {
-				createStmt = fmt.Sprintf("CREATE MATERIALIZED VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+				// Check if the driver supports materialized views
+				switch driver {
+				case "postgres", "postgresql":
+					// PostgreSQL supports materialized views
+					createStmt = fmt.Sprintf("CREATE MATERIALIZED VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+				case "mysql", "sqlite", "mssql", "sqlserver":
+					// These drivers don't support materialized views - emit manual review comment
+					stmts = append(stmts, fmt.Sprintf("-- Manual review required to determine materialized view support for %s", driver))
+					stmts = append(stmts, fmt.Sprintf("-- Materialized view requested but not supported; creating standard view instead:"))
+					createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+				default:
+					// Unknown driver - emit manual review comment
+					stmts = append(stmts, fmt.Sprintf("-- Manual review required to determine materialized view support for %s", driver))
+					createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
+				}
 			} else {
 				createStmt = fmt.Sprintf("CREATE VIEW %s AS %s;", quoteIdentifier(view.Name, driver), view.Definition)
 			}
@@ -364,9 +378,31 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 			stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
 		}
 		for _, routineName := range diff.RemovedRoutines {
-			// Note: We don't know the routine kind here, so we use a generic comment
-			dropStmt := fmt.Sprintf("-- DROP PROCEDURE/FUNCTION %s; -- Manual review required to determine routine type", quoteIdentifier(routineName, driver))
-			if !opts.AllowDropRoutine {
+			// Look up the routine kind from the production schema
+			var dropStmt string
+			if prodSchema != nil {
+				if routine, ok := prodSchema.Routines[routineName]; ok {
+					// We know the kind - emit the proper DROP statement
+					routineType := strings.ToUpper(routine.Kind)
+					if routineType == "FUNCTION" {
+						dropStmt = fmt.Sprintf("DROP FUNCTION %s;", quoteIdentifier(routineName, driver))
+					} else if routineType == "PROCEDURE" {
+						dropStmt = fmt.Sprintf("DROP PROCEDURE %s;", quoteIdentifier(routineName, driver))
+					} else {
+						// Unknown kind - use generic comment
+						dropStmt = fmt.Sprintf("-- DROP PROCEDURE/FUNCTION %s; -- Manual review required: unknown routine kind '%s'", quoteIdentifier(routineName, driver), routine.Kind)
+					}
+				} else {
+					// Routine not found in production schema
+					dropStmt = fmt.Sprintf("-- DROP PROCEDURE/FUNCTION %s; -- Manual review required: routine not found in production schema", quoteIdentifier(routineName, driver))
+				}
+			} else {
+				// No production schema available
+				dropStmt = fmt.Sprintf("-- DROP PROCEDURE/FUNCTION %s; -- Manual review required to determine routine type", quoteIdentifier(routineName, driver))
+			}
+
+			// Only prefix with "-- " if AllowDropRoutine is false and the statement is not already commented
+			if !opts.AllowDropRoutine && !strings.HasPrefix(dropStmt, "-- ") {
 				dropStmt = "-- " + dropStmt
 			}
 			stmts = append(stmts, dropStmt)
@@ -416,8 +452,46 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 			stmts = append(stmts, "-- IMPORTANT: Review carefully before executing!")
 		}
 		for _, triggerName := range diff.RemovedTriggers {
-			dropStmt := fmt.Sprintf("DROP TRIGGER %s;", quoteIdentifier(triggerName, driver))
-			if !opts.AllowDropTrigger {
+			var dropStmt string
+			// Look up the trigger's table from the production schema
+			if prodSchema != nil {
+				if trigger, ok := prodSchema.Triggers[triggerName]; ok {
+					// We know the table - emit the proper DROP statement
+					switch driver {
+					case "postgres", "postgresql":
+						// PostgreSQL requires: DROP TRIGGER <name> ON <table>
+						dropStmt = fmt.Sprintf("DROP TRIGGER %s ON %s;", quoteIdentifier(triggerName, driver), quoteIdentifier(trigger.Table, driver))
+					case "mysql":
+						// MySQL requires: DROP TRIGGER <name> (table not needed)
+						dropStmt = fmt.Sprintf("DROP TRIGGER %s;", quoteIdentifier(triggerName, driver))
+					case "sqlite":
+						// SQLite requires: DROP TRIGGER <name> (table not needed)
+						dropStmt = fmt.Sprintf("DROP TRIGGER %s;", quoteIdentifier(triggerName, driver))
+					case "mssql", "sqlserver":
+						// MSSQL requires: DROP TRIGGER <name> (table not needed, or schema-qualified)
+						dropStmt = fmt.Sprintf("DROP TRIGGER %s;", quoteIdentifier(triggerName, driver))
+					case "oracle":
+						// Oracle requires: DROP TRIGGER <name> (table not needed)
+						dropStmt = fmt.Sprintf("DROP TRIGGER %s;", quoteIdentifier(triggerName, driver))
+					default:
+						// Unknown driver - emit generic DROP TRIGGER
+						dropStmt = fmt.Sprintf("DROP TRIGGER %s;", quoteIdentifier(triggerName, driver))
+					}
+				} else {
+					// Trigger not found in production schema
+					dropStmt = fmt.Sprintf("-- DROP TRIGGER %s; -- Manual review required: trigger not found in production schema", quoteIdentifier(triggerName, driver))
+				}
+			} else {
+				// No production schema available - emit generic statement (may fail for PostgreSQL)
+				dropStmt = fmt.Sprintf("DROP TRIGGER %s;", quoteIdentifier(triggerName, driver))
+				if driver == "postgres" || driver == "postgresql" {
+					// Add a comment for PostgreSQL since it requires the table name
+					dropStmt = fmt.Sprintf("-- DROP TRIGGER %s; -- Manual review required: PostgreSQL requires table name (DROP TRIGGER <name> ON <table>)", quoteIdentifier(triggerName, driver))
+				}
+			}
+
+			// Only prefix with "-- " if AllowDropTrigger is false and the statement is not already commented
+			if !opts.AllowDropTrigger && !strings.HasPrefix(dropStmt, "-- ") {
 				dropStmt = "-- " + dropStmt
 			}
 			stmts = append(stmts, dropStmt)
@@ -429,6 +503,10 @@ func GenerateMigrationWithSchemas(diff DiffResult, driver string, opts *Migratio
 	if len(diff.AddedTriggers) > 0 {
 		stmts = append(stmts, "-- CREATE TRIGGERS (present in dev but not in prod)")
 		for _, trigger := range diff.AddedTriggers {
+			// Guard against empty Definition
+			if trigger.Definition == "" {
+				return "", fmt.Errorf("trigger %s on table %s has empty Definition; cannot generate CREATE TRIGGER statement", trigger.Name, trigger.Table)
+			}
 			stmts = append(stmts, trigger.Definition)
 		}
 		stmts = append(stmts, "")
