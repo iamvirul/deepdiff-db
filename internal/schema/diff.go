@@ -174,7 +174,7 @@ type DiffResult struct {
 	AddedTables      []Table        `json:"added_tables,omitempty"`    // Full table definitions for CREATE TABLE
 	RemovedTables    []string       `json:"removed_tables,omitempty"`  // Table names for DROP TABLE
 	AddedViews       []View         `json:"added_views,omitempty"`     // Full view definitions for CREATE VIEW
-	RemovedViews     []string       `json:"removed_views,omitempty"`   // View names for DROP VIEW
+	RemovedViews     []View         `json:"removed_views,omitempty"`   // View objects for DROP VIEW/DROP MATERIALIZED VIEW
 	ModifiedViews    []ViewDiff     `json:"modified_views,omitempty"`  // Views present in both but differing
 	AddedRoutines    []Routine      `json:"added_routines,omitempty"`  // Full routine definitions for CREATE
 	RemovedRoutines  []string       `json:"removed_routines,omitempty"`  // Routine names for DROP
@@ -621,10 +621,10 @@ func diffPrimaryKey(prodPK, devPK []string) *PrimaryKeyDiff {
 }
 
 // diffViews compares views between prod and dev.
-// Returns added views (in dev only), removed view names (in prod only), and
+// Returns added views (in dev only), removed views (in prod only), and
 // modified views (in both but with differing definition or materialization).
 // View definitions are normalized before comparison to reduce false positives.
-func diffViews(prodViews, devViews map[string]View) (added []View, removed []string, modified []ViewDiff) {
+func diffViews(prodViews, devViews map[string]View) (added []View, removed []View, modified []ViewDiff) {
 	if prodViews == nil {
 		prodViews = make(map[string]View)
 	}
@@ -651,7 +651,7 @@ func diffViews(prodViews, devViews map[string]View) (added []View, removed []str
 		dv, devOK := devViews[name]
 
 		if prodOK && !devOK {
-			removed = append(removed, name)
+			removed = append(removed, pv)
 			continue
 		}
 		if !prodOK && devOK {
