@@ -1778,21 +1778,46 @@ func loadSequences(ctx context.Context, db *sql.DB, driver string, database stri
 	switch driver {
 	case "postgres", "postgresql":
 		return loadPostgreSQLSequences(ctx, db, s, ignore)
-	case "mysql", "sqlite", "mssql", "oracle":
+	case "mysql", "sqlite":
 		return nil
+	case "mssql":
+		return fmt.Errorf("sequence introspection not supported for driver %s", "mssql")
+	case "oracle":
+		return fmt.Errorf("sequence introspection not supported for driver %s", "oracle")
 	default:
 		return fmt.Errorf("sequence introspection unsupported for driver: %s", driver)
 	}
 }
 
 // loadPostgreSQLSequences queries pg_sequences to load sequence metadata.
+// For PostgreSQL <10, falls back to information_schema.sequences.
 func loadPostgreSQLSequences(ctx context.Context, db *sql.DB, s *Schema, ignore map[string]struct{}) error {
-	rows, err := db.QueryContext(ctx, `
-		SELECT sequencename, start_value, increment_by, min_value, max_value, cache_size, cycle
-		FROM pg_sequences
-		WHERE schemaname = current_schema()
-		ORDER BY sequencename
-	`)
+	// Check PostgreSQL version
+	var versionNum int
+	err := db.QueryRowContext(ctx, "SELECT current_setting('server_version_num')::integer").Scan(&versionNum)
+	if err != nil {
+		return fmt.Errorf("postgresql version check: %w", err)
+	}
+
+	var rows *sql.Rows
+	if versionNum >= 100000 {
+		// PostgreSQL 10+ - use pg_sequences
+		rows, err = db.QueryContext(ctx, `
+			SELECT sequencename, start_value, increment_by, min_value, max_value, cache_size, cycle
+			FROM pg_sequences
+			WHERE schemaname = current_schema()
+			ORDER BY sequencename
+		`)
+	} else {
+		// PostgreSQL <10 - use information_schema.sequences
+		rows, err = db.QueryContext(ctx, `
+			SELECT sequence_name, start_value, minimum_value, maximum_value, increment,
+			       CASE WHEN cycle_option = 'YES' THEN true ELSE false END AS cycle
+			FROM information_schema.sequences
+			WHERE sequence_schema = current_schema()
+			ORDER BY sequence_name
+		`)
+	}
 	if err != nil {
 		return fmt.Errorf("postgresql sequences: %w", err)
 	}
@@ -1801,24 +1826,51 @@ func loadPostgreSQLSequences(ctx context.Context, db *sql.DB, s *Schema, ignore 
 	if s.Sequences == nil {
 		s.Sequences = make(map[string]Sequence)
 	}
-	for rows.Next() {
-		var name string
-		var startValue, incrementBy, minValue, maxValue, cacheSize int64
-		var cycle bool
-		if err := rows.Scan(&name, &startValue, &incrementBy, &minValue, &maxValue, &cacheSize, &cycle); err != nil {
-			return fmt.Errorf("postgresql sequences scan: %w", err)
+
+	if versionNum >= 100000 {
+		// Scan pg_sequences results
+		for rows.Next() {
+			var name string
+			var startValue, incrementBy, minValue, maxValue, cacheSize int64
+			var cycle bool
+			if err := rows.Scan(&name, &startValue, &incrementBy, &minValue, &maxValue, &cacheSize, &cycle); err != nil {
+				return fmt.Errorf("postgresql sequences scan: %w", err)
+			}
+			if _, skip := ignore[strings.ToLower(name)]; skip {
+				continue
+			}
+			s.Sequences[name] = Sequence{
+				Name:       name,
+				StartValue: startValue,
+				Increment:  incrementBy,
+				MinValue:   minValue,
+				MaxValue:   maxValue,
+				CacheSize:  cacheSize,
+				Cycle:      cycle,
+			}
 		}
-		if _, skip := ignore[strings.ToLower(name)]; skip {
-			continue
-		}
-		s.Sequences[name] = Sequence{
-			Name:       name,
-			StartValue: startValue,
-			Increment:  incrementBy,
-			MinValue:   minValue,
-			MaxValue:   maxValue,
-			CacheSize:  cacheSize,
-			Cycle:      cycle,
+	} else {
+		// Scan information_schema.sequences results (PostgreSQL <10)
+		for rows.Next() {
+			var name string
+			var startValue, minValue, maxValue, incrementBy int64
+			var cycle bool
+			if err := rows.Scan(&name, &startValue, &minValue, &maxValue, &incrementBy, &cycle); err != nil {
+				return fmt.Errorf("postgresql sequences scan: %w", err)
+			}
+			if _, skip := ignore[strings.ToLower(name)]; skip {
+				continue
+			}
+			// Note: information_schema.sequences doesn't provide cache_size, so we use 0
+			s.Sequences[name] = Sequence{
+				Name:       name,
+				StartValue: startValue,
+				Increment:  incrementBy,
+				MinValue:   minValue,
+				MaxValue:   maxValue,
+				CacheSize:  0, // Not available in information_schema
+				Cycle:      cycle,
+			}
 		}
 	}
 	return rows.Err()

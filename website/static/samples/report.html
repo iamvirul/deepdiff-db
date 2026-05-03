@@ -1060,9 +1060,30 @@
                             
                         </div>
                     </div>
-                    
-                    
-                
+
+
+                    <div class="diff-section">
+                        <div class="diff-header open" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">Sequences</span>
+                            <span class="diff-type"><span class="badge badge-warning">1</span></span>
+                        </div>
+                        <div class="diff-body">
+
+                            <div class="diff-row add">
+                                <div class="diff-indicator">+</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">seq_order_id</span>
+                                    <span class="diff-detail">Sequence &#39;seq_order_id&#39; exists in dev but not in prod</span>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+
             </div>
 
             <div id="tab-data" class="tab-panel" data-title="Data Changes">
@@ -1080,7 +1101,8 @@
                                     <th>Table</th>
                                     <th>Added</th>
                                     <th>Removed</th>
-                                    <th>Modified</th>
+                                    <th>Updated</th>
+                                    <th>Keys (click to view)</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1096,7 +1118,7 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="audit_log" style="display:none;">
-                                    <td colspan="4">
+                                    <td colspan="5">
                                         <div class="keys-detail">
                                             
                                             
@@ -1122,7 +1144,7 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="customers" style="display:none;">
-                                    <td colspan="4">
+                                    <td colspan="5">
                                         <div class="keys-detail">
                                             
                                             <div class="keys-section">
@@ -1153,7 +1175,7 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="inventory_log" style="display:none;">
-                                    <td colspan="4">
+                                    <td colspan="5">
                                         <div class="keys-detail">
                                             
                                             <div class="keys-section">
@@ -1179,7 +1201,7 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="order_items" style="display:none;">
-                                    <td colspan="4">
+                                    <td colspan="5">
                                         <div class="keys-detail">
                                             
                                             <div class="keys-section">
@@ -1205,7 +1227,7 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="orders" style="display:none;">
-                                    <td colspan="4">
+                                    <td colspan="5">
                                         <div class="keys-detail">
                                             
                                             <div class="keys-section">
@@ -1236,7 +1258,7 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="products" style="display:none;">
-                                    <td colspan="4">
+                                    <td colspan="5">
                                         <div class="keys-detail">
                                             
                                             <div class="keys-section">
