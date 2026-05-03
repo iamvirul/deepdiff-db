@@ -257,6 +257,12 @@ func DiffSchemas(prod, dev *Schema) DiffResult {
 	// Diff views
 	result.AddedViews, result.RemovedViews, result.ModifiedViews = diffViews(prod.Views, dev.Views)
 
+	// Diff routines
+	result.AddedRoutines, result.RemovedRoutines, result.ModifiedRoutines = diffRoutines(prod.Routines, dev.Routines)
+
+	// Diff triggers
+	result.AddedTriggers, result.RemovedTriggers, result.ModifiedTriggers = diffTriggers(prod.Triggers, dev.Triggers)
+
 	return result
 }
 
@@ -686,4 +692,170 @@ func diffViews(prodViews, devViews map[string]View) (added []View, removed []Vie
 // Trims whitespace, collapses runs of whitespace to a single space, and lowercases.
 func normalizeViewDefinition(def string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(def)), " "))
+}
+
+// diffRoutines compares stored procedures and functions between prod and dev.
+func diffRoutines(prodRoutines, devRoutines map[string]Routine) (added []Routine, removed []string, modified []RoutineDiff) {
+	if prodRoutines == nil {
+		prodRoutines = make(map[string]Routine)
+	}
+	if devRoutines == nil {
+		devRoutines = make(map[string]Routine)
+	}
+
+	seen := make(map[string]struct{})
+	for name := range prodRoutines {
+		seen[name] = struct{}{}
+	}
+	for name := range devRoutines {
+		seen[name] = struct{}{}
+	}
+
+	var names []string
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		pr, prodOK := prodRoutines[name]
+		dr, devOK := devRoutines[name]
+
+		if prodOK && !devOK {
+			removed = append(removed, name)
+			continue
+		}
+		if !prodOK && devOK {
+			added = append(added, dr)
+			continue
+		}
+
+		rd := RoutineDiff{Name: name}
+		hasDiff := false
+
+		if normalizeRoutineDefinition(pr.Definition) != normalizeRoutineDefinition(dr.Definition) {
+			rd.DefinitionDiffers = true
+			rd.ProdDefinition = pr.Definition
+			rd.DevDefinition = dr.Definition
+			hasDiff = true
+		}
+		if !strings.EqualFold(pr.Kind, dr.Kind) {
+			rd.KindDiffers = true
+			rd.ProdKind = pr.Kind
+			rd.DevKind = dr.Kind
+			hasDiff = true
+		}
+		if !strings.EqualFold(pr.ReturnType, dr.ReturnType) {
+			rd.ReturnTypeDiffers = true
+			rd.ProdReturnType = pr.ReturnType
+			rd.DevReturnType = dr.ReturnType
+			hasDiff = true
+		}
+		if !strings.EqualFold(pr.Language, dr.Language) {
+			rd.LanguageDiffers = true
+			rd.ProdLanguage = pr.Language
+			rd.DevLanguage = dr.Language
+			hasDiff = true
+		}
+		if !routineParametersEqual(pr.Parameters, dr.Parameters) {
+			rd.ParametersDiffers = true
+			rd.ProdParameters = pr.Parameters
+			rd.DevParameters = dr.Parameters
+			hasDiff = true
+		}
+		if hasDiff {
+			modified = append(modified, rd)
+		}
+	}
+	return
+}
+
+// routineParametersEqual reports whether two parameter lists are identical.
+func routineParametersEqual(a, b []RoutineParameter) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !strings.EqualFold(a[i].Name, b[i].Name) ||
+			!strings.EqualFold(normalizeType(a[i].DataType), normalizeType(b[i].DataType)) ||
+			!strings.EqualFold(a[i].Mode, b[i].Mode) {
+			return false
+		}
+	}
+	return true
+}
+
+// normalizeRoutineDefinition normalizes a routine definition for comparison.
+func normalizeRoutineDefinition(def string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(def)), " "))
+}
+
+// diffTriggers compares triggers between prod and dev.
+func diffTriggers(prodTriggers, devTriggers map[string]Trigger) (added []Trigger, removed []string, modified []TriggerDiff) {
+	if prodTriggers == nil {
+		prodTriggers = make(map[string]Trigger)
+	}
+	if devTriggers == nil {
+		devTriggers = make(map[string]Trigger)
+	}
+
+	seen := make(map[string]struct{})
+	for name := range prodTriggers {
+		seen[name] = struct{}{}
+	}
+	for name := range devTriggers {
+		seen[name] = struct{}{}
+	}
+
+	var names []string
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		pt, prodOK := prodTriggers[name]
+		dt, devOK := devTriggers[name]
+
+		if prodOK && !devOK {
+			removed = append(removed, name)
+			continue
+		}
+		if !prodOK && devOK {
+			added = append(added, dt)
+			continue
+		}
+
+		td := TriggerDiff{Name: name}
+		hasDiff := false
+
+		if normalizeRoutineDefinition(pt.Definition) != normalizeRoutineDefinition(dt.Definition) {
+			td.DefinitionDiffers = true
+			td.ProdDefinition = pt.Definition
+			td.DevDefinition = dt.Definition
+			hasDiff = true
+		}
+		if !strings.EqualFold(pt.Timing, dt.Timing) {
+			td.TimingDiffers = true
+			td.ProdTiming = pt.Timing
+			td.DevTiming = dt.Timing
+			hasDiff = true
+		}
+		if !strings.EqualFold(pt.Event, dt.Event) {
+			td.EventDiffers = true
+			td.ProdEvent = pt.Event
+			td.DevEvent = dt.Event
+			hasDiff = true
+		}
+		if pt.ForEachRow != dt.ForEachRow {
+			td.ForEachRowDiffers = true
+			td.ProdForEachRow = &pt.ForEachRow
+			td.DevForEachRow = &dt.ForEachRow
+			hasDiff = true
+		}
+		if hasDiff {
+			modified = append(modified, td)
+		}
+	}
+	return
 }
