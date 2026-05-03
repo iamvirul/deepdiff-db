@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-05-03
+
+### Fixed
+
+- **Windows uninstaller crash — `StrReplaceAll` not found** — NSIS requires functions called from the `Uninstall` section to be defined as `Function un.FunctionName`. `StrReplaceAll` was defined as a plain function, causing `makensis` to abort with "Call must be used with function names starting with 'un.'". Renamed to `un.StrReplaceAll` and updated both call sites. ([#119](https://github.com/iamvirul/deepdiff-db/pull/119))
+
 ## [1.4.3] - 2026-05-03
 
 ### Added
@@ -513,6 +519,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MySQL foreign key check handling
 
 [Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.3...HEAD
+[1.4.4]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.3...v1.4.4
 [1.4.3]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.0...v1.4.1

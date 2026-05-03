@@ -112,12 +112,12 @@ Section "Uninstall"
   Push "$0"
   Push "$INSTDIR;"
   Push ""
-  Call StrReplaceAll
+  Call un.StrReplaceAll
   Pop $0
   Push "$0"
   Push ";$INSTDIR"
   Push ""
-  Call StrReplaceAll
+  Call un.StrReplaceAll
   Pop $0
   WriteRegExpandStr HKLM \
     "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" \
@@ -162,9 +162,10 @@ Function StrContains
   Push $R0
 FunctionEnd
 
-; ── Helper: StrReplaceAll ────────────────────────────────────────────────────
+; ── Helper: un.StrReplaceAll ─────────────────────────────────────────────────
 ; Stack (top→bottom): [haystack] [find] [replace] → [result]
-Function StrReplaceAll
+; Must be prefixed un. because it is called from the Uninstall section.
+Function un.StrReplaceAll
   Exch $2   ; replace
   Exch
   Exch $1   ; find
