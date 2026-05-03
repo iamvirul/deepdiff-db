@@ -13,9 +13,10 @@ import (
 
 // LoadSchemaOptions provides optional configuration for LoadSchema.
 type LoadSchemaOptions struct {
-	IgnoreViews    []string // View names to exclude (case-insensitive)
-	IgnoreRoutines []string // Routine names to exclude (case-insensitive)
-	IgnoreTriggers []string // Trigger names to exclude (case-insensitive)
+	IgnoreViews     []string // View names to exclude (case-insensitive)
+	IgnoreRoutines  []string // Routine names to exclude (case-insensitive)
+	IgnoreTriggers  []string // Trigger names to exclude (case-insensitive)
+	IgnoreSequences []string // Sequence names to exclude (case-insensitive)
 }
 
 // LoadSchema loads table and column metadata for the specified SQL driver into a Schema,
@@ -263,6 +264,16 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 	log.Debug("loading triggers")
 	if err := loadTriggers(ctx, db, driver, database, s, ignoreTriggers); err != nil {
 		return nil, fmt.Errorf("load triggers: %w", err)
+	}
+
+	// Load sequences
+	var ignoreSequences []string
+	if len(opts) > 0 {
+		ignoreSequences = opts[0].IgnoreSequences
+	}
+	log.Debug("loading sequences")
+	if err := loadSequences(ctx, db, driver, database, s, ignoreSequences); err != nil {
+		return nil, fmt.Errorf("load sequences: %w", err)
 	}
 
 	// Calculate total columns
@@ -1748,6 +1759,62 @@ func loadSQLiteTriggers(ctx context.Context, db *sql.DB, s *Schema, ignore map[s
 			Event:      event,
 			Definition: definition,
 			ForEachRow: forEachRow,
+		}
+	}
+	return rows.Err()
+}
+
+// loadSequences queries the database for sequence metadata and populates the Sequences map
+// in the schema. It dispatches to driver-specific sequence loading functions.
+func loadSequences(ctx context.Context, db *sql.DB, driver string, database string, s *Schema, ignoreSequences []string) error {
+	ignore := make(map[string]struct{}, len(ignoreSequences))
+	for _, seq := range ignoreSequences {
+		ignore[strings.ToLower(seq)] = struct{}{}
+	}
+	switch driver {
+	case "postgres", "postgresql":
+		return loadPostgreSQLSequences(ctx, db, s, ignore)
+	case "mysql", "sqlite", "mssql", "oracle":
+		return nil
+	default:
+		return fmt.Errorf("sequence introspection unsupported for driver: %s", driver)
+	}
+}
+
+// loadPostgreSQLSequences queries pg_sequences to load sequence metadata.
+func loadPostgreSQLSequences(ctx context.Context, db *sql.DB, s *Schema, ignore map[string]struct{}) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT sequencename, start_value, increment_by, min_value, max_value, cache_size, cycle
+		FROM pg_sequences
+		WHERE schemaname = 'public'
+		ORDER BY sequencename
+	`)
+	if err != nil {
+		return fmt.Errorf("postgresql sequences: %w", err)
+	}
+	defer rows.Close()
+
+	if s.Sequences == nil {
+		s.Sequences = make(map[string]Sequence)
+	}
+	for rows.Next() {
+		var name string
+		var startValue, incrementBy, minValue, maxValue, cacheSize int64
+		var cycle bool
+		if err := rows.Scan(&name, &startValue, &incrementBy, &minValue, &maxValue, &cacheSize, &cycle); err != nil {
+			return fmt.Errorf("postgresql sequences scan: %w", err)
+		}
+		if _, skip := ignore[strings.ToLower(name)]; skip {
+			continue
+		}
+		s.Sequences[name] = Sequence{
+			Name:       name,
+			StartValue: startValue,
+			Increment:  incrementBy,
+			MinValue:   minValue,
+			MaxValue:   maxValue,
+			CacheSize:  cacheSize,
+			Cycle:      cycle,
 		}
 	}
 	return rows.Err()

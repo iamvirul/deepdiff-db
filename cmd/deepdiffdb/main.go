@@ -391,11 +391,11 @@ func runFullDiff(args []string) error {
 
 	// Schema diff first
 	log.Info("loading database schemas")
-	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
 	}
-	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load dev schema: %w", err)
 	}
@@ -615,11 +615,11 @@ func runGenPack(args []string) error {
 
 	// Schema diff first
 	log.Info("loading database schemas")
-	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
 	}
-	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load dev schema: %w", err)
 	}
@@ -1030,11 +1030,11 @@ func runResolveConflicts(args []string) error {
 	defer devDB.Close()
 
 	// Load schemas for row fetching
-	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
 	}
-	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load dev schema: %w", err)
 	}
@@ -1279,11 +1279,11 @@ func runSchemaDiff(args []string) error {
 	defer devDB.Close()
 
 	log.Info("loading database schemas")
-	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
 	}
-	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load dev schema: %w", err)
 	}
@@ -1382,11 +1382,11 @@ func runSchemaMigrate(args []string) error {
 
 	// Load schemas
 	log.Info("loading database schemas")
-	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
 	}
-	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load dev schema: %w", err)
 	}
@@ -1683,11 +1683,11 @@ func runVersionCommit(args []string) error {
 	defer devDB.Close()
 
 	log.Info("loading schemas")
-	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load prod schema: %w", err)
 	}
-	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers})
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
 	if err != nil {
 		return fmt.Errorf("load dev schema: %w", err)
 	}
