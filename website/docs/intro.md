@@ -10,7 +10,7 @@ DeepDiff DB is a high-performance Go CLI tool for comparing two databases, detec
 ## Feature Highlights
 
 - **Multi-database support** — MySQL, PostgreSQL, SQLite, Microsoft SQL Server, and Oracle Database
-- **Schema drift detection** — Detects added/removed tables, column type changes, nullability, defaults, indexes, and foreign keys
+- **Schema drift detection** — Detects added/removed tables, column type changes, nullability, defaults, indexes, foreign keys, views, stored procedures, functions, triggers, and sequences (PostgreSQL)
 - **Row-level diffing** — SHA-256 hashing per row for accurate change detection across any table size
 - **Conflict detection** — Identifies rows that exist in both databases with differing values, before any write
 - **Safe migration generation** — Produces transactional SQL packs reviewable before apply; destructive operations are off by default

@@ -179,6 +179,23 @@ The `ignore.columns` list supports two forms:
 
 Ignored columns are excluded from row hashing, so changes to those columns will not appear as conflicts or data differences.
 
+```yaml
+ignore:
+  tables:
+    - "audit_logs"
+  columns:
+    - "*.updated_at"
+    - "*.created_at"
+  views:
+    - "v_legacy_report"     # exact view name to skip
+  routines:
+    - "fn_debug_helper"     # exact routine name to skip
+  triggers:
+    - "trg_old_logging"     # exact trigger name to skip
+  sequences:
+    - "seq_deprecated"      # exact sequence name to skip (PostgreSQL only)
+```
+
 ## Migration Safety Controls
 
 By default all destructive DDL operations are blocked. When `schema-migrate` or `gen-pack` encounters a blocked operation it emits a warning and comments out the statement in the generated SQL. Set the relevant flag to `true` to allow the operation to be generated as executable SQL.
@@ -190,6 +207,10 @@ By default all destructive DDL operations are blocked. When `schema-migrate` or 
 | `allow_drop_index` | `DROP INDEX` |
 | `allow_drop_foreign_key` | `DROP FOREIGN KEY` / `DROP CONSTRAINT` |
 | `allow_modify_primary_key` | `DROP PRIMARY KEY` + `ADD PRIMARY KEY` |
+| `allow_drop_view` | `DROP VIEW` / `DROP MATERIALIZED VIEW` |
+| `allow_drop_routine` | `DROP FUNCTION` / `DROP PROCEDURE` |
+| `allow_drop_trigger` | `DROP TRIGGER` |
+| `allow_drop_sequence` | `DROP SEQUENCE` (PostgreSQL only) |
 
 ## Conflict Resolution Strategies
 
