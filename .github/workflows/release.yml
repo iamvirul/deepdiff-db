@@ -49,8 +49,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
-  macos-dmg:
-    name: Build macOS DMG (${{ matrix.arch }})
+  macos-pkg:
+    name: Build macOS Installer (${{ matrix.arch }})
     runs-on: macos-latest
     needs: goreleaser   # wait for the release to be created first
     strategy:
@@ -82,30 +82,52 @@ jobs:
             -o deepdiffdb \
             ./cmd/deepdiffdb
 
-      - name: Create DMG
+      - name: Build .pkg installer
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          DMG_NAME="deepdiff-db-${VERSION}-darwin-${{ matrix.arch }}.dmg"
+          VER_CLEAN="${VERSION#v}"   # v1.4.1 → 1.4.1
+          ARCH="${{ matrix.arch }}"
+          PKG_NAME="deepdiff-db-${VERSION}-darwin-${ARCH}.pkg"
+          DMG_NAME="deepdiff-db-${VERSION}-darwin-${ARCH}.dmg"
 
-          # --- staging folder ---
+          # ── 1. Payload: mirrors the install layout on the target volume ──
+          #    pkgbuild --install-location / means pkg-payload/ is the root.
+          #    Binary lands at /usr/local/bin/deepdiffdb after install.
+          mkdir -p pkg-payload/usr/local/bin
+          cp deepdiffdb pkg-payload/usr/local/bin/deepdiffdb
+
+          # ── 2. Component package ─────────────────────────────────────────
+          pkgbuild \
+            --root pkg-payload \
+            --install-location / \
+            --identifier com.iamvirul.deepdiffdb \
+            --version "${VER_CLEAN}" \
+            deepdiffdb-component.pkg
+
+          # ── 3. Distribution XML — substitute version placeholders ────────
+          mkdir -p dist-resources
+          sed \
+            -e "s/__APP_VERSION__/${VER_CLEAN}/g" \
+            -e "s/__APP_TITLE__/DeepDiff DB ${VER_CLEAN}/g" \
+            .github/macos-installer/distribution.xml > dist-resources/distribution.xml
+
+          # Copy HTML resource pages referenced by the distribution XML
+          cp .github/macos-installer/welcome.html    dist-resources/welcome.html
+          cp .github/macos-installer/readme.html     dist-resources/readme.html
+          cp .github/macos-installer/conclusion.html dist-resources/conclusion.html
+
+          # ── 4. Distribution package (the installer wizard the user sees) ─
+          productbuild \
+            --distribution dist-resources/distribution.xml \
+            --resources dist-resources \
+            --package-path . \
+            "${PKG_NAME}"
+
+          # ── 5. Wrap the .pkg in a DMG for a familiar download experience ─
+          #    Users mount the DMG → double-click the .pkg → wizard launches.
           mkdir -p dmg-stage
-          cp deepdiffdb            dmg-stage/
-          cp README.md             dmg-stage/
-          cp deepdiffdb.config.yaml.example dmg-stage/
+          cp "${PKG_NAME}" dmg-stage/
 
-          # Simple install helper
-          cat > dmg-stage/install.sh << 'INSTALL'
-          #!/usr/bin/env bash
-          set -e
-          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-          DEST="/usr/local/bin/deepdiffdb"
-          echo "Installing deepdiffdb → ${DEST}"
-          sudo install -m 755 "${SCRIPT_DIR}/deepdiffdb" "${DEST}"
-          echo "Installed: $(deepdiffdb --version)"
-          INSTALL
-          chmod +x dmg-stage/install.sh
-
-          # Create read-only compressed DMG with hdiutil (built-in on macOS)
           hdiutil create \
             -volname "DeepDiff DB ${VERSION}" \
             -srcfolder dmg-stage \
@@ -150,13 +172,18 @@ jobs:
             ./cmd/deepdiffdb
 
       - name: Install NSIS
-        run: choco install nsis --no-progress -y
+        shell: bash
+        run: |
+          choco install nsis --no-progress -y
+          # Chocolatey's PATH update does not propagate to later steps.
+          # Append the NSIS directory explicitly so makensis is found.
+          echo "C:/Program Files (x86)/NSIS" >> "$GITHUB_PATH"
 
       - name: Prepare NSIS script
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          VER_CLEAN="${VERSION#v}"   # strip leading 'v': v1.4.0 → 1.4.0
+          VER_CLEAN="${VERSION#v}"   # strip leading 'v': v1.4.1 → 1.4.1
           # Substitute the __APP_VERSION__ placeholder in the template
           sed "s/__APP_VERSION__/${VER_CLEAN}/g" \
             .github/windows-installer.nsi > installer.nsi
@@ -164,7 +191,7 @@ jobs:
             >> "$GITHUB_ENV"
 
       - name: Compile installer
-        shell: cmd
+        shell: bash
         run: makensis installer.nsi
 
       - name: Upload installer to GitHub release

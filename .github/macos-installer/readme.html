@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<style>
+  body {
+    font-family: -apple-system, Helvetica Neue, sans-serif;
+    font-size: 13px;
+    color: #1d1d1f;
+    margin: 20px 24px;
+    line-height: 1.5;
+  }
+  h2 { font-size: 17px; font-weight: 600; margin: 0 0 10px; }
+  h3 { font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
+  p  { margin: 0 0 10px; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  code {
+    background: #f2f2f7;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 12px;
+    font-family: "SF Mono", Menlo, monospace;
+  }
+  pre {
+    background: #f2f2f7;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-family: "SF Mono", Menlo, monospace;
+    overflow-x: auto;
+  }
+  a { color: #0066cc; }
+</style>
+</head>
+<body>
+  <h2>DeepDiff DB — Quick Start</h2>
+
+  <h3>System Requirements</h3>
+  <ul>
+    <li>macOS 11 (Big Sur) or later</li>
+    <li>Administrator password to install to <code>/usr/local/bin</code></li>
+  </ul>
+
+  <h3>After Installation</h3>
+  <p>Open a new Terminal window and verify the installation:</p>
+  <pre>deepdiffdb --version</pre>
+
+  <h3>Create a config file</h3>
+  <pre>deepdiffdb init</pre>
+
+  <h3>Run your first diff</h3>
+  <pre>deepdiffdb diff --html</pre>
+
+  <h3>Supported Databases</h3>
+  <ul>
+    <li>MySQL</li>
+    <li>PostgreSQL</li>
+    <li>SQLite</li>
+    <li>Microsoft SQL Server</li>
+    <li>Oracle Database</li>
+  </ul>
+
+  <p>
+    Full documentation:
+    <a href="https://iamvirul.github.io/deepdiff-db/">iamvirul.github.io/deepdiff-db</a>
+  </p>
+</body>
+</html>
