@@ -44,8 +44,12 @@ func NewGenerator(opts *ReportOptions) *Generator {
 // templateFuncs returns custom template functions.
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"add": func(a, b int) int {
-			return a + b
+		"add": func(vals ...int) int {
+			sum := 0
+			for _, v := range vals {
+				sum += v
+			}
+			return sum
 		},
 		"sub": func(a, b int) int {
 			return a - b
