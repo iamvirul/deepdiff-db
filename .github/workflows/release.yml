@@ -189,10 +189,6 @@ jobs:
           sed "s/__APP_VERSION__/${VER_CLEAN}/g" \
             .github/windows-installer.nsi > installer.nsi
 
-          # MUI2 README page — copy the static file tracked in the repo.
-          # Avoids inline heredocs which are error-prone inside YAML run blocks.
-          cp .github/windows-installer/readme.txt readme.txt
-
           echo "INSTALLER_NAME=deepdiff-db-${VERSION}-windows-amd64-installer.exe" \
             >> "$GITHUB_ENV"
 
