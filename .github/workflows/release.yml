@@ -191,34 +191,36 @@ jobs:
 
           # MUI2 README page — must exist at makensis compile time.
           # Plain text is sufficient; MUI2 renders it in a scrollable text box.
-          cat > readme.txt << 'EOF'
-DeepDiff DB - Quick Start
-=========================
+          # <<-'EOF' strips leading tabs so YAML indentation doesn't bleed into
+          # the generated file; content lines below are indented with tabs.
+          cat > readme.txt <<-'EOF'
+					DeepDiff DB - Quick Start
+					=========================
 
-After installation, open a new Command Prompt or PowerShell window and run:
+					After installation, open a new Command Prompt or PowerShell window and run:
 
-    deepdiffdb --version
+					    deepdiffdb --version
 
-Create a config file:
+					Create a config file:
 
-    deepdiffdb init
+					    deepdiffdb init
 
-Run your first diff:
+					Run your first diff:
 
-    deepdiffdb diff --html
+					    deepdiffdb diff --html
 
-Supported Databases
--------------------
-  MySQL, PostgreSQL, SQLite, Microsoft SQL Server, Oracle Database
+					Supported Databases
+					-------------------
+					  MySQL, PostgreSQL, SQLite, Microsoft SQL Server, Oracle Database
 
-Documentation
--------------
-  https://iamvirul.github.io/deepdiff-db/
+					Documentation
+					-------------
+					  https://iamvirul.github.io/deepdiff-db/
 
-Source Code
------------
-  https://github.com/iamvirul/deepdiff-db
-EOF
+					Source Code
+					-----------
+					  https://github.com/iamvirul/deepdiff-db
+					EOF
 
           echo "INSTALLER_NAME=deepdiff-db-${VERSION}-windows-amd64-installer.exe" \
             >> "$GITHUB_ENV"
