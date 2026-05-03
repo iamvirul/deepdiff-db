@@ -338,9 +338,18 @@ func loadMySQLViews(ctx context.Context, db *sql.DB, database string, s *Schema,
 		if _, skip := ignore[strings.ToLower(name)]; skip {
 			continue
 		}
+		// MySQL embeds the schema name in stored definitions (e.g. `mydb`.`table`).
+		// Strip it so prod/dev comparisons are schema-agnostic.
+		definition = stripMySQLSchemaPrefix(definition, database)
 		s.Views[name] = View{Name: name, Definition: definition, IsMaterialized: false}
 	}
 	return rows.Err()
+}
+
+// stripMySQLSchemaPrefix removes backtick-quoted schema prefixes from a MySQL
+// view definition so that `prod_db`.`table` and `dev_db`.`table` compare equal.
+func stripMySQLSchemaPrefix(definition, database string) string {
+	return strings.ReplaceAll(definition, "`"+database+"`.", "")
 }
 
 // loadPostgreSQLViews queries pg_views and pg_matviews to load all views (including materialized).

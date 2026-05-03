@@ -774,7 +774,7 @@
             <div class="meta">
                 <div class="meta-item">
                     <span class="meta-label">Generated</span>
-                    <span>2026-05-03 12:11:10 &#43;0530</span>
+                    <span>2026-05-03 13:38:34 &#43;0530</span>
                 </div>
                 <div class="meta-item">
                     <span class="meta-label">Source</span>
@@ -786,7 +786,7 @@
                 </div>
                 <div class="meta-item">
                     <span class="meta-label">Version</span>
-                    <span>v1.4.0-dev.20260503T064046Z.25b43ca</span>
+                    <span>v1.4.0-dev.20260503T080705Z.59ac4a3</span>
                 </div>
             </div>
         </header>
@@ -823,7 +823,7 @@
         <div class="tabs">
             <nav class="tab-nav">
                 <button class="tab-btn active" data-tab="schema" onclick="switchTab('schema')">
-                    Schema<span class="tab-count has-warning">4</span>
+                    Schema<span class="tab-count has-warning">12</span>
                 </button>
                 <button class="tab-btn" data-tab="data" onclick="switchTab('data')">
                     Data<span class="tab-count has-items">6</span>
@@ -954,7 +954,7 @@
                                 <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
                             </svg>
                             <span class="diff-table">Views</span>
-                            <span class="diff-type"><span class="badge badge-warning">4 change(s)</span></span>
+                            <span class="diff-type"><span class="badge badge-warning">3 change(s)</span></span>
                         </div>
                         <div class="diff-body">
                             
@@ -978,14 +978,6 @@
                                 <div class="diff-indicator">~</div>
                                 <div class="diff-content">
                                     <span class="diff-col">v_active_orders</span>
-                                    <span class="diff-detail">View definition changed</span>
-                                </div>
-                            </div>
-                            
-                            <div class="diff-row modify">
-                                <div class="diff-indicator">~</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">v_product_catalog</span>
                                     <span class="diff-detail">View definition changed</span>
                                 </div>
                             </div>
@@ -1060,30 +1052,9 @@
                             
                         </div>
                     </div>
-
-
-                    <div class="diff-section">
-                        <div class="diff-header open" onclick="this.classList.toggle('open')">
-                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
-                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
-                            </svg>
-                            <span class="diff-table">Sequences</span>
-                            <span class="diff-type"><span class="badge badge-warning">1</span></span>
-                        </div>
-                        <div class="diff-body">
-
-                            <div class="diff-row add">
-                                <div class="diff-indicator">+</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">seq_order_id</span>
-                                    <span class="diff-detail">Sequence &#39;seq_order_id&#39; exists in dev but not in prod</span>
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-
-
+                    
+                    
+                
             </div>
 
             <div id="tab-data" class="tab-panel" data-title="Data Changes">
@@ -1101,8 +1072,7 @@
                                     <th>Table</th>
                                     <th>Added</th>
                                     <th>Removed</th>
-                                    <th>Updated</th>
-                                    <th>Keys (click to view)</th>
+                                    <th>Modified</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1118,13 +1088,13 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="audit_log" style="display:none;">
-                                    <td colspan="5">
+                                    <td colspan="4">
                                         <div class="keys-detail">
                                             
                                             
                                             <div class="keys-section">
                                                 <span class="keys-label change-remove">Removed Keys:</span>
-                                                <div class="keys-list"><span class="key-item">8</span><span class="key-item">9</span><span class="key-item">10</span><span class="key-item">4</span><span class="key-item">6</span><span class="key-item">3</span><span class="key-item">7</span></div>
+                                                <div class="keys-list"><span class="key-item">8</span><span class="key-item">9</span><span class="key-item">7</span><span class="key-item">10</span><span class="key-item">3</span><span class="key-item">4</span><span class="key-item">6</span></div>
                                             </div>
                                             
                                             
@@ -1144,7 +1114,7 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="customers" style="display:none;">
-                                    <td colspan="5">
+                                    <td colspan="4">
                                         <div class="keys-detail">
                                             
                                             <div class="keys-section">
@@ -1156,7 +1126,7 @@
                                             
                                             <div class="keys-section">
                                                 <span class="keys-label change-modify">Modified Keys:</span>
-                                                <div class="keys-list"><span class="key-item">1</span><span class="key-item">2</span><span class="key-item">3</span><span class="key-item">4</span><span class="key-item">5</span></div>
+                                                <div class="keys-list"><span class="key-item">3</span><span class="key-item">4</span><span class="key-item">5</span><span class="key-item">1</span><span class="key-item">2</span></div>
                                             </div>
                                             
                                         </div>
@@ -1175,12 +1145,12 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="inventory_log" style="display:none;">
-                                    <td colspan="5">
+                                    <td colspan="4">
                                         <div class="keys-detail">
                                             
                                             <div class="keys-section">
                                                 <span class="keys-label change-add">Added Keys:</span>
-                                                <div class="keys-list"><span class="key-item">7</span><span class="key-item">9</span><span class="key-item">6</span><span class="key-item">8</span><span class="key-item">10</span></div>
+                                                <div class="keys-list"><span class="key-item">7</span><span class="key-item">8</span><span class="key-item">9</span><span class="key-item">10</span><span class="key-item">6</span></div>
                                             </div>
                                             
                                             
@@ -1201,12 +1171,12 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="order_items" style="display:none;">
-                                    <td colspan="5">
+                                    <td colspan="4">
                                         <div class="keys-detail">
                                             
                                             <div class="keys-section">
                                                 <span class="keys-label change-add">Added Keys:</span>
-                                                <div class="keys-list"><span class="key-item">10</span><span class="key-item">11</span><span class="key-item">13</span><span class="key-item">14</span><span class="key-item">9</span><span class="key-item">12</span></div>
+                                                <div class="keys-list"><span class="key-item">9</span><span class="key-item">11</span><span class="key-item">13</span><span class="key-item">14</span><span class="key-item">10</span><span class="key-item">12</span></div>
                                             </div>
                                             
                                             
@@ -1227,19 +1197,19 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="orders" style="display:none;">
-                                    <td colspan="5">
+                                    <td colspan="4">
                                         <div class="keys-detail">
                                             
                                             <div class="keys-section">
                                                 <span class="keys-label change-add">Added Keys:</span>
-                                                <div class="keys-list"><span class="key-item">6</span><span class="key-item">7</span><span class="key-item">9</span><span class="key-item">8</span><span class="key-item">10</span></div>
+                                                <div class="keys-list"><span class="key-item">10</span><span class="key-item">6</span><span class="key-item">7</span><span class="key-item">8</span><span class="key-item">9</span></div>
                                             </div>
                                             
                                             
                                             
                                             <div class="keys-section">
                                                 <span class="keys-label change-modify">Modified Keys:</span>
-                                                <div class="keys-list"><span class="key-item">3</span><span class="key-item">4</span><span class="key-item">5</span></div>
+                                                <div class="keys-list"><span class="key-item">4</span><span class="key-item">5</span><span class="key-item">3</span></div>
                                             </div>
                                             
                                         </div>
@@ -1258,19 +1228,19 @@
                                 </tr>
                                 
                                 <tr class="keys-row" data-table="products" style="display:none;">
-                                    <td colspan="5">
+                                    <td colspan="4">
                                         <div class="keys-detail">
                                             
                                             <div class="keys-section">
                                                 <span class="keys-label change-add">Added Keys:</span>
-                                                <div class="keys-list"><span class="key-item">12</span><span class="key-item">11</span><span class="key-item">13</span></div>
+                                                <div class="keys-list"><span class="key-item">13</span><span class="key-item">11</span><span class="key-item">12</span></div>
                                             </div>
                                             
                                             
                                             
                                             <div class="keys-section">
                                                 <span class="keys-label change-modify">Modified Keys:</span>
-                                                <div class="keys-list"><span class="key-item">3</span><span class="key-item">4</span><span class="key-item">6</span><span class="key-item">8</span><span class="key-item">9</span><span class="key-item">10</span><span class="key-item">5</span><span class="key-item">7</span><span class="key-item">1</span><span class="key-item">2</span></div>
+                                                <div class="keys-list"><span class="key-item">1</span><span class="key-item">3</span><span class="key-item">5</span><span class="key-item">7</span><span class="key-item">8</span><span class="key-item">2</span><span class="key-item">4</span><span class="key-item">6</span><span class="key-item">9</span><span class="key-item">10</span></div>
                                             </div>
                                             
                                         </div>
@@ -1337,6 +1307,20 @@
                         
                         <div class="conflict-item" data-table="products">
                             <span class="conflict-table">products</span>
+                            <span class="conflict-key">10</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">056fec0d5c80...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">3ebc00ec928f...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
                             <span class="conflict-key">1</span>
                             <div class="conflict-hashes">
                                 <span class="hash">91290ea738a1...</span>
@@ -1351,11 +1335,11 @@
                         
                         <div class="conflict-item" data-table="products">
                             <span class="conflict-table">products</span>
-                            <span class="conflict-key">2</span>
+                            <span class="conflict-key">3</span>
                             <div class="conflict-hashes">
-                                <span class="hash">bf9d32823bd2...</span>
+                                <span class="hash">8d56e3071d26...</span>
                                 <span class="hash-arrow">→</span>
-                                <span class="hash">0c78ab070b93...</span>
+                                <span class="hash">f0a691c2fd9a...</span>
                             </div>
                             <div class="conflict-badges">
                                 
@@ -1365,11 +1349,53 @@
                         
                         <div class="conflict-item" data-table="products">
                             <span class="conflict-table">products</span>
-                            <span class="conflict-key">3</span>
+                            <span class="conflict-key">5</span>
                             <div class="conflict-hashes">
-                                <span class="hash">8d56e3071d26...</span>
+                                <span class="hash">809e6e458343...</span>
                                 <span class="hash-arrow">→</span>
-                                <span class="hash">f0a691c2fd9a...</span>
+                                <span class="hash">d9e14527579f...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">7</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">2c83bd23bb23...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">0fceddb13a5d...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">8</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">602de4ce149c...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">74347a9a8653...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">2</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">bf9d32823bd2...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">0c78ab070b93...</span>
                             </div>
                             <div class="conflict-badges">
                                 
@@ -1407,67 +1433,11 @@
                         
                         <div class="conflict-item" data-table="products">
                             <span class="conflict-table">products</span>
-                            <span class="conflict-key">8</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">602de4ce149c...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">74347a9a8653...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
                             <span class="conflict-key">9</span>
                             <div class="conflict-hashes">
                                 <span class="hash">b58fe1a5cd09...</span>
                                 <span class="hash-arrow">→</span>
                                 <span class="hash">8fc3ad499b63...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">10</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">056fec0d5c80...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">3ebc00ec928f...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">5</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">809e6e458343...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">d9e14527579f...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">7</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">2c83bd23bb23...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">0fceddb13a5d...</span>
                             </div>
                             <div class="conflict-badges">
                                 
@@ -1589,8 +1559,8 @@
 
         function copySQL() {
             const t = document.getElementById('sql-content').textContent;
-            const b = event.target;
             navigator.clipboard.writeText(t).then(() => {
+                const b = event.target;
                 b.textContent = 'Copied';
                 setTimeout(() => b.textContent = 'Copy', 1500);
             });
