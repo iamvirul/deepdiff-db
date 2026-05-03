@@ -7,12 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-05-03
+
+### Added
+
+- **macOS `.pkg` installer wizard** — macOS release artifacts are now proper installer packages (`.pkg` inside a `.dmg`) built with `pkgbuild` + `productbuild`. Users get a full native installer wizard (Introduction, Read Me, Destination Select, Install, Summary) identical to the JDK installer experience. The binary is placed in `/usr/local/bin/deepdiffdb` on the selected volume with no manual PATH changes required.
+
+### Fixed
+
+- **Windows `makensis` not found** — The `choco install nsis` step did not propagate the NSIS directory to subsequent GitHub Actions steps. Fixed by appending `C:/Program Files (x86)/NSIS` to `$GITHUB_PATH` so `makensis` is resolved correctly.
+
 ## [1.4.1] - 2026-05-03
 
 ### Added
 
-- **macOS DMG release artifacts** — `darwin/amd64` and `darwin/arm64` DMGs are now published to every GitHub release alongside the existing tarballs. Each DMG includes the binary, `README.md`, `deepdiffdb.config.yaml.example`, and an `install.sh` helper that copies the binary to `/usr/local/bin`.
-- **Windows installer release artifact** — A native NSIS installer (`deepdiff-db-vX.Y.Z-windows-amd64-installer.exe`) is published to every GitHub release. It installs `deepdiffdb.exe` to `%ProgramFiles%\DeepDiffDB`, adds that directory to the system PATH (idempotent, no reboot required), registers the app in Add/Remove Programs, and includes a full uninstaller.
+- **macOS DMG release artifacts** — `darwin/amd64` and `darwin/arm64` DMGs published to every GitHub release alongside the existing tarballs.
+- **Windows installer release artifact** — A native NSIS installer (`deepdiff-db-vX.Y.Z-windows-amd64-installer.exe`) is published to every GitHub release. Installs `deepdiffdb.exe` to `%ProgramFiles%\DeepDiffDB`, adds that directory to the system PATH (idempotent, no reboot required), registers the app in Add/Remove Programs, and includes a full uninstaller.
 
 ## [1.4.0] - 2026-05-03
 
@@ -491,6 +501,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MySQL foreign key check handling
 
 [Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.0...HEAD
+[1.4.2]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.2.0...v1.3.0
