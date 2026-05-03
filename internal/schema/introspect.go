@@ -1778,14 +1778,8 @@ func loadSequences(ctx context.Context, db *sql.DB, driver string, database stri
 	switch driver {
 	case "postgres", "postgresql":
 		return loadPostgreSQLSequences(ctx, db, s, ignore)
-	case "mysql", "sqlite":
-		return nil
-	case "mssql":
-		return fmt.Errorf("sequence introspection not supported for driver %s", "mssql")
-	case "oracle":
-		return fmt.Errorf("sequence introspection not supported for driver %s", "oracle")
 	default:
-		return fmt.Errorf("sequence introspection unsupported for driver: %s", driver)
+		return nil
 	}
 }
 
