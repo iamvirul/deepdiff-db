@@ -106,6 +106,82 @@ CREATE TABLE feature_flags (
 );
 
 -- ============================================================
+-- VIEWS
+-- ============================================================
+
+-- MODIFIED: adds shipping_address column vs prod
+CREATE VIEW v_active_orders AS
+    SELECT o.id, o.customer_id, c.name AS customer_name,
+           o.total_amount, o.status, o.order_date,
+           o.shipping_address
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.id
+    WHERE o.status NOT IN ('cancelled');
+
+-- UNCHANGED
+CREATE VIEW v_product_catalog AS
+    SELECT p.id, p.name, p.price, p.stock_quantity,
+           cat.name AS category
+    FROM products p
+    JOIN categories cat ON p.category_id = cat.id
+    WHERE p.is_active = TRUE;
+
+-- REMOVED: v_customer_summary (not created in dev)
+-- NEW: v_customer_stats replaces it with avg_order_value added
+CREATE VIEW v_customer_stats AS
+    SELECT customer_id,
+           COUNT(*) AS order_count,
+           SUM(total_amount) AS lifetime_value,
+           AVG(total_amount) AS avg_order_value
+    FROM orders
+    GROUP BY customer_id;
+
+-- ============================================================
+-- ROUTINES
+-- ============================================================
+
+DELIMITER $$
+
+-- MODIFIED: added discount_pct parameter
+CREATE FUNCTION fn_calculate_total(base_price DECIMAL(10,2), qty INT, discount_pct DECIMAL(5,2))
+RETURNS DECIMAL(12,2)
+DETERMINISTIC
+BEGIN
+    DECLARE discount DECIMAL(10,2);
+    SET discount = IFNULL(discount_pct, 0);
+    RETURN base_price * qty * (1 - discount / 100);
+END$$
+
+-- MODIFIED: adds platinum tier (>= 5000)
+CREATE FUNCTION fn_get_customer_tier(spend_total DECIMAL(12,2))
+RETURNS VARCHAR(10)
+DETERMINISTIC
+BEGIN
+    IF spend_total >= 5000 THEN
+        RETURN 'platinum';
+    ELSEIF spend_total >= 1000 THEN
+        RETURN 'gold';
+    END IF;
+    RETURN 'silver';
+END$$
+
+-- UNCHANGED
+CREATE PROCEDURE sp_process_order(IN p_order_id INT)
+BEGIN
+    UPDATE orders SET status = 'processing' WHERE id = p_order_id;
+END$$
+
+-- NEW: fn_format_price
+CREATE FUNCTION fn_format_price(price DECIMAL(10,2))
+RETURNS VARCHAR(20)
+DETERMINISTIC
+BEGIN
+    RETURN CONCAT('$', FORMAT(price, 2));
+END$$
+
+DELIMITER ;
+
+-- ============================================================
 -- INSERT DEVELOPMENT DATA
 -- ============================================================
 
@@ -204,3 +280,38 @@ INSERT INTO feature_flags (id, name, description, is_enabled, rollout_percentage
 (2, 'new_checkout', 'New streamlined checkout flow', TRUE, 50),
 (3, 'loyalty_v2', 'Enhanced loyalty program', FALSE, 0),
 (4, 'ai_recommendations', 'AI-powered product recommendations', TRUE, 25);
+
+-- ============================================================
+-- TRIGGERS (created after data load to avoid audit_log conflicts)
+-- ============================================================
+
+-- MODIFIED: logs status field in addition to customer_id and amount
+CREATE TRIGGER trg_orders_audit
+AFTER INSERT ON orders
+FOR EACH ROW
+    INSERT INTO audit_log (table_name, record_id, action, new_values)
+    VALUES ('orders', NEW.id, 'insert',
+            JSON_OBJECT('customer_id', NEW.customer_id, 'amount', NEW.total_amount,
+                        'status', NEW.status));
+
+DELIMITER $$
+
+-- UNCHANGED
+CREATE TRIGGER trg_inventory_update
+AFTER INSERT ON inventory_log
+FOR EACH ROW
+BEGIN
+    UPDATE products
+    SET stock_quantity = NEW.new_quantity
+    WHERE id = NEW.product_id;
+END$$
+
+-- NEW trigger
+CREATE TRIGGER trg_products_updated_at
+BEFORE UPDATE ON products
+FOR EACH ROW
+BEGIN
+    SET NEW.updated_at = NOW();
+END$$
+
+DELIMITER ;

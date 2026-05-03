@@ -93,6 +93,61 @@ CREATE TABLE audit_log (
 );
 
 -- ============================================================
+-- VIEWS
+-- ============================================================
+
+CREATE VIEW v_active_orders AS
+    SELECT o.id, o.customer_id, c.name AS customer_name,
+           o.total_amount, o.status, o.order_date
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.id
+    WHERE o.status NOT IN ('cancelled');
+
+CREATE VIEW v_product_catalog AS
+    SELECT p.id, p.name, p.price, p.stock_quantity,
+           cat.name AS category
+    FROM products p
+    JOIN categories cat ON p.category_id = cat.id
+    WHERE p.is_active = TRUE;
+
+CREATE VIEW v_customer_summary AS
+    SELECT customer_id,
+           COUNT(*) AS order_count,
+           SUM(total_amount) AS lifetime_value
+    FROM orders
+    GROUP BY customer_id;
+
+-- ============================================================
+-- ROUTINES
+-- ============================================================
+
+DELIMITER $$
+
+CREATE FUNCTION fn_calculate_total(base_price DECIMAL(10,2), qty INT)
+RETURNS DECIMAL(12,2)
+DETERMINISTIC
+BEGIN
+    RETURN base_price * qty;
+END$$
+
+CREATE FUNCTION fn_get_customer_tier(spend_total DECIMAL(12,2))
+RETURNS VARCHAR(10)
+DETERMINISTIC
+BEGIN
+    IF spend_total >= 1000 THEN
+        RETURN 'gold';
+    END IF;
+    RETURN 'silver';
+END$$
+
+CREATE PROCEDURE sp_process_order(IN p_order_id INT)
+BEGIN
+    UPDATE orders SET status = 'processing' WHERE id = p_order_id;
+END$$
+
+DELIMITER ;
+
+-- ============================================================
 -- INSERT PRODUCTION DATA
 -- ============================================================
 
@@ -164,3 +219,27 @@ INSERT INTO audit_log (id, table_name, record_id, action, old_values, new_values
 (8, 'products', 2, 'update', '{"price": 44.99}', '{"price": 49.99}', 1),
 (9, 'customers', 2, 'update', '{"loyalty_points": 500}', '{"loyalty_points": 800}', 1),
 (10, 'orders', 4, 'insert', NULL, '{"customer_id": 1}', 2);
+
+-- ============================================================
+-- TRIGGERS (created after data load to avoid audit_log conflicts)
+-- ============================================================
+
+CREATE TRIGGER trg_orders_audit
+AFTER INSERT ON orders
+FOR EACH ROW
+    INSERT INTO audit_log (table_name, record_id, action, new_values)
+    VALUES ('orders', NEW.id, 'insert',
+            JSON_OBJECT('customer_id', NEW.customer_id, 'amount', NEW.total_amount));
+
+DELIMITER $$
+
+CREATE TRIGGER trg_inventory_update
+AFTER INSERT ON inventory_log
+FOR EACH ROW
+BEGIN
+    UPDATE products
+    SET stock_quantity = NEW.new_quantity
+    WHERE id = NEW.product_id;
+END$$
+
+DELIMITER ;
