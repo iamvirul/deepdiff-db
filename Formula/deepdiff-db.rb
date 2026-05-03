@@ -5,21 +5,21 @@
 class DeepdiffDb < Formula
   desc "Compare databases, detect schema drift, and generate safe SQL migration packs."
   homepage "https://iamvirul.github.io/deepdiff-db/"
-  version "1.3.0"
+  version "1.4.0"
   license "Apache-2.0"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.3.0/deepdiffdb_1.3.0_darwin_amd64.tar.gz"
-      sha256 "d2f5998d126c6ae1cd1f8dfefe23ad84081bb8edb2c3ab0c69cd7af200005292"
+      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.4.0/deepdiffdb_1.4.0_darwin_amd64.tar.gz"
+      sha256 "8c89de3b0376422d8642781997755d51e72d895d085cf033f1bbc3406abbc9ef"
 
       define_method(:install) do
         bin.install "deepdiffdb"
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.3.0/deepdiffdb_1.3.0_darwin_arm64.tar.gz"
-      sha256 "343b3078055431131dc6b0f71b31befdf85dc1418d5069bd8d019738d0fd059f"
+      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.4.0/deepdiffdb_1.4.0_darwin_arm64.tar.gz"
+      sha256 "d79f16b46851522401325be40a5ef9b980df83dc63bdeb07381fe438df2bc0d8"
 
       define_method(:install) do
         bin.install "deepdiffdb"
@@ -29,15 +29,15 @@ class DeepdiffDb < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.3.0/deepdiffdb_1.3.0_linux_amd64.tar.gz"
-      sha256 "e683dc6fc29002dfe9c094fb7fff62cff0f270019e869fe9a78bb4013a60742d"
+      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.4.0/deepdiffdb_1.4.0_linux_amd64.tar.gz"
+      sha256 "78ad2cc8f123b384df79f0ebb88ac1e183268e3e9660311eccdf47ba90a2ed64"
       define_method(:install) do
         bin.install "deepdiffdb"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.3.0/deepdiffdb_1.3.0_linux_arm64.tar.gz"
-      sha256 "1dab02390308745645d1a0d8be92d1a8a8da847252271d2c5155c689195e7ac8"
+      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.4.0/deepdiffdb_1.4.0_linux_arm64.tar.gz"
+      sha256 "a16e095e2c1023d590e248dc2b866b32fbbb915b645040d24d90811282977612"
       define_method(:install) do
         bin.install "deepdiffdb"
       end
