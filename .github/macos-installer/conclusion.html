@@ -3,30 +3,37 @@
 <head>
 <meta charset="utf-8"/>
 <style>
+  :root {
+    color-scheme: light dark;
+    --code-bg: rgba(0, 0, 0, 0.07);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --code-bg: rgba(255, 255, 255, 0.12); }
+  }
   body {
     font-family: -apple-system, Helvetica Neue, sans-serif;
     font-size: 13px;
-    color: #1d1d1f;
+    color: -apple-system-label;
     margin: 20px 24px;
     line-height: 1.5;
   }
   h2 { font-size: 17px; font-weight: 600; margin: 0 0 10px; }
   p  { margin: 0 0 10px; }
   code {
-    background: #f2f2f7;
+    background: var(--code-bg);
     border-radius: 4px;
     padding: 1px 5px;
     font-size: 12px;
     font-family: "SF Mono", Menlo, monospace;
   }
   pre {
-    background: #f2f2f7;
+    background: var(--code-bg);
     border-radius: 6px;
     padding: 10px 12px;
     font-size: 12px;
     font-family: "SF Mono", Menlo, monospace;
   }
-  a { color: #0066cc; }
+  a { color: -apple-system-blue; }
 </style>
 </head>
 <body>

@@ -85,10 +85,9 @@ jobs:
       - name: Build .pkg installer
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          VER_CLEAN="${VERSION#v}"   # v1.4.1 → 1.4.1
+          VER_CLEAN="${VERSION#v}"   # v1.4.2 → 1.4.2
           ARCH="${{ matrix.arch }}"
           PKG_NAME="deepdiff-db-${VERSION}-darwin-${ARCH}.pkg"
-          DMG_NAME="deepdiff-db-${VERSION}-darwin-${ARCH}.dmg"
 
           # ── 1. Payload: mirrors the install layout on the target volume ──
           #    pkgbuild --install-location / means pkg-payload/ is the root.
@@ -123,8 +122,77 @@ jobs:
             --package-path . \
             "${PKG_NAME}"
 
-          # ── 5. Wrap the .pkg in a DMG for a familiar download experience ─
-          #    Users mount the DMG → double-click the .pkg → wizard launches.
+          echo "PKG_NAME=${PKG_NAME}" >> "$GITHUB_ENV"
+          echo "VERSION=${VERSION}"   >> "$GITHUB_ENV"
+
+      - name: Sign .pkg with Developer ID
+        # Requires secrets: MACOS_CERTIFICATE (base64 .p12), MACOS_CERTIFICATE_PWD,
+        # MACOS_KEYCHAIN_PWD, MACOS_IDENTITY ("Developer ID Installer: Name (TEAMID)").
+        # Skipped gracefully when secrets are not configured.
+        env:
+          MACOS_CERTIFICATE:     ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          MACOS_KEYCHAIN_PWD:    ${{ secrets.MACOS_KEYCHAIN_PWD }}
+          MACOS_IDENTITY:        ${{ secrets.MACOS_IDENTITY }}
+        run: |
+          if [ -z "${MACOS_CERTIFICATE}" ]; then
+            echo "⚠️  MACOS_CERTIFICATE not set — skipping code signing."
+            echo "    Users will see a Gatekeeper warning on first open."
+            exit 0
+          fi
+
+          # Import the Developer ID Installer certificate into a temporary keychain
+          echo "${MACOS_CERTIFICATE}" | base64 --decode > certificate.p12
+          security create-keychain -p "${MACOS_KEYCHAIN_PWD}" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "${MACOS_KEYCHAIN_PWD}" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 \
+            -k build.keychain \
+            -P "${MACOS_CERTIFICATE_PWD}" \
+            -T /usr/bin/productsign
+          security set-key-partition-list \
+            -S apple-tool:,apple: -s -k "${MACOS_KEYCHAIN_PWD}" build.keychain
+
+          # Sign the distribution package
+          productsign \
+            --sign "${MACOS_IDENTITY}" \
+            "${PKG_NAME}" \
+            "${PKG_NAME}-signed.pkg"
+          mv "${PKG_NAME}-signed.pkg" "${PKG_NAME}"
+
+          # Clean up keychain and certificate
+          security delete-keychain build.keychain
+          rm -f certificate.p12
+
+      - name: Notarize and staple .pkg
+        # Requires secrets: MACOS_NOTARIZATION_APPLE_ID, MACOS_NOTARIZATION_TEAM_ID,
+        # MACOS_NOTARIZATION_PWD (app-specific password).
+        # Skipped gracefully when secrets are not configured.
+        env:
+          MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.MACOS_NOTARIZATION_APPLE_ID }}
+          MACOS_NOTARIZATION_TEAM_ID:  ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
+          MACOS_NOTARIZATION_PWD:      ${{ secrets.MACOS_NOTARIZATION_PWD }}
+        run: |
+          if [ -z "${MACOS_NOTARIZATION_APPLE_ID}" ] || \
+             [ -z "${MACOS_NOTARIZATION_TEAM_ID}" ] || \
+             [ -z "${MACOS_NOTARIZATION_PWD}" ]; then
+            echo "⚠️  One or more notarization secrets are missing — skipping notarization."
+            exit 0
+          fi
+
+          xcrun notarytool submit "${PKG_NAME}" \
+            --apple-id  "${MACOS_NOTARIZATION_APPLE_ID}" \
+            --team-id   "${MACOS_NOTARIZATION_TEAM_ID}" \
+            --password  "${MACOS_NOTARIZATION_PWD}" \
+            --wait
+
+          # Staple the notarization ticket so Gatekeeper works offline
+          xcrun stapler staple "${PKG_NAME}"
+
+      - name: Wrap .pkg in DMG
+        run: |
+          DMG_NAME="${PKG_NAME%.pkg}.dmg"
           mkdir -p dmg-stage
           cp "${PKG_NAME}" dmg-stage/
 
@@ -188,10 +256,6 @@ jobs:
           # Substitute the __APP_VERSION__ placeholder in the template
           sed "s/__APP_VERSION__/${VER_CLEAN}/g" \
             .github/windows-installer.nsi > installer.nsi
-
-          # MUI2 README page — copy the static file tracked in the repo.
-          # Avoids inline heredocs which are error-prone inside YAML run blocks.
-          cp .github/windows-installer/readme.txt readme.txt
 
           echo "INSTALLER_NAME=deepdiff-db-${VERSION}-windows-amd64-installer.exe" \
             >> "$GITHUB_ENV"

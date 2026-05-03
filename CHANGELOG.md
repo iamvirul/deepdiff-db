@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-05-03
+
+### Added
+
+- **macOS code signing and notarization** — Release workflow now signs the `.pkg` with a Developer ID Installer certificate (`productsign`) and notarizes it with Apple (`notarytool --wait` + `stapler staple`). Both steps are skipped gracefully when the required secrets are not configured so builds still succeed without an Apple Developer account. Eliminates the Gatekeeper "unrecognized developer" warning on first open.
+
+### Fixed
+
+- **Windows installer `MUI_PAGE_README` macro not found** — `MUI_PAGE_README` does not exist in NSIS MUI2. Removed the non-existent page; the wizard now flows Welcome → Directory → Installing → Finish. ([#117](https://github.com/iamvirul/deepdiff-db/pull/117))
+- **macOS installer HTML broken in dark mode** — `<code>` and `<pre>` elements used a hardcoded light-gray background (`#f2f2f7`) that rendered as a visual highlight artifact in macOS dark mode. Replaced with an adaptive `rgba` CSS custom property that works in both light and dark appearances.
+- **Release workflow YAML syntax error on L184** — Inline heredoc (`<< 'EOF'`) inside a `run: |` block caused a YAML parse error. Moved the content to a static file in the repo and replaced the heredoc with a `cp` call.
+
 ## [1.4.2] - 2026-05-03
 
 ### Added
@@ -500,7 +512,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.3...HEAD
+[1.4.3]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.3.0...v1.4.0
