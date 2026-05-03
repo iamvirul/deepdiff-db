@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-05-03
+
+### Added
+
+- **View diffing and migration** (issue #100)
+  - Added/removed/modified views tracked in `DiffResult` with full definition comparison
+  - Driver-aware migration generation: `CREATE VIEW`, `DROP VIEW`, `CREATE OR REPLACE VIEW` (PostgreSQL), `CREATE MATERIALIZED VIEW` / `DROP MATERIALIZED VIEW` for materialised views
+  - SQLite view introspection via `sqlite_master`; MySQL via `information_schema.views`; PostgreSQL via `information_schema.views` with `pg_class` for materialised views
+  - `ignore.views` config key to skip named views from diff and migration output
+  - `AllowDropView` migration option (default: `false`) — commented out unless explicitly enabled
+  - Three-way added/removed/modified reporting in both JSON and text output
+
+- **Routine diffing and migration** (issue #101)
+  - Stored procedures and functions tracked in `DiffResult`; diffs across definition, kind (FUNCTION/PROCEDURE), return type, language, and parameters
+  - Driver-aware migration: MySQL `DELIMITER $$` blocks; PostgreSQL `CREATE OR REPLACE FUNCTION`; MSSQL `CREATE OR ALTER PROCEDURE`
+  - Kind badge (FUNCTION / PROCEDURE) on each diff entry
+  - `ignore.routines` config key for exclusion
+  - `AllowDropRoutine` migration option
+
+- **Trigger diffing and migration** (issue #101)
+  - Triggers tracked per table with timing (BEFORE/AFTER/INSTEAD OF), event (INSERT/UPDATE/DELETE), and definition comparison
+  - Migration generation with PostgreSQL ON table syntax and MSSQL/Oracle variants
+  - `ignore.triggers` config key for exclusion
+  - `AllowDropTrigger` migration option
+
+- **Sequence diffing** (issue #102 — PostgreSQL only)
+  - Sequences loaded from `pg_sequences` (PostgreSQL 10+) or `information_schema.sequences` (PostgreSQL <10)
+  - Diff tracks: start value, increment, min/max value, cache size, and cycle flag
+  - `ignore.sequences` config key for exclusion
+  - `AllowDropSequence` migration option
+
+- **HTML report extended with schema objects** (issue #102)
+  - Schema tab now displays Views, Routines, Triggers, and Sequences sections alongside table changes
+  - Each section shows added/removed/modified entries with change descriptions
+  - Schema tab badge counts all object types: tables + views + routines + triggers + sequences
+  - Live sample report hosted at `/samples/report.html` in the documentation site
+
+- **Sample 13 extended** (`samples/13-html-report-viewer/`)
+  - Production and development MySQL schemas now include intentional view, routine, and trigger drift
+  - Added: `v_customer_stats` (new view), `fn_format_price` (new function), `trg_products_updated_at` (new trigger)
+  - Modified: `v_active_orders`, `fn_calculate_total` (added `discount_pct` parameter), `fn_get_customer_tier` (platinum tier), `trg_orders_audit` (logs `status` field)
+  - Removed: `v_customer_summary`
+
+### Fixed
+
+- **MySQL views introspected as tables** — `information_schema.columns` was returning columns for both tables and views; added `JOIN information_schema.tables WHERE table_type = 'BASE TABLE'` to exclude views from the column scan
+- **MySQL view definition false-positive diff** — MySQL embeds the database name in stored view definitions (`` `dbname`.`table` ``); `stripMySQLSchemaPrefix` now strips these prefixes before comparison so prod/dev views with the same logic but different DB names are not reported as modified
+- **HTML report version showing `v0.5`** — generator hardcoded `Version: "v0.5"`; fixed to inject the ldflags `version` variable at both `BuildReportData` call sites in `main.go`
+- **`add` template function arity mismatch** — schema tab badge called `add` with five arguments; template function was defined with fixed arity `(a, b int)`; changed to variadic `func(vals ...int) int`
+- **PostgreSQL `information_schema.sequences` scan error on PG <10** — numeric columns are `character_data` (text) in PG <10; changed to scan as strings and parse with `strconv.ParseInt`
+- **`loadSequences` returning error for MSSQL/Oracle** — non-PostgreSQL drivers now return `nil` instead of an unsupported-driver error
+
+### Tests
+
+- 30 new tests in `tests/schema/routines_triggers_test.go`: `diffRoutines`, `diffTriggers`, SQLite trigger introspection, migration generation
+- Tests for all `diffSequences` modified-field branches (`tests/schema/sequences_test.go`)
+- `writeText` extended with views, routines, triggers, and sequences sections (`tests/schema/sequences_test.go`)
+- Driver-specific migration tests for PostgreSQL, MSSQL, and Oracle branches in `generateModifyColumn`, `generateModifyPrimaryKey`, `generateDropForeignKey`, and `generateDropIndex` (`tests/schema/migrate_drivers_test.go`)
+- HTML report builder tests for `buildViewChanges`, `buildRoutineChanges`, `buildTriggerChanges`, and `buildSequenceChanges` (`tests/html/schema_objects_test.go`)
+- Coverage: `internal/schema` 64% → **70%**; `internal/report/html` 68% → **90%**
+
 ## [1.3.0] - 2026-04-23
 
 ### Added
@@ -422,7 +483,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.0.0...v1.1.0

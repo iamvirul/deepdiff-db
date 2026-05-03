@@ -162,7 +162,7 @@ DeepDiff DB ships a `.pre-commit-hooks.yaml` at the repo root, so you can refere
 ```yaml
 repos:
   - repo: https://github.com/iamvirul/deepdiff-db
-    rev: v1.3.0   # pin to a release tag
+    rev: v1.4.0   # pin to a release tag
     hooks:
       - id: deepdiff-db-schema
         # Optional: override the config path
@@ -215,7 +215,7 @@ jobs:
 
 ## Tips
 
-- **Pin the version** with `DEEPDIFFDB_VERSION: v1.3.0` to avoid unexpected upgrades.
+- **Pin the version** with `DEEPDIFFDB_VERSION: v1.4.0` to avoid unexpected upgrades.
 - **Cache the binary** between runs using your CI platform's cache action.
 - **Silent schema gate** — use `schema-diff --quiet` for a fully silent check; exit code `0` = no drift, non-zero = drift or error.
 - **Temporary output dirs** — use `--output-dir /tmp/deepdiff-$$` so ephemeral runners don't need a writable workspace.

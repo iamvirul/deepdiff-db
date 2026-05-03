@@ -14,6 +14,7 @@ deepdiffdb schema-diff --config deepdiffdb.config.yaml
 
 ## What It Checks
 
+**Tables**
 - **Added tables** — tables that exist in dev but not in prod
 - **Removed tables** — tables that exist in prod but not in dev
 - **Column changes** — per-column: data type, nullability, default value, column order
@@ -22,7 +23,13 @@ deepdiffdb schema-diff --config deepdiffdb.config.yaml
 - **Index changes** — added, removed, or modified indexes (unique/non-unique)
 - **Foreign key changes** — added or removed FK constraints
 
-Tables listed in `ignore.tables` are excluded entirely.
+**Schema objects**
+- **Views** — added, removed, and modified views; materialised view flag changes (PostgreSQL)
+- **Routines** — added, removed, and modified stored procedures and functions; detects definition, kind, return type, language, and parameter changes
+- **Triggers** — added, removed, and modified triggers; detects timing (BEFORE/AFTER/INSTEAD OF), event (INSERT/UPDATE/DELETE), and definition changes
+- **Sequences** — added, removed, and modified sequences (PostgreSQL only); tracks start value, increment, min/max value, cache size, and cycle flag
+
+Tables listed in `ignore.tables` are excluded entirely. Use `ignore.views`, `ignore.routines`, `ignore.triggers`, and `ignore.sequences` to exclude specific schema objects by name.
 
 ## Flags
 
