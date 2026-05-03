@@ -1567,8 +1567,8 @@
 
         function copySQL() {
             const t = document.getElementById('sql-content').textContent;
+            const b = event.target;
             navigator.clipboard.writeText(t).then(() => {
-                const b = event.target;
                 b.textContent = 'Copied';
                 setTimeout(() => b.textContent = 'Copy', 1500);
             });
