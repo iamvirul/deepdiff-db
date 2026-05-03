@@ -1664,6 +1664,10 @@ func loadPostgreSQLTriggers(ctx context.Context, db *sql.DB, s *Schema, ignore m
 		       pg_get_triggerdef(t.oid) AS definition,
 		       CASE WHEN t.tgtype & 2 > 0 THEN 'BEFORE' ELSE 'AFTER' END AS timing,
 		       CASE
+		           WHEN (t.tgtype & 4 > 0) AND (t.tgtype & 8 > 0) AND (t.tgtype & 16 > 0) THEN 'INSERT OR DELETE OR UPDATE'
+		           WHEN (t.tgtype & 4 > 0) AND (t.tgtype & 8 > 0) THEN 'INSERT OR DELETE'
+		           WHEN (t.tgtype & 4 > 0) AND (t.tgtype & 16 > 0) THEN 'INSERT OR UPDATE'
+		           WHEN (t.tgtype & 8 > 0) AND (t.tgtype & 16 > 0) THEN 'DELETE OR UPDATE'
 		           WHEN t.tgtype & 4 > 0 THEN 'INSERT'
 		           WHEN t.tgtype & 8 > 0 THEN 'DELETE'
 		           WHEN t.tgtype & 16 > 0 THEN 'UPDATE'
