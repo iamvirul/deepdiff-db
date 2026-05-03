@@ -263,6 +263,9 @@ func DiffSchemas(prod, dev *Schema) DiffResult {
 	// Diff triggers
 	result.AddedTriggers, result.RemovedTriggers, result.ModifiedTriggers = diffTriggers(prod.Triggers, dev.Triggers)
 
+	// Diff sequences
+	result.AddedSequences, result.RemovedSequences, result.ModifiedSequences = diffSequences(prod.Sequences, dev.Sequences)
+
 	return result
 }
 
@@ -855,6 +858,88 @@ func diffTriggers(prodTriggers, devTriggers map[string]Trigger) (added []Trigger
 		}
 		if hasDiff {
 			modified = append(modified, td)
+		}
+	}
+	return
+}
+
+// diffSequences compares sequences between prod and dev.
+func diffSequences(prodSeqs, devSeqs map[string]Sequence) (added []Sequence, removed []string, modified []SequenceDiff) {
+	if prodSeqs == nil {
+		prodSeqs = make(map[string]Sequence)
+	}
+	if devSeqs == nil {
+		devSeqs = make(map[string]Sequence)
+	}
+
+	seen := make(map[string]struct{})
+	for name := range prodSeqs {
+		seen[name] = struct{}{}
+	}
+	for name := range devSeqs {
+		seen[name] = struct{}{}
+	}
+
+	var names []string
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		ps, prodOK := prodSeqs[name]
+		ds, devOK := devSeqs[name]
+
+		if prodOK && !devOK {
+			removed = append(removed, name)
+			continue
+		}
+		if !prodOK && devOK {
+			added = append(added, ds)
+			continue
+		}
+
+		sd := SequenceDiff{Name: name}
+		hasDiff := false
+
+		if ps.StartValue != ds.StartValue {
+			sd.StartValueDiffers = true
+			sd.ProdStartValue = ps.StartValue
+			sd.DevStartValue = ds.StartValue
+			hasDiff = true
+		}
+		if ps.Increment != ds.Increment {
+			sd.IncrementDiffers = true
+			sd.ProdIncrement = ps.Increment
+			sd.DevIncrement = ds.Increment
+			hasDiff = true
+		}
+		if ps.MinValue != ds.MinValue {
+			sd.MinValueDiffers = true
+			sd.ProdMinValue = ps.MinValue
+			sd.DevMinValue = ds.MinValue
+			hasDiff = true
+		}
+		if ps.MaxValue != ds.MaxValue {
+			sd.MaxValueDiffers = true
+			sd.ProdMaxValue = ps.MaxValue
+			sd.DevMaxValue = ds.MaxValue
+			hasDiff = true
+		}
+		if ps.CacheSize != ds.CacheSize {
+			sd.CacheSizeDiffers = true
+			sd.ProdCacheSize = ps.CacheSize
+			sd.DevCacheSize = ds.CacheSize
+			hasDiff = true
+		}
+		if ps.Cycle != ds.Cycle {
+			sd.CycleDiffers = true
+			sd.ProdCycle = &ps.Cycle
+			sd.DevCycle = &ds.Cycle
+			hasDiff = true
+		}
+		if hasDiff {
+			modified = append(modified, sd)
 		}
 	}
 	return

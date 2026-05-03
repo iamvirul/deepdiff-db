@@ -88,6 +88,98 @@ func writeText(result DiffResult, path string) error {
 		b.WriteString("\n")
 	}
 
+	// Views
+	for _, v := range result.AddedViews {
+		fmt.Fprintf(&b, "View: %s [added]\n", v.Name)
+	}
+	for _, v := range result.RemovedViews {
+		fmt.Fprintf(&b, "View: %s [removed]\n", v.Name)
+	}
+	for _, vd := range result.ModifiedViews {
+		fmt.Fprintf(&b, "View: %s [modified]\n", vd.Name)
+		if vd.DefinitionDiffers {
+			fmt.Fprintf(&b, "  - definition differs\n")
+		}
+		if vd.IsMaterializedDiffers {
+			fmt.Fprintf(&b, "  - materialized differs\n")
+		}
+	}
+
+	// Routines
+	for _, r := range result.AddedRoutines {
+		fmt.Fprintf(&b, "Routine (%s): %s [added]\n", r.Kind, r.Name)
+	}
+	for _, name := range result.RemovedRoutines {
+		fmt.Fprintf(&b, "Routine: %s [removed]\n", name)
+	}
+	for _, rd := range result.ModifiedRoutines {
+		fmt.Fprintf(&b, "Routine: %s [modified]\n", rd.Name)
+		if rd.DefinitionDiffers {
+			fmt.Fprintf(&b, "  - definition differs\n")
+		}
+		if rd.KindDiffers {
+			fmt.Fprintf(&b, "  - kind differs: prod=%s dev=%s\n", rd.ProdKind, rd.DevKind)
+		}
+		if rd.ReturnTypeDiffers {
+			fmt.Fprintf(&b, "  - return type differs: prod=%s dev=%s\n", rd.ProdReturnType, rd.DevReturnType)
+		}
+		if rd.LanguageDiffers {
+			fmt.Fprintf(&b, "  - language differs: prod=%s dev=%s\n", rd.ProdLanguage, rd.DevLanguage)
+		}
+		if rd.ParametersDiffers {
+			fmt.Fprintf(&b, "  - parameters differ\n")
+		}
+	}
+
+	// Triggers
+	for _, t := range result.AddedTriggers {
+		fmt.Fprintf(&b, "Trigger: %s (table: %s) [added]\n", t.Name, t.Table)
+	}
+	for _, name := range result.RemovedTriggers {
+		fmt.Fprintf(&b, "Trigger: %s [removed]\n", name)
+	}
+	for _, td := range result.ModifiedTriggers {
+		fmt.Fprintf(&b, "Trigger: %s [modified]\n", td.Name)
+		if td.TimingDiffers {
+			fmt.Fprintf(&b, "  - timing differs: prod=%s dev=%s\n", td.ProdTiming, td.DevTiming)
+		}
+		if td.EventDiffers {
+			fmt.Fprintf(&b, "  - event differs: prod=%s dev=%s\n", td.ProdEvent, td.DevEvent)
+		}
+		if td.DefinitionDiffers {
+			fmt.Fprintf(&b, "  - definition differs\n")
+		}
+	}
+
+	// Sequences
+	for _, seq := range result.AddedSequences {
+		fmt.Fprintf(&b, "Sequence: %s [added]\n", seq.Name)
+	}
+	for _, name := range result.RemovedSequences {
+		fmt.Fprintf(&b, "Sequence: %s [removed]\n", name)
+	}
+	for _, sd := range result.ModifiedSequences {
+		fmt.Fprintf(&b, "Sequence: %s [modified]\n", sd.Name)
+		if sd.StartValueDiffers {
+			fmt.Fprintf(&b, "  - start value differs: prod=%d dev=%d\n", sd.ProdStartValue, sd.DevStartValue)
+		}
+		if sd.IncrementDiffers {
+			fmt.Fprintf(&b, "  - increment differs: prod=%d dev=%d\n", sd.ProdIncrement, sd.DevIncrement)
+		}
+		if sd.MinValueDiffers {
+			fmt.Fprintf(&b, "  - min value differs: prod=%d dev=%d\n", sd.ProdMinValue, sd.DevMinValue)
+		}
+		if sd.MaxValueDiffers {
+			fmt.Fprintf(&b, "  - max value differs: prod=%d dev=%d\n", sd.ProdMaxValue, sd.DevMaxValue)
+		}
+		if sd.CacheSizeDiffers {
+			fmt.Fprintf(&b, "  - cache size differs: prod=%d dev=%d\n", sd.ProdCacheSize, sd.DevCacheSize)
+		}
+		if sd.CycleDiffers {
+			fmt.Fprintf(&b, "  - cycle differs: prod=%v dev=%v\n", boolString(sd.ProdCycle), boolString(sd.DevCycle))
+		}
+	}
+
 	if b.Len() == 0 {
 		b.WriteString("Schema: OK (no differences)\n")
 	}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/iamvirul/deepdiff-db/pkg/logger"
@@ -13,9 +14,10 @@ import (
 
 // LoadSchemaOptions provides optional configuration for LoadSchema.
 type LoadSchemaOptions struct {
-	IgnoreViews    []string // View names to exclude (case-insensitive)
-	IgnoreRoutines []string // Routine names to exclude (case-insensitive)
-	IgnoreTriggers []string // Trigger names to exclude (case-insensitive)
+	IgnoreViews     []string // View names to exclude (case-insensitive)
+	IgnoreRoutines  []string // Routine names to exclude (case-insensitive)
+	IgnoreTriggers  []string // Trigger names to exclude (case-insensitive)
+	IgnoreSequences []string // Sequence names to exclude (case-insensitive)
 }
 
 // LoadSchema loads table and column metadata for the specified SQL driver into a Schema,
@@ -47,6 +49,10 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 			       c.column_default,
 			       CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN kcu.ordinal_position ELSE NULL END AS pk_ordinal
 			FROM information_schema.columns c
+			JOIN information_schema.tables t
+			  ON t.table_schema = c.table_schema
+			 AND t.table_name = c.table_name
+			 AND t.table_type = 'BASE TABLE'
 			LEFT JOIN information_schema.key_column_usage kcu
 			  ON kcu.table_schema = c.table_schema
 			 AND kcu.table_name = c.table_name
@@ -265,6 +271,16 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 		return nil, fmt.Errorf("load triggers: %w", err)
 	}
 
+	// Load sequences
+	var ignoreSequences []string
+	if len(opts) > 0 {
+		ignoreSequences = opts[0].IgnoreSequences
+	}
+	log.Debug("loading sequences")
+	if err := loadSequences(ctx, db, driver, database, s, ignoreSequences); err != nil {
+		return nil, fmt.Errorf("load sequences: %w", err)
+	}
+
 	// Calculate total columns
 	totalColumns := 0
 	for _, tbl := range s.Tables {
@@ -323,9 +339,18 @@ func loadMySQLViews(ctx context.Context, db *sql.DB, database string, s *Schema,
 		if _, skip := ignore[strings.ToLower(name)]; skip {
 			continue
 		}
+		// MySQL embeds the schema name in stored definitions (e.g. `mydb`.`table`).
+		// Strip it so prod/dev comparisons are schema-agnostic.
+		definition = stripMySQLSchemaPrefix(definition, database)
 		s.Views[name] = View{Name: name, Definition: definition, IsMaterialized: false}
 	}
 	return rows.Err()
+}
+
+// stripMySQLSchemaPrefix removes backtick-quoted schema prefixes from a MySQL
+// view definition so that `prod_db`.`table` and `dev_db`.`table` compare equal.
+func stripMySQLSchemaPrefix(definition, database string) string {
+	return strings.ReplaceAll(definition, "`"+database+"`.", "")
 }
 
 // loadPostgreSQLViews queries pg_views and pg_matviews to load all views (including materialized).
@@ -1748,6 +1773,125 @@ func loadSQLiteTriggers(ctx context.Context, db *sql.DB, s *Schema, ignore map[s
 			Event:      event,
 			Definition: definition,
 			ForEachRow: forEachRow,
+		}
+	}
+	return rows.Err()
+}
+
+// loadSequences queries the database for sequence metadata and populates the Sequences map
+// in the schema. It dispatches to driver-specific sequence loading functions.
+func loadSequences(ctx context.Context, db *sql.DB, driver string, database string, s *Schema, ignoreSequences []string) error {
+	ignore := make(map[string]struct{}, len(ignoreSequences))
+	for _, seq := range ignoreSequences {
+		ignore[strings.ToLower(seq)] = struct{}{}
+	}
+	switch driver {
+	case "postgres", "postgresql":
+		return loadPostgreSQLSequences(ctx, db, s, ignore)
+	default:
+		return nil
+	}
+}
+
+// loadPostgreSQLSequences queries pg_sequences to load sequence metadata.
+// For PostgreSQL <10, falls back to information_schema.sequences.
+func loadPostgreSQLSequences(ctx context.Context, db *sql.DB, s *Schema, ignore map[string]struct{}) error {
+	// Check PostgreSQL version
+	var versionNum int
+	err := db.QueryRowContext(ctx, "SELECT current_setting('server_version_num')::integer").Scan(&versionNum)
+	if err != nil {
+		return fmt.Errorf("postgresql version check: %w", err)
+	}
+
+	var rows *sql.Rows
+	if versionNum >= 100000 {
+		// PostgreSQL 10+ - use pg_sequences
+		rows, err = db.QueryContext(ctx, `
+			SELECT sequencename, start_value, increment_by, min_value, max_value, cache_size, cycle
+			FROM pg_sequences
+			WHERE schemaname = current_schema()
+			ORDER BY sequencename
+		`)
+	} else {
+		// PostgreSQL <10 - use information_schema.sequences
+		rows, err = db.QueryContext(ctx, `
+			SELECT sequence_name, start_value, minimum_value, maximum_value, increment,
+			       CASE WHEN cycle_option = 'YES' THEN true ELSE false END AS cycle
+			FROM information_schema.sequences
+			WHERE sequence_schema = current_schema()
+			ORDER BY sequence_name
+		`)
+	}
+	if err != nil {
+		return fmt.Errorf("postgresql sequences: %w", err)
+	}
+	defer rows.Close()
+
+	if s.Sequences == nil {
+		s.Sequences = make(map[string]Sequence)
+	}
+
+	if versionNum >= 100000 {
+		// Scan pg_sequences results
+		for rows.Next() {
+			var name string
+			var startValue, incrementBy, minValue, maxValue, cacheSize int64
+			var cycle bool
+			if err := rows.Scan(&name, &startValue, &incrementBy, &minValue, &maxValue, &cacheSize, &cycle); err != nil {
+				return fmt.Errorf("postgresql sequences scan: %w", err)
+			}
+			if _, skip := ignore[strings.ToLower(name)]; skip {
+				continue
+			}
+			s.Sequences[name] = Sequence{
+				Name:       name,
+				StartValue: startValue,
+				Increment:  incrementBy,
+				MinValue:   minValue,
+				MaxValue:   maxValue,
+				CacheSize:  cacheSize,
+				Cycle:      cycle,
+			}
+		}
+	} else {
+		// Scan information_schema.sequences results (PostgreSQL <10).
+		// start_value, minimum_value, maximum_value, increment are character_data
+		// in information_schema — scan as strings and convert to int64.
+		for rows.Next() {
+			var name, startStr, minStr, maxStr, incrStr string
+			var cycle bool
+			if err := rows.Scan(&name, &startStr, &minStr, &maxStr, &incrStr, &cycle); err != nil {
+				return fmt.Errorf("postgresql sequences scan: %w", err)
+			}
+			if _, skip := ignore[strings.ToLower(name)]; skip {
+				continue
+			}
+			startValue, err := strconv.ParseInt(startStr, 10, 64)
+			if err != nil {
+				return fmt.Errorf("postgresql sequences: parse start_value %q: %w", startStr, err)
+			}
+			minValue, err := strconv.ParseInt(minStr, 10, 64)
+			if err != nil {
+				return fmt.Errorf("postgresql sequences: parse minimum_value %q: %w", minStr, err)
+			}
+			maxValue, err := strconv.ParseInt(maxStr, 10, 64)
+			if err != nil {
+				return fmt.Errorf("postgresql sequences: parse maximum_value %q: %w", maxStr, err)
+			}
+			incrementBy, err := strconv.ParseInt(incrStr, 10, 64)
+			if err != nil {
+				return fmt.Errorf("postgresql sequences: parse increment %q: %w", incrStr, err)
+			}
+			// information_schema.sequences does not expose cache_size
+			s.Sequences[name] = Sequence{
+				Name:       name,
+				StartValue: startValue,
+				Increment:  incrementBy,
+				MinValue:   minValue,
+				MaxValue:   maxValue,
+				CacheSize:  0,
+				Cycle:      cycle,
+			}
 		}
 	}
 	return rows.Err()

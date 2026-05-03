@@ -22,6 +22,9 @@ ignore:
   columns:
     - "*.created_at"
     - "*.updated_at"
+  views: []
+  routines: []
+  triggers: []
 
 output:
   dir: "./diff-output"

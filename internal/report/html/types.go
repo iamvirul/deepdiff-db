@@ -7,6 +7,39 @@ import (
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 )
 
+// ViewChangeDisplay represents a view change for display.
+type ViewChangeDisplay struct {
+	Name           string `json:"name"`
+	ChangeType     string `json:"change_type"` // "added", "removed", "modified"
+	IsMaterialized bool   `json:"is_materialized"`
+	Description    string `json:"description"`
+}
+
+// RoutineChangeDisplay represents a routine change for display.
+type RoutineChangeDisplay struct {
+	Name          string `json:"name"`
+	Kind          string `json:"kind"` // "FUNCTION" or "PROCEDURE"
+	ChangeType    string `json:"change_type"`
+	Description   string `json:"description"`
+	IsDestructive bool   `json:"is_destructive"`
+}
+
+// TriggerChangeDisplay represents a trigger change for display.
+type TriggerChangeDisplay struct {
+	Name          string `json:"name"`
+	Table         string `json:"table"`
+	ChangeType    string `json:"change_type"`
+	Description   string `json:"description"`
+	IsDestructive bool   `json:"is_destructive"`
+}
+
+// SequenceChangeDisplay represents a sequence change for display.
+type SequenceChangeDisplay struct {
+	Name        string `json:"name"`
+	ChangeType  string `json:"change_type"`
+	Description string `json:"description"`
+}
+
 // ReportData contains all data needed for the HTML report.
 type ReportData struct {
 	// Metadata
@@ -23,6 +56,22 @@ type ReportData struct {
 	SchemaDiff    *schema.DiffResult    `json:"schema_diff,omitempty"`
 	SchemaChanges []SchemaChangeDisplay `json:"schema_changes,omitempty"`
 	HasSchemaDiff bool                  `json:"has_schema_diff"`
+
+	// View changes
+	ViewChanges    []ViewChangeDisplay `json:"view_changes,omitempty"`
+	HasViewChanges bool                `json:"has_view_changes"`
+
+	// Routine changes
+	RoutineChanges    []RoutineChangeDisplay `json:"routine_changes,omitempty"`
+	HasRoutineChanges bool                   `json:"has_routine_changes"`
+
+	// Trigger changes
+	TriggerChanges    []TriggerChangeDisplay `json:"trigger_changes,omitempty"`
+	HasTriggerChanges bool                   `json:"has_trigger_changes"`
+
+	// Sequence changes
+	SequenceChanges    []SequenceChangeDisplay `json:"sequence_changes,omitempty"`
+	HasSequenceChanges bool                    `json:"has_sequence_changes"`
 
 	// Data differences
 	DataDiff    *content.DataDiff  `json:"data_diff,omitempty"`
@@ -55,6 +104,10 @@ type ReportSummary struct {
 	TotalConflicts    int    `json:"total_conflicts"`
 	ResolvedConflicts int    `json:"resolved_conflicts"`
 	PendingConflicts  int    `json:"pending_conflicts"`
+	ViewsChanged      int    `json:"views_changed"`
+	RoutinesChanged   int    `json:"routines_changed"`
+	TriggersChanged   int    `json:"triggers_changed"`
+	SequencesChanged  int    `json:"sequences_changed"`
 }
 
 // SchemaChangeDisplay represents a schema change for display.
