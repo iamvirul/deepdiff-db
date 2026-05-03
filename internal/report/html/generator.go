@@ -154,6 +154,14 @@ func BuildReportData(
 		data.SchemaDiff = schemaDiff
 		data.HasSchemaDiff = schemaDiff.HasDrift()
 		data.SchemaChanges = buildSchemaChanges(schemaDiff)
+		data.ViewChanges = buildViewChanges(schemaDiff)
+		data.HasViewChanges = len(data.ViewChanges) > 0
+		data.RoutineChanges = buildRoutineChanges(schemaDiff)
+		data.HasRoutineChanges = len(data.RoutineChanges) > 0
+		data.TriggerChanges = buildTriggerChanges(schemaDiff)
+		data.HasTriggerChanges = len(data.TriggerChanges) > 0
+		data.SequenceChanges = buildSequenceChanges(schemaDiff)
+		data.HasSequenceChanges = len(data.SequenceChanges) > 0
 	}
 
 	// Process data diff
@@ -208,6 +216,13 @@ func buildSummary(
 		summary.SchemaStatus = "OK"
 	} else {
 		summary.SchemaStatus = "DRIFT"
+	}
+
+	if schemaDiff != nil {
+		summary.ViewsChanged = len(schemaDiff.AddedViews) + len(schemaDiff.RemovedViews) + len(schemaDiff.ModifiedViews)
+		summary.RoutinesChanged = len(schemaDiff.AddedRoutines) + len(schemaDiff.RemovedRoutines) + len(schemaDiff.ModifiedRoutines)
+		summary.TriggersChanged = len(schemaDiff.AddedTriggers) + len(schemaDiff.RemovedTriggers) + len(schemaDiff.ModifiedTriggers)
+		summary.SequencesChanged = len(schemaDiff.AddedSequences) + len(schemaDiff.RemovedSequences) + len(schemaDiff.ModifiedSequences)
 	}
 
 	// Data diff stats
@@ -559,4 +574,188 @@ func truncateHash(hash string) string {
 		return hash
 	}
 	return hash[:12] + "..."
+}
+
+// buildViewChanges converts view diff to display format.
+func buildViewChanges(schemaDiff *schema.DiffResult) []ViewChangeDisplay {
+	var changes []ViewChangeDisplay
+	for _, v := range schemaDiff.AddedViews {
+		changes = append(changes, ViewChangeDisplay{
+			Name:           v.Name,
+			ChangeType:     "added",
+			IsMaterialized: v.IsMaterialized,
+			Description:    fmt.Sprintf("View '%s' exists in dev but not in prod", v.Name),
+		})
+	}
+	for _, v := range schemaDiff.RemovedViews {
+		changes = append(changes, ViewChangeDisplay{
+			Name:           v.Name,
+			ChangeType:     "removed",
+			IsMaterialized: v.IsMaterialized,
+			Description:    fmt.Sprintf("View '%s' exists in prod but not in dev", v.Name),
+		})
+	}
+	for _, vd := range schemaDiff.ModifiedViews {
+		desc := "View definition changed"
+		if vd.IsMaterializedDiffers {
+			desc += "; materialization type differs"
+		}
+		changes = append(changes, ViewChangeDisplay{
+			Name:        vd.Name,
+			ChangeType:  "modified",
+			Description: desc,
+		})
+	}
+	return changes
+}
+
+// buildRoutineChanges converts routine diff to display format.
+func buildRoutineChanges(schemaDiff *schema.DiffResult) []RoutineChangeDisplay {
+	var changes []RoutineChangeDisplay
+	for _, r := range schemaDiff.AddedRoutines {
+		changes = append(changes, RoutineChangeDisplay{
+			Name:        r.Name,
+			Kind:        r.Kind,
+			ChangeType:  "added",
+			Description: fmt.Sprintf("%s '%s' exists in dev but not in prod", r.Kind, r.Name),
+		})
+	}
+	for _, name := range schemaDiff.RemovedRoutines {
+		changes = append(changes, RoutineChangeDisplay{
+			Name:          name,
+			ChangeType:    "removed",
+			Description:   fmt.Sprintf("Routine '%s' exists in prod but not in dev", name),
+			IsDestructive: true,
+		})
+	}
+	for _, rd := range schemaDiff.ModifiedRoutines {
+		var parts []string
+		if rd.DefinitionDiffers {
+			parts = append(parts, "definition changed")
+		}
+		if rd.KindDiffers {
+			parts = append(parts, fmt.Sprintf("kind: %s -> %s", rd.ProdKind, rd.DevKind))
+		}
+		if rd.ReturnTypeDiffers {
+			parts = append(parts, fmt.Sprintf("return type: %s -> %s", rd.ProdReturnType, rd.DevReturnType))
+		}
+		if rd.LanguageDiffers {
+			parts = append(parts, fmt.Sprintf("language: %s -> %s", rd.ProdLanguage, rd.DevLanguage))
+		}
+		if rd.ParametersDiffers {
+			parts = append(parts, "parameters changed")
+		}
+		desc := strings.Join(parts, "; ")
+		if desc == "" {
+			desc = "Routine modified"
+		}
+		changes = append(changes, RoutineChangeDisplay{
+			Name:        rd.Name,
+			Kind:        rd.ProdKind,
+			ChangeType:  "modified",
+			Description: desc,
+		})
+	}
+	return changes
+}
+
+// buildTriggerChanges converts trigger diff to display format.
+func buildTriggerChanges(schemaDiff *schema.DiffResult) []TriggerChangeDisplay {
+	var changes []TriggerChangeDisplay
+	for _, t := range schemaDiff.AddedTriggers {
+		changes = append(changes, TriggerChangeDisplay{
+			Name:        t.Name,
+			Table:       t.Table,
+			ChangeType:  "added",
+			Description: fmt.Sprintf("Trigger '%s' on table '%s' exists in dev but not in prod", t.Name, t.Table),
+		})
+	}
+	for _, name := range schemaDiff.RemovedTriggers {
+		changes = append(changes, TriggerChangeDisplay{
+			Name:          name,
+			ChangeType:    "removed",
+			Description:   fmt.Sprintf("Trigger '%s' exists in prod but not in dev", name),
+			IsDestructive: true,
+		})
+	}
+	for _, td := range schemaDiff.ModifiedTriggers {
+		var parts []string
+		if td.TimingDiffers {
+			parts = append(parts, fmt.Sprintf("timing: %s -> %s", td.ProdTiming, td.DevTiming))
+		}
+		if td.EventDiffers {
+			parts = append(parts, fmt.Sprintf("event: %s -> %s", td.ProdEvent, td.DevEvent))
+		}
+		if td.DefinitionDiffers {
+			parts = append(parts, "definition changed")
+		}
+		desc := strings.Join(parts, "; ")
+		if desc == "" {
+			desc = "Trigger modified"
+		}
+		changes = append(changes, TriggerChangeDisplay{
+			Name:        td.Name,
+			ChangeType:  "modified",
+			Description: desc,
+		})
+	}
+	return changes
+}
+
+// buildSequenceChanges converts sequence diff to display format.
+func buildSequenceChanges(schemaDiff *schema.DiffResult) []SequenceChangeDisplay {
+	var changes []SequenceChangeDisplay
+	for _, seq := range schemaDiff.AddedSequences {
+		changes = append(changes, SequenceChangeDisplay{
+			Name:        seq.Name,
+			ChangeType:  "added",
+			Description: fmt.Sprintf("Sequence '%s' exists in dev but not in prod", seq.Name),
+		})
+	}
+	for _, name := range schemaDiff.RemovedSequences {
+		changes = append(changes, SequenceChangeDisplay{
+			Name:        name,
+			ChangeType:  "removed",
+			Description: fmt.Sprintf("Sequence '%s' exists in prod but not in dev", name),
+		})
+	}
+	for _, sd := range schemaDiff.ModifiedSequences {
+		var parts []string
+		if sd.StartValueDiffers {
+			parts = append(parts, fmt.Sprintf("start value: %d -> %d", sd.ProdStartValue, sd.DevStartValue))
+		}
+		if sd.IncrementDiffers {
+			parts = append(parts, fmt.Sprintf("increment: %d -> %d", sd.ProdIncrement, sd.DevIncrement))
+		}
+		if sd.MinValueDiffers {
+			parts = append(parts, fmt.Sprintf("min value: %d -> %d", sd.ProdMinValue, sd.DevMinValue))
+		}
+		if sd.MaxValueDiffers {
+			parts = append(parts, fmt.Sprintf("max value: %d -> %d", sd.ProdMaxValue, sd.DevMaxValue))
+		}
+		if sd.CacheSizeDiffers {
+			parts = append(parts, fmt.Sprintf("cache size: %d -> %d", sd.ProdCacheSize, sd.DevCacheSize))
+		}
+		if sd.CycleDiffers {
+			prodCycle := "false"
+			if sd.ProdCycle != nil && *sd.ProdCycle {
+				prodCycle = "true"
+			}
+			devCycle := "false"
+			if sd.DevCycle != nil && *sd.DevCycle {
+				devCycle = "true"
+			}
+			parts = append(parts, fmt.Sprintf("cycle: %s -> %s", prodCycle, devCycle))
+		}
+		desc := strings.Join(parts, "; ")
+		if desc == "" {
+			desc = "Sequence modified"
+		}
+		changes = append(changes, SequenceChangeDisplay{
+			Name:        sd.Name,
+			ChangeType:  "modified",
+			Description: desc,
+		})
+	}
+	return changes
 }

@@ -939,6 +939,94 @@ const reportTemplate = `<!DOCTYPE html>
                         </div>
                     </div>
                     {{end}}
+                    {{if .HasViewChanges}}
+                    <div class="diff-section">
+                        <div class="diff-header open" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">Views</span>
+                            <span class="diff-type"><span class="badge badge-warning">{{.Summary.ViewsChanged}} change(s)</span></span>
+                        </div>
+                        <div class="diff-body">
+                            {{range .ViewChanges}}
+                            <div class="diff-row {{if eq .ChangeType "added"}}add{{else if eq .ChangeType "removed"}}remove{{else}}modify{{end}}">
+                                <div class="diff-indicator">{{if eq .ChangeType "added"}}+{{else if eq .ChangeType "removed"}}−{{else}}~{{end}}</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">{{.Name}}</span>
+                                    <span class="diff-detail">{{.Description}}</span>
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                    {{end}}
+                    {{if .HasRoutineChanges}}
+                    <div class="diff-section">
+                        <div class="diff-header open" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">Routines</span>
+                            <span class="diff-type"><span class="badge badge-warning">{{.Summary.RoutinesChanged}} change(s)</span></span>
+                        </div>
+                        <div class="diff-body">
+                            {{range .RoutineChanges}}
+                            <div class="diff-row {{if eq .ChangeType "added"}}add{{else if eq .ChangeType "removed"}}remove{{else}}modify{{end}}">
+                                <div class="diff-indicator">{{if eq .ChangeType "added"}}+{{else if eq .ChangeType "removed"}}−{{else}}~{{end}}</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">{{if .Kind}}{{.Kind}}: {{end}}{{.Name}}</span>
+                                    <span class="diff-detail">{{.Description}}</span>
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                    {{end}}
+                    {{if .HasTriggerChanges}}
+                    <div class="diff-section">
+                        <div class="diff-header open" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">Triggers</span>
+                            <span class="diff-type"><span class="badge badge-warning">{{.Summary.TriggersChanged}} change(s)</span></span>
+                        </div>
+                        <div class="diff-body">
+                            {{range .TriggerChanges}}
+                            <div class="diff-row {{if eq .ChangeType "added"}}add{{else if eq .ChangeType "removed"}}remove{{else}}modify{{end}}">
+                                <div class="diff-indicator">{{if eq .ChangeType "added"}}+{{else if eq .ChangeType "removed"}}−{{else}}~{{end}}</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">{{.Name}}{{if .Table}} (table: {{.Table}}){{end}}</span>
+                                    <span class="diff-detail">{{.Description}}</span>
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                    {{end}}
+                    {{if .HasSequenceChanges}}
+                    <div class="diff-section">
+                        <div class="diff-header open" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">Sequences</span>
+                            <span class="diff-type"><span class="badge badge-warning">{{.Summary.SequencesChanged}} change(s)</span></span>
+                        </div>
+                        <div class="diff-body">
+                            {{range .SequenceChanges}}
+                            <div class="diff-row {{if eq .ChangeType "added"}}add{{else if eq .ChangeType "removed"}}remove{{else}}modify{{end}}">
+                                <div class="diff-indicator">{{if eq .ChangeType "added"}}+{{else if eq .ChangeType "removed"}}−{{else}}~{{end}}</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">{{.Name}}</span>
+                                    <span class="diff-detail">{{.Description}}</span>
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                    {{end}}
                 {{else}}
                     <div class="empty">
                         <div class="empty-title">No schema changes</div>
