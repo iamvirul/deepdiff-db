@@ -174,8 +174,10 @@ jobs:
           MACOS_NOTARIZATION_TEAM_ID:  ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
           MACOS_NOTARIZATION_PWD:      ${{ secrets.MACOS_NOTARIZATION_PWD }}
         run: |
-          if [ -z "${MACOS_NOTARIZATION_APPLE_ID}" ]; then
-            echo "⚠️  Notarization secrets not set — skipping notarization."
+          if [ -z "${MACOS_NOTARIZATION_APPLE_ID}" ] || \
+             [ -z "${MACOS_NOTARIZATION_TEAM_ID}" ] || \
+             [ -z "${MACOS_NOTARIZATION_PWD}" ]; then
+            echo "⚠️  One or more notarization secrets are missing — skipping notarization."
             exit 0
           fi
 
