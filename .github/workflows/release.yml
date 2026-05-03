@@ -48,3 +48,128 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+  macos-dmg:
+    name: Build macOS DMG (${{ matrix.arch }})
+    runs-on: macos-latest
+    needs: goreleaser   # wait for the release to be created first
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            goarch: amd64
+          - arch: arm64
+            goarch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          go build \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o deepdiffdb \
+            ./cmd/deepdiffdb
+
+      - name: Create DMG
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          DMG_NAME="deepdiff-db-${VERSION}-darwin-${{ matrix.arch }}.dmg"
+
+          # --- staging folder ---
+          mkdir -p dmg-stage
+          cp deepdiffdb            dmg-stage/
+          cp README.md             dmg-stage/
+          cp deepdiffdb.config.yaml.example dmg-stage/
+
+          # Simple install helper
+          cat > dmg-stage/install.sh << 'INSTALL'
+          #!/usr/bin/env bash
+          set -e
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          DEST="/usr/local/bin/deepdiffdb"
+          echo "Installing deepdiffdb → ${DEST}"
+          sudo install -m 755 "${SCRIPT_DIR}/deepdiffdb" "${DEST}"
+          echo "Installed: $(deepdiffdb --version)"
+          INSTALL
+          chmod +x dmg-stage/install.sh
+
+          # Create read-only compressed DMG with hdiutil (built-in on macOS)
+          hdiutil create \
+            -volname "DeepDiff DB ${VERSION}" \
+            -srcfolder dmg-stage \
+            -ov \
+            -format UDZO \
+            "${DMG_NAME}"
+
+          echo "DMG_NAME=${DMG_NAME}" >> "$GITHUB_ENV"
+
+      - name: Upload DMG to GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" "${DMG_NAME}" --clobber
+
+  windows-installer:
+    name: Build Windows Installer (amd64)
+    runs-on: windows-latest
+    needs: goreleaser   # wait for the release to be created first
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Windows binary
+        shell: bash
+        env:
+          GOARCH: amd64
+          GOOS: windows
+          CGO_ENABLED: "0"
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          go build \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o deepdiffdb.exe \
+            ./cmd/deepdiffdb
+
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+
+      - name: Prepare NSIS script
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          VER_CLEAN="${VERSION#v}"   # strip leading 'v': v1.4.0 → 1.4.0
+          # Substitute the __APP_VERSION__ placeholder in the template
+          sed "s/__APP_VERSION__/${VER_CLEAN}/g" \
+            .github/windows-installer.nsi > installer.nsi
+          echo "INSTALLER_NAME=deepdiff-db-${VERSION}-windows-amd64-installer.exe" \
+            >> "$GITHUB_ENV"
+
+      - name: Compile installer
+        shell: cmd
+        run: makensis installer.nsi
+
+      - name: Upload installer to GitHub release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" "${INSTALLER_NAME}" --clobber
