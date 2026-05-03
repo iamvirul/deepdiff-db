@@ -189,38 +189,9 @@ jobs:
           sed "s/__APP_VERSION__/${VER_CLEAN}/g" \
             .github/windows-installer.nsi > installer.nsi
 
-          # MUI2 README page — must exist at makensis compile time.
-          # Plain text is sufficient; MUI2 renders it in a scrollable text box.
-          # <<-'EOF' strips leading tabs so YAML indentation doesn't bleed into
-          # the generated file; content lines below are indented with tabs.
-          cat > readme.txt <<-'EOF'
-					DeepDiff DB - Quick Start
-					=========================
-
-					After installation, open a new Command Prompt or PowerShell window and run:
-
-					    deepdiffdb --version
-
-					Create a config file:
-
-					    deepdiffdb init
-
-					Run your first diff:
-
-					    deepdiffdb diff --html
-
-					Supported Databases
-					-------------------
-					  MySQL, PostgreSQL, SQLite, Microsoft SQL Server, Oracle Database
-
-					Documentation
-					-------------
-					  https://iamvirul.github.io/deepdiff-db/
-
-					Source Code
-					-----------
-					  https://github.com/iamvirul/deepdiff-db
-					EOF
+          # MUI2 README page — copy the static file tracked in the repo.
+          # Avoids inline heredocs which are error-prone inside YAML run blocks.
+          cp .github/windows-installer/readme.txt readme.txt
 
           echo "INSTALLER_NAME=deepdiff-db-${VERSION}-windows-amd64-installer.exe" \
             >> "$GITHUB_ENV"
