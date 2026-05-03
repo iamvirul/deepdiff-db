@@ -140,7 +140,7 @@ func BuildReportData(
 
 	data := &ReportData{
 		GeneratedAt:   time.Now(),
-		Version:       "v0.5",
+		Version:       "",
 		ProdDB:        prodDB,
 		DevDB:         devDB,
 		MigrationPack: migrationPack,

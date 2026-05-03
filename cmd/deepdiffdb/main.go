@@ -480,6 +480,7 @@ func runFullDiff(args []string) error {
 			tablesScanned,
 			nil,
 		)
+		reportData.Version = version
 
 		generator := htmlreport.NewGenerator(nil)
 		if err := generator.GenerateReport(reportData, htmlPath); err != nil {
@@ -775,6 +776,7 @@ func runGenPack(args []string) error {
 			tablesScanned,
 			nil,
 		)
+		reportData.Version = version
 
 		generator := htmlreport.NewGenerator(nil)
 		if err := generator.GenerateReport(reportData, htmlPath); err != nil {
