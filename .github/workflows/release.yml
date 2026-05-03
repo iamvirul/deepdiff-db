@@ -120,3 +120,56 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${GITHUB_REF_NAME}" "${DMG_NAME}" --clobber
+
+  windows-installer:
+    name: Build Windows Installer (amd64)
+    runs-on: windows-latest
+    needs: goreleaser   # wait for the release to be created first
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Windows binary
+        shell: bash
+        env:
+          GOARCH: amd64
+          GOOS: windows
+          CGO_ENABLED: "0"
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          go build \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o deepdiffdb.exe \
+            ./cmd/deepdiffdb
+
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+
+      - name: Prepare NSIS script
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          VER_CLEAN="${VERSION#v}"   # strip leading 'v': v1.4.0 → 1.4.0
+          # Substitute the __APP_VERSION__ placeholder in the template
+          sed "s/__APP_VERSION__/${VER_CLEAN}/g" \
+            .github/windows-installer.nsi > installer.nsi
+          echo "INSTALLER_NAME=deepdiff-db-${VERSION}-windows-amd64-installer.exe" \
+            >> "$GITHUB_ENV"
+
+      - name: Compile installer
+        shell: cmd
+        run: makensis installer.nsi
+
+      - name: Upload installer to GitHub release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" "${INSTALLER_NAME}" --clobber
