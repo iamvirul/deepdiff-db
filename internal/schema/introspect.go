@@ -13,7 +13,9 @@ import (
 
 // LoadSchemaOptions provides optional configuration for LoadSchema.
 type LoadSchemaOptions struct {
-	IgnoreViews []string // View names to exclude (case-insensitive)
+	IgnoreViews    []string // View names to exclude (case-insensitive)
+	IgnoreRoutines []string // Routine names to exclude (case-insensitive)
+	IgnoreTriggers []string // Trigger names to exclude (case-insensitive)
 }
 
 // LoadSchema loads table and column metadata for the specified SQL driver into a Schema,
@@ -241,6 +243,26 @@ func LoadSchema(ctx context.Context, db *sql.DB, driver string, database string,
 	log.Debug("loading views")
 	if err := loadViews(ctx, db, driver, database, s, ignoreViews); err != nil {
 		return nil, fmt.Errorf("load views: %w", err)
+	}
+
+	// Load routines
+	var ignoreRoutines []string
+	if len(opts) > 0 {
+		ignoreRoutines = opts[0].IgnoreRoutines
+	}
+	log.Debug("loading routines")
+	if err := loadRoutines(ctx, db, driver, database, s, ignoreRoutines); err != nil {
+		return nil, fmt.Errorf("load routines: %w", err)
+	}
+
+	// Load triggers
+	var ignoreTriggers []string
+	if len(opts) > 0 {
+		ignoreTriggers = opts[0].IgnoreTriggers
+	}
+	log.Debug("loading triggers")
+	if err := loadTriggers(ctx, db, driver, database, s, ignoreTriggers); err != nil {
+		return nil, fmt.Errorf("load triggers: %w", err)
 	}
 
 	// Calculate total columns
@@ -1439,4 +1461,319 @@ func loadOracleForeignKeys(ctx context.Context, db *sql.DB, s *Schema) error {
 		s.Tables[tableName] = t
 	}
 	return nil
+}
+
+// loadRoutines queries the database for stored procedure and function metadata and
+// populates the Routines map in the schema. It dispatches to driver-specific functions.
+func loadRoutines(ctx context.Context, db *sql.DB, driver string, database string, s *Schema, ignoreRoutines []string) error {
+	ignore := make(map[string]struct{}, len(ignoreRoutines))
+	for _, r := range ignoreRoutines {
+		ignore[strings.ToLower(r)] = struct{}{}
+	}
+	switch driver {
+	case "mysql":
+		return loadMySQLRoutines(ctx, db, database, s, ignore)
+	case "postgres", "postgresql":
+		return loadPostgreSQLRoutines(ctx, db, s, ignore)
+	case "sqlite", "mssql", "oracle":
+		return nil // SQLite has no routines; MSSQL/Oracle deferred
+	default:
+		return fmt.Errorf("routine introspection unsupported for driver: %s", driver)
+	}
+}
+
+// loadMySQLRoutines queries information_schema.routines and information_schema.parameters
+// to load stored procedure and function metadata for the given database.
+func loadMySQLRoutines(ctx context.Context, db *sql.DB, database string, s *Schema, ignore map[string]struct{}) error {
+	// Load routine metadata
+	rows, err := db.QueryContext(ctx, `
+		SELECT routine_name, routine_type, routine_definition,
+		       COALESCE(data_type, '') AS return_type,
+		       COALESCE(external_language, 'SQL') AS language
+		FROM information_schema.routines
+		WHERE routine_schema = ?
+		ORDER BY routine_name
+	`, database)
+	if err != nil {
+		return fmt.Errorf("mysql routines: %w", err)
+	}
+	defer rows.Close()
+
+	if s.Routines == nil {
+		s.Routines = make(map[string]Routine)
+	}
+	for rows.Next() {
+		var name, kind, definition, returnType, language string
+		if err := rows.Scan(&name, &kind, &definition, &returnType, &language); err != nil {
+			return fmt.Errorf("mysql routines scan: %w", err)
+		}
+		if _, skip := ignore[strings.ToLower(name)]; skip {
+			continue
+		}
+		s.Routines[name] = Routine{
+			Name:       name,
+			Kind:       kind,
+			Definition: definition,
+			ReturnType: returnType,
+			Language:   language,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Load parameters for each routine
+	paramRows, err := db.QueryContext(ctx, `
+		SELECT specific_name, parameter_name, data_type,
+		       COALESCE(parameter_mode, 'IN') AS parameter_mode
+		FROM information_schema.parameters
+		WHERE specific_schema = ? AND parameter_name IS NOT NULL
+		ORDER BY specific_name, ordinal_position
+	`, database)
+	if err != nil {
+		return fmt.Errorf("mysql routine parameters: %w", err)
+	}
+	defer paramRows.Close()
+
+	for paramRows.Next() {
+		var routineName, paramName, dataType, mode string
+		if err := paramRows.Scan(&routineName, &paramName, &dataType, &mode); err != nil {
+			return fmt.Errorf("mysql routine parameters scan: %w", err)
+		}
+		r, ok := s.Routines[routineName]
+		if !ok {
+			continue
+		}
+		r.Parameters = append(r.Parameters, RoutineParameter{
+			Name:     paramName,
+			DataType: dataType,
+			Mode:     mode,
+		})
+		s.Routines[routineName] = r
+	}
+	return paramRows.Err()
+}
+
+// loadPostgreSQLRoutines queries pg_proc to load function and procedure metadata.
+func loadPostgreSQLRoutines(ctx context.Context, db *sql.DB, s *Schema, ignore map[string]struct{}) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT p.proname,
+		       CASE p.prokind WHEN 'f' THEN 'FUNCTION' WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END AS kind,
+		       pg_get_functiondef(p.oid) AS definition,
+		       COALESCE(t.typname, '') AS return_type,
+		       COALESCE(l.lanname, 'sql') AS language
+		FROM pg_proc p
+		JOIN pg_namespace n ON n.oid = p.pronamespace
+		LEFT JOIN pg_type t ON t.oid = p.prorettype
+		LEFT JOIN pg_language l ON l.oid = p.prolang
+		WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+		  AND p.prokind IN ('f', 'p')
+		ORDER BY p.proname
+	`)
+	if err != nil {
+		return fmt.Errorf("postgresql routines: %w", err)
+	}
+	defer rows.Close()
+
+	if s.Routines == nil {
+		s.Routines = make(map[string]Routine)
+	}
+	for rows.Next() {
+		var name, kind, definition, returnType, language string
+		if err := rows.Scan(&name, &kind, &definition, &returnType, &language); err != nil {
+			return fmt.Errorf("postgresql routines scan: %w", err)
+		}
+		if _, skip := ignore[strings.ToLower(name)]; skip {
+			continue
+		}
+		s.Routines[name] = Routine{
+			Name:       name,
+			Kind:       kind,
+			Definition: strings.TrimSpace(definition),
+			ReturnType: returnType,
+			Language:   language,
+		}
+	}
+	return rows.Err()
+}
+
+// loadTriggers queries the database for trigger metadata and populates the Triggers map
+// in the schema. It dispatches to driver-specific trigger loading functions.
+func loadTriggers(ctx context.Context, db *sql.DB, driver string, database string, s *Schema, ignoreTriggers []string) error {
+	ignore := make(map[string]struct{}, len(ignoreTriggers))
+	for _, t := range ignoreTriggers {
+		ignore[strings.ToLower(t)] = struct{}{}
+	}
+	switch driver {
+	case "mysql":
+		return loadMySQLTriggers(ctx, db, database, s, ignore)
+	case "postgres", "postgresql":
+		return loadPostgreSQLTriggers(ctx, db, s, ignore)
+	case "sqlite":
+		return loadSQLiteTriggers(ctx, db, s, ignore)
+	case "mssql", "oracle":
+		return nil // deferred
+	default:
+		return fmt.Errorf("trigger introspection unsupported for driver: %s", driver)
+	}
+}
+
+// loadMySQLTriggers queries information_schema.triggers to load trigger metadata.
+func loadMySQLTriggers(ctx context.Context, db *sql.DB, database string, s *Schema, ignore map[string]struct{}) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT trigger_name, event_object_table, action_timing,
+		       event_manipulation, action_statement,
+		       action_orientation
+		FROM information_schema.triggers
+		WHERE trigger_schema = ?
+		ORDER BY trigger_name
+	`, database)
+	if err != nil {
+		return fmt.Errorf("mysql triggers: %w", err)
+	}
+	defer rows.Close()
+
+	if s.Triggers == nil {
+		s.Triggers = make(map[string]Trigger)
+	}
+	for rows.Next() {
+		var name, table, timing, event, definition, orientation string
+		if err := rows.Scan(&name, &table, &timing, &event, &definition, &orientation); err != nil {
+			return fmt.Errorf("mysql triggers scan: %w", err)
+		}
+		if _, skip := ignore[strings.ToLower(name)]; skip {
+			continue
+		}
+		s.Triggers[name] = Trigger{
+			Name:       name,
+			Table:      table,
+			Timing:     timing,
+			Event:      event,
+			Definition: definition,
+			ForEachRow: strings.EqualFold(orientation, "ROW"),
+		}
+	}
+	return rows.Err()
+}
+
+// loadPostgreSQLTriggers queries pg_trigger to load trigger metadata.
+func loadPostgreSQLTriggers(ctx context.Context, db *sql.DB, s *Schema, ignore map[string]struct{}) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT t.tgname,
+		       c.relname AS table_name,
+		       pg_get_triggerdef(t.oid) AS definition,
+		       CASE WHEN t.tgtype & 2 > 0 THEN 'BEFORE' ELSE 'AFTER' END AS timing,
+		       CASE
+		           WHEN (t.tgtype & 4 > 0) AND (t.tgtype & 8 > 0) AND (t.tgtype & 16 > 0) THEN 'INSERT OR DELETE OR UPDATE'
+		           WHEN (t.tgtype & 4 > 0) AND (t.tgtype & 8 > 0) THEN 'INSERT OR DELETE'
+		           WHEN (t.tgtype & 4 > 0) AND (t.tgtype & 16 > 0) THEN 'INSERT OR UPDATE'
+		           WHEN (t.tgtype & 8 > 0) AND (t.tgtype & 16 > 0) THEN 'DELETE OR UPDATE'
+		           WHEN t.tgtype & 4 > 0 THEN 'INSERT'
+		           WHEN t.tgtype & 8 > 0 THEN 'DELETE'
+		           WHEN t.tgtype & 16 > 0 THEN 'UPDATE'
+		           ELSE 'UNKNOWN'
+		       END AS event,
+		       (t.tgtype & 1) > 0 AS for_each_row
+		FROM pg_trigger t
+		JOIN pg_class c ON c.oid = t.tgrelid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE NOT t.tgisinternal
+		  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+		ORDER BY t.tgname
+	`)
+	if err != nil {
+		return fmt.Errorf("postgresql triggers: %w", err)
+	}
+	defer rows.Close()
+
+	if s.Triggers == nil {
+		s.Triggers = make(map[string]Trigger)
+	}
+	for rows.Next() {
+		var name, table, definition, timing, event string
+		var forEachRow bool
+		if err := rows.Scan(&name, &table, &definition, &timing, &event, &forEachRow); err != nil {
+			return fmt.Errorf("postgresql triggers scan: %w", err)
+		}
+		if _, skip := ignore[strings.ToLower(name)]; skip {
+			continue
+		}
+		s.Triggers[name] = Trigger{
+			Name:       name,
+			Table:      table,
+			Timing:     timing,
+			Event:      event,
+			Definition: strings.TrimSpace(definition),
+			ForEachRow: forEachRow,
+		}
+	}
+	return rows.Err()
+}
+
+// loadSQLiteTriggers queries sqlite_master to load trigger metadata.
+func loadSQLiteTriggers(ctx context.Context, db *sql.DB, s *Schema, ignore map[string]struct{}) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT name, tbl_name, sql
+		FROM sqlite_master
+		WHERE type = 'trigger'
+		ORDER BY name
+	`)
+	if err != nil {
+		return fmt.Errorf("sqlite triggers: %w", err)
+	}
+	defer rows.Close()
+
+	if s.Triggers == nil {
+		s.Triggers = make(map[string]Trigger)
+	}
+	for rows.Next() {
+		var name, tableName string
+		var sqlDef sql.NullString
+		if err := rows.Scan(&name, &tableName, &sqlDef); err != nil {
+			return fmt.Errorf("sqlite triggers scan: %w", err)
+		}
+		if _, skip := ignore[strings.ToLower(name)]; skip {
+			continue
+		}
+		definition := ""
+		if sqlDef.Valid {
+			definition = sqlDef.String
+		}
+		// Parse timing and event from the definition
+		timing, event, forEachRow := parseSQLiteTriggerMeta(definition)
+		s.Triggers[name] = Trigger{
+			Name:       name,
+			Table:      tableName,
+			Timing:     timing,
+			Event:      event,
+			Definition: definition,
+			ForEachRow: forEachRow,
+		}
+	}
+	return rows.Err()
+}
+
+// parseSQLiteTriggerMeta extracts timing, event, and ForEachRow from a SQLite
+// CREATE TRIGGER statement. SQLite syntax:
+//
+//	CREATE TRIGGER <name> BEFORE|AFTER|INSTEAD OF INSERT|UPDATE|DELETE ON <table>
+//	[FOR EACH ROW] BEGIN ... END
+func parseSQLiteTriggerMeta(sql string) (timing, event string, forEachRow bool) {
+	upper := strings.ToUpper(sql)
+	// Timing
+	for _, t := range []string{"INSTEAD OF", "BEFORE", "AFTER"} {
+		if strings.Contains(upper, t) {
+			timing = t
+			break
+		}
+	}
+	// Event
+	for _, e := range []string{"INSERT", "UPDATE", "DELETE"} {
+		if strings.Contains(upper, e) {
+			event = e
+			break
+		}
+	}
+	forEachRow = strings.Contains(upper, "FOR EACH ROW")
+	return
 }
