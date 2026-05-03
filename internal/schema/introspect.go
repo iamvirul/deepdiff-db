@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/iamvirul/deepdiff-db/pkg/logger"
@@ -1853,25 +1854,42 @@ func loadPostgreSQLSequences(ctx context.Context, db *sql.DB, s *Schema, ignore 
 			}
 		}
 	} else {
-		// Scan information_schema.sequences results (PostgreSQL <10)
+		// Scan information_schema.sequences results (PostgreSQL <10).
+		// start_value, minimum_value, maximum_value, increment are character_data
+		// in information_schema — scan as strings and convert to int64.
 		for rows.Next() {
-			var name string
-			var startValue, minValue, maxValue, incrementBy int64
+			var name, startStr, minStr, maxStr, incrStr string
 			var cycle bool
-			if err := rows.Scan(&name, &startValue, &minValue, &maxValue, &incrementBy, &cycle); err != nil {
+			if err := rows.Scan(&name, &startStr, &minStr, &maxStr, &incrStr, &cycle); err != nil {
 				return fmt.Errorf("postgresql sequences scan: %w", err)
 			}
 			if _, skip := ignore[strings.ToLower(name)]; skip {
 				continue
 			}
-			// Note: information_schema.sequences doesn't provide cache_size, so we use 0
+			startValue, err := strconv.ParseInt(startStr, 10, 64)
+			if err != nil {
+				return fmt.Errorf("postgresql sequences: parse start_value %q: %w", startStr, err)
+			}
+			minValue, err := strconv.ParseInt(minStr, 10, 64)
+			if err != nil {
+				return fmt.Errorf("postgresql sequences: parse minimum_value %q: %w", minStr, err)
+			}
+			maxValue, err := strconv.ParseInt(maxStr, 10, 64)
+			if err != nil {
+				return fmt.Errorf("postgresql sequences: parse maximum_value %q: %w", maxStr, err)
+			}
+			incrementBy, err := strconv.ParseInt(incrStr, 10, 64)
+			if err != nil {
+				return fmt.Errorf("postgresql sequences: parse increment %q: %w", incrStr, err)
+			}
+			// information_schema.sequences does not expose cache_size
 			s.Sequences[name] = Sequence{
 				Name:       name,
 				StartValue: startValue,
 				Increment:  incrementBy,
 				MinValue:   minValue,
 				MaxValue:   maxValue,
-				CacheSize:  0, // Not available in information_schema
+				CacheSize:  0,
 				Cycle:      cycle,
 			}
 		}
