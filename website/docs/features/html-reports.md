@@ -4,7 +4,13 @@ sidebar_position: 2
 
 # HTML Reports
 
-Added in **v0.5**. DeepDiff DB can generate a self-contained, interactive HTML report alongside the JSON and text outputs.
+DeepDiff DB can generate a self-contained, interactive HTML report alongside the JSON and text outputs.
+
+## Live Sample
+
+**[→ View Sample Report](pathname:///samples/report.html)**
+
+The sample report is generated from two real MySQL databases with intentional schema drift: added/removed/modified views, routines, and triggers, plus table-level column and index changes with data conflicts.
 
 ## Generating a Report
 
@@ -22,14 +28,33 @@ The report is written to `{output.dir}/report.html`. It is a single self-contain
 
 ## What the Report Contains
 
-The report is organised into four tabs:
+The report is organised into four tabs.
 
 ### Schema Diff Tab
 
-- Lists every table with schema changes
-- For each table: expandable sections for column changes, index changes, and foreign key changes
+Lists every schema object that changed between prod and dev.
+
+**Tables**
+- Expandable sections per table for column, index, and foreign key changes
 - Each change shows the production value and development value side-by-side
-- Tables with no schema changes are collapsed by default
+
+**Views**
+- Added, removed, and modified views
+- For modified views: shows which property changed (definition, materialized flag)
+
+**Routines**
+- Added, removed, and modified stored procedures and functions
+- Kind badge (FUNCTION / PROCEDURE) on each entry
+- For modified routines: highlights definition, return type, language, or parameter changes
+
+**Triggers**
+- Added, removed, and modified triggers
+- Shows the associated table for each trigger
+- For modified triggers: highlights definition, timing, or event changes
+
+**Sequences** *(PostgreSQL only)*
+- Added, removed, and modified sequences
+- For modified sequences: shows which numeric properties differ (increment, min/max value, cache, cycle)
 
 ### Data Diff Tab
 

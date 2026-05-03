@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepDiff DB Report</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #ffffff;
+            --bg-secondary: #f9fafb;
+            --bg-tertiary: #f3f4f6;
+            --border: #e5e7eb;
+            --border-light: #f3f4f6;
+            --text: #111827;
+            --text-secondary: #6b7280;
+            --text-tertiary: #9ca3af;
+            --accent: #2563eb;
+            --accent-light: #eff6ff;
+            --success: #059669;
+            --success-light: #ecfdf5;
+            --warning: #d97706;
+            --warning-light: #fffbeb;
+            --danger: #dc2626;
+            --danger-light: #fef2f2;
+            --font-mono: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, Monaco, Consolas, monospace;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 32px 24px;
+        }
+
+         
+        .header {
+            margin-bottom: 32px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn:hover {
+            background: var(--bg-secondary);
+            color: var(--text);
+            border-color: var(--text-tertiary);
+        }
+
+        .btn-primary {
+            background: var(--text);
+            color: var(--bg);
+            border-color: var(--text);
+        }
+
+        .btn-primary:hover {
+            background: #374151;
+            border-color: #374151;
+            color: var(--bg);
+        }
+
+        .meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .meta-label {
+            color: var(--text-tertiary);
+        }
+
+         
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 1px;
+            background: var(--border);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 32px;
+        }
+
+        .stat {
+            background: var(--bg);
+            padding: 16px 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--text);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stat-value.success { color: var(--success); }
+        .stat-value.warning { color: var(--warning); }
+        .stat-value.danger { color: var(--danger); }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+         
+        .tabs {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .tab-nav {
+            display: flex;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 0 4px;
+        }
+
+        .tab-btn {
+            padding: 12px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.15s;
+        }
+
+        .tab-btn:hover {
+            color: var(--text);
+        }
+
+        .tab-btn.active {
+            color: var(--text);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--text);
+        }
+
+        .tab-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            margin-left: 6px;
+            font-size: 11px;
+            font-weight: 500;
+            border-radius: 9px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+
+        .tab-count.has-items { background: var(--accent-light); color: var(--accent); }
+        .tab-count.has-warning { background: var(--warning-light); color: var(--warning); }
+        .tab-count.has-danger { background: var(--danger-light); color: var(--danger); }
+
+        .tab-panel {
+            display: none;
+            padding: 20px;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+         
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th {
+            text-align: left;
+            padding: 10px 12px;
+            font-weight: 500;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-tertiary);
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-light);
+            vertical-align: top;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: var(--bg-secondary);
+        }
+
+        .mono {
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+         
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .badge-success { background: var(--success-light); color: var(--success); }
+        .badge-warning { background: var(--warning-light); color: var(--warning); }
+        .badge-danger { background: var(--danger-light); color: var(--danger); }
+        .badge-neutral { background: var(--bg-tertiary); color: var(--text-secondary); }
+
+         
+        .resolution-summary {
+            margin-bottom: 24px;
+            padding: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 16px;
+        }
+
+        .resolution-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .resolution-stat {
+            text-align: center;
+            padding: 16px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        .resolution-value {
+            font-size: 28px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            margin-bottom: 4px;
+        }
+
+        .resolution-value.success { color: var(--success); }
+        .resolution-value.warning { color: var(--warning); }
+        .resolution-value.neutral { color: var(--text-secondary); }
+
+        .resolution-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .strategy-table-wrap {
+            overflow-x: auto;
+        }
+
+        .strategy-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .strategy-table th,
+        .strategy-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .strategy-table th {
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: var(--bg);
+        }
+
+        .strategy-table td:nth-child(n+3) {
+            text-align: center;
+        }
+
+        .strategy-table th:nth-child(n+3) {
+            text-align: center;
+        }
+
+         
+        .data-row {
+            cursor: pointer;
+        }
+
+        .data-row:hover {
+            background: var(--bg-secondary);
+        }
+
+        .expand-hint {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            margin-left: 8px;
+        }
+
+        .keys-row td {
+            padding: 0 !important;
+            background: var(--bg-secondary);
+        }
+
+        .keys-detail {
+            padding: 12px 16px;
+        }
+
+        .keys-section {
+            margin-bottom: 10px;
+        }
+
+        .keys-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .keys-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 6px;
+        }
+
+        .keys-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .key-item {
+            display: inline-block;
+            padding: 3px 8px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+
+         
+        .conflict-badges {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .badge-strategy {
+            font-size: 10px;
+        }
+
+         
+        .change {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .change-add { color: var(--success); }
+        .change-remove { color: var(--danger); }
+        .change-modify { color: var(--warning); }
+
+         
+        .diff-section {
+            margin-bottom: 16px;
+        }
+
+        .diff-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .diff-header:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .diff-header.open {
+            border-radius: 6px 6px 0 0;
+            border-bottom-color: transparent;
+        }
+
+        .diff-chevron {
+            width: 16px;
+            height: 16px;
+            color: var(--text-tertiary);
+            transition: transform 0.15s;
+        }
+
+        .diff-header.open .diff-chevron {
+            transform: rotate(90deg);
+        }
+
+        .diff-table {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .diff-type {
+            margin-left: auto;
+            font-size: 11px;
+        }
+
+        .diff-body {
+            display: none;
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            overflow: hidden;
+        }
+
+        .diff-header.open + .diff-body {
+            display: block;
+        }
+
+        .diff-row {
+            display: flex;
+            align-items: stretch;
+            border-bottom: 1px solid var(--border-light);
+            font-size: 13px;
+        }
+
+        .diff-row:last-child {
+            border-bottom: none;
+        }
+
+        .diff-indicator {
+            width: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .diff-row.add .diff-indicator { background: var(--success-light); color: var(--success); }
+        .diff-row.remove .diff-indicator { background: var(--danger-light); color: var(--danger); }
+        .diff-row.modify .diff-indicator { background: var(--warning-light); color: var(--warning); }
+
+        .diff-content {
+            flex: 1;
+            padding: 10px 14px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .diff-row.add .diff-content { background: #f0fdf4; }
+        .diff-row.remove .diff-content { background: #fef2f2; }
+        .diff-row.modify .diff-content { background: #fffbeb; }
+
+        .diff-col {
+            color: var(--text);
+        }
+
+        .diff-detail {
+            color: var(--text-secondary);
+            margin-left: 8px;
+        }
+
+         
+        .filters {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .filter-select {
+            padding: 7px 10px;
+            font-size: 13px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+            min-width: 160px;
+        }
+
+        .filter-select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+
+         
+        .conflict-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            background: var(--border);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .conflict-item {
+            display: grid;
+            grid-template-columns: 140px 1fr 200px 100px;
+            gap: 16px;
+            align-items: center;
+            padding: 12px 16px;
+            background: var(--bg);
+            font-size: 13px;
+        }
+
+        .conflict-item:hover {
+            background: var(--bg-secondary);
+        }
+
+        .conflict-table {
+            font-family: var(--font-mono);
+            font-weight: 500;
+        }
+
+        .conflict-key {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .conflict-hashes {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+
+        .hash {
+            padding: 3px 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            color: var(--text-secondary);
+        }
+
+        .hash-arrow {
+            color: var(--text-tertiary);
+        }
+
+         
+        .sql-wrap {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .sql-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sql-title {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .sql-code {
+            background: #1e1e1e;
+            padding: 16px;
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .sql-code pre {
+            margin: 0;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.6;
+            color: #d4d4d4;
+            white-space: pre;
+        }
+
+        .sql-keyword { color: #569cd6; }
+        .sql-string { color: #ce9178; }
+        .sql-number { color: #b5cea8; }
+        .sql-comment { color: #6a9955; }
+        .sql-function { color: #dcdcaa; }
+
+         
+        .empty {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-secondary);
+        }
+
+        .empty-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+
+        .empty-desc {
+            font-size: 13px;
+        }
+
+         
+        .key-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 8px;
+        }
+
+        .key-tag {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            padding: 2px 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            color: var(--text-secondary);
+        }
+
+         
+        @media (max-width: 900px) {
+            .stats {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .conflict-item {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .header-top {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+            .meta {
+                flex-direction: column;
+                gap: 8px;
+            }
+        }
+
+         
+        @media print {
+            body { font-size: 11px; }
+            .container { padding: 0; max-width: none; }
+            .btn, .filters { display: none !important; }
+            .tab-panel { display: block !important; padding: 16px 0; border-bottom: 1px solid var(--border); }
+            .tab-nav { display: none; }
+            .tabs { border: none; }
+            .tab-panel::before {
+                content: attr(data-title);
+                display: block;
+                font-size: 14px;
+                font-weight: 600;
+                margin-bottom: 12px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid var(--border);
+            }
+            .diff-body { display: block !important; }
+            .sql-code { max-height: none; background: #f9fafb !important; }
+            .sql-code pre { color: #111827 !important; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-top">
+                <h1>Database Diff Report</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="window.print()">Export PDF</button>
+                </div>
+            </div>
+            <div class="meta">
+                <div class="meta-item">
+                    <span class="meta-label">Generated</span>
+                    <span>2026-05-03 12:11:10 &#43;0530</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Source</span>
+                    <span class="mono">localhost:3316/prod_ecommerce</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Target</span>
+                    <span class="mono">localhost:3317/dev_ecommerce</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Version</span>
+                    <span>v1.4.0-dev.20260503T064046Z.25b43ca</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value warning">DRIFT</div>
+                <div class="stat-label">Schema</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">7</div>
+                <div class="stat-label">Tables</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value success">+20</div>
+                <div class="stat-label">Added</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value danger">-7</div>
+                <div class="stat-label">Removed</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value warning">18</div>
+                <div class="stat-label">Modified</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value danger">18</div>
+                <div class="stat-label">Conflicts</div>
+            </div>
+        </div>
+
+        
+
+        <div class="tabs">
+            <nav class="tab-nav">
+                <button class="tab-btn active" data-tab="schema" onclick="switchTab('schema')">
+                    Schema<span class="tab-count has-warning">4</span>
+                </button>
+                <button class="tab-btn" data-tab="data" onclick="switchTab('data')">
+                    Data<span class="tab-count has-items">6</span>
+                </button>
+                <button class="tab-btn" data-tab="conflicts" onclick="switchTab('conflicts')">
+                    Conflicts<span class="tab-count has-danger">18</span>
+                </button>
+                
+            </nav>
+
+            <div id="tab-schema" class="tab-panel active" data-title="Schema Changes">
+                
+                    
+                    <div class="diff-section">
+                        <div class="diff-header" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">feature_flags</span>
+                            <span class="diff-type">
+                                <span class="badge badge-success">New Table</span>
+                                
+                            </span>
+                        </div>
+                        <div class="diff-body">
+                            
+                            
+                            
+                            
+                            <div class="diff-row modify">
+                                <div class="diff-indicator">i</div>
+                                <div class="diff-content">Table &#39;feature_flags&#39; exists in dev but not in prod</div>
+                            </div>
+                            
+                        </div>
+                    </div>
+                    
+                    <div class="diff-section">
+                        <div class="diff-header" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">customers</span>
+                            <span class="diff-type">
+                                <span class="badge badge-warning">Modified</span>
+                            </span>
+                        </div>
+                        <div class="diff-body">
+                            
+                            <div class="diff-row modify">
+                                <div class="diff-indicator">~</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">email</span>
+                                    <span class="diff-detail">Type changed: varchar(100) -&gt; varchar(255)</span>
+                                </div>
+                            </div>
+                            
+                            
+                            
+                            
+                        </div>
+                    </div>
+                    
+                    <div class="diff-section">
+                        <div class="diff-header" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">orders</span>
+                            <span class="diff-type">
+                                <span class="badge badge-warning">Modified</span>
+                            </span>
+                        </div>
+                        <div class="diff-body">
+                            
+                            
+                            <div class="diff-row add">
+                                <div class="diff-indicator">+</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">INDEX idx_customer_id</span>
+                                    <span class="diff-detail">(customer_id)</span>
+                                </div>
+                            </div>
+                            
+                            <div class="diff-row remove">
+                                <div class="diff-indicator">−</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">INDEX customer_id</span>
+                                    <span class="diff-detail">(customer_id)</span>
+                                </div>
+                            </div>
+                            
+                            
+                            
+                        </div>
+                    </div>
+                    
+                    <div class="diff-section">
+                        <div class="diff-header" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">products</span>
+                            <span class="diff-type">
+                                <span class="badge badge-warning">Modified</span>
+                            </span>
+                        </div>
+                        <div class="diff-body">
+                            
+                            <div class="diff-row add">
+                                <div class="diff-indicator">+</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">discount_percent</span>
+                                    <span class="diff-detail">Column added: discount_percent decimal(5,2)</span>
+                                </div>
+                            </div>
+                            
+                            
+                            
+                            
+                        </div>
+                    </div>
+                    
+                    
+                    <div class="diff-section">
+                        <div class="diff-header open" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">Views</span>
+                            <span class="diff-type"><span class="badge badge-warning">4 change(s)</span></span>
+                        </div>
+                        <div class="diff-body">
+                            
+                            <div class="diff-row add">
+                                <div class="diff-indicator">+</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">v_customer_stats</span>
+                                    <span class="diff-detail">View &#39;v_customer_stats&#39; exists in dev but not in prod</span>
+                                </div>
+                            </div>
+                            
+                            <div class="diff-row remove">
+                                <div class="diff-indicator">−</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">v_customer_summary</span>
+                                    <span class="diff-detail">View &#39;v_customer_summary&#39; exists in prod but not in dev</span>
+                                </div>
+                            </div>
+                            
+                            <div class="diff-row modify">
+                                <div class="diff-indicator">~</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">v_active_orders</span>
+                                    <span class="diff-detail">View definition changed</span>
+                                </div>
+                            </div>
+                            
+                            <div class="diff-row modify">
+                                <div class="diff-indicator">~</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">v_product_catalog</span>
+                                    <span class="diff-detail">View definition changed</span>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </div>
+                    
+                    
+                    <div class="diff-section">
+                        <div class="diff-header open" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">Routines</span>
+                            <span class="diff-type"><span class="badge badge-warning">3 change(s)</span></span>
+                        </div>
+                        <div class="diff-body">
+                            
+                            <div class="diff-row add">
+                                <div class="diff-indicator">+</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">FUNCTION: fn_format_price</span>
+                                    <span class="diff-detail">FUNCTION &#39;fn_format_price&#39; exists in dev but not in prod</span>
+                                </div>
+                            </div>
+                            
+                            <div class="diff-row modify">
+                                <div class="diff-indicator">~</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">fn_calculate_total</span>
+                                    <span class="diff-detail">definition changed; parameters changed</span>
+                                </div>
+                            </div>
+                            
+                            <div class="diff-row modify">
+                                <div class="diff-indicator">~</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">fn_get_customer_tier</span>
+                                    <span class="diff-detail">definition changed</span>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </div>
+                    
+                    
+                    <div class="diff-section">
+                        <div class="diff-header open" onclick="this.classList.toggle('open')">
+                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+                            </svg>
+                            <span class="diff-table">Triggers</span>
+                            <span class="diff-type"><span class="badge badge-warning">2 change(s)</span></span>
+                        </div>
+                        <div class="diff-body">
+                            
+                            <div class="diff-row add">
+                                <div class="diff-indicator">+</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">trg_products_updated_at (table: products)</span>
+                                    <span class="diff-detail">Trigger &#39;trg_products_updated_at&#39; on table &#39;products&#39; exists in dev but not in prod</span>
+                                </div>
+                            </div>
+                            
+                            <div class="diff-row modify">
+                                <div class="diff-indicator">~</div>
+                                <div class="diff-content">
+                                    <span class="diff-col">trg_orders_audit</span>
+                                    <span class="diff-detail">definition changed</span>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </div>
+                    
+                    
+                
+            </div>
+
+            <div id="tab-data" class="tab-panel" data-title="Data Changes">
+                
+                    <div class="filters">
+                        <select class="filter-select" id="table-filter" onchange="filterTable()">
+                            <option value="">All tables</option>
+                            <option value="audit_log">audit_log</option><option value="customers">customers</option><option value="inventory_log">inventory_log</option><option value="order_items">order_items</option><option value="orders">orders</option><option value="products">products</option>
+                        </select>
+                    </div>
+                    <div class="table-wrap">
+                        <table id="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Table</th>
+                                    <th>Added</th>
+                                    <th>Removed</th>
+                                    <th>Modified</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                
+                                <tr data-table="audit_log" class="data-row" onclick="toggleKeys(this)">
+                                    <td>
+                                        <span class="mono">audit_log</span>
+                                        <span class="expand-hint">(click to expand)</span>
+                                    </td>
+                                    <td><span class="change">—</span></td>
+                                    <td><span class="change change-remove">−7</span></td>
+                                    <td><span class="change">—</span></td>
+                                </tr>
+                                
+                                <tr class="keys-row" data-table="audit_log" style="display:none;">
+                                    <td colspan="4">
+                                        <div class="keys-detail">
+                                            
+                                            
+                                            <div class="keys-section">
+                                                <span class="keys-label change-remove">Removed Keys:</span>
+                                                <div class="keys-list"><span class="key-item">8</span><span class="key-item">9</span><span class="key-item">10</span><span class="key-item">4</span><span class="key-item">6</span><span class="key-item">3</span><span class="key-item">7</span></div>
+                                            </div>
+                                            
+                                            
+                                        </div>
+                                    </td>
+                                </tr>
+                                
+                                
+                                <tr data-table="customers" class="data-row" onclick="toggleKeys(this)">
+                                    <td>
+                                        <span class="mono">customers</span>
+                                        <span class="expand-hint">(click to expand)</span>
+                                    </td>
+                                    <td><span class="change change-add">+1</span></td>
+                                    <td><span class="change">—</span></td>
+                                    <td><span class="change change-modify">~5</span></td>
+                                </tr>
+                                
+                                <tr class="keys-row" data-table="customers" style="display:none;">
+                                    <td colspan="4">
+                                        <div class="keys-detail">
+                                            
+                                            <div class="keys-section">
+                                                <span class="keys-label change-add">Added Keys:</span>
+                                                <div class="keys-list"><span class="key-item">6</span></div>
+                                            </div>
+                                            
+                                            
+                                            
+                                            <div class="keys-section">
+                                                <span class="keys-label change-modify">Modified Keys:</span>
+                                                <div class="keys-list"><span class="key-item">1</span><span class="key-item">2</span><span class="key-item">3</span><span class="key-item">4</span><span class="key-item">5</span></div>
+                                            </div>
+                                            
+                                        </div>
+                                    </td>
+                                </tr>
+                                
+                                
+                                <tr data-table="inventory_log" class="data-row" onclick="toggleKeys(this)">
+                                    <td>
+                                        <span class="mono">inventory_log</span>
+                                        <span class="expand-hint">(click to expand)</span>
+                                    </td>
+                                    <td><span class="change change-add">+5</span></td>
+                                    <td><span class="change">—</span></td>
+                                    <td><span class="change">—</span></td>
+                                </tr>
+                                
+                                <tr class="keys-row" data-table="inventory_log" style="display:none;">
+                                    <td colspan="4">
+                                        <div class="keys-detail">
+                                            
+                                            <div class="keys-section">
+                                                <span class="keys-label change-add">Added Keys:</span>
+                                                <div class="keys-list"><span class="key-item">7</span><span class="key-item">9</span><span class="key-item">6</span><span class="key-item">8</span><span class="key-item">10</span></div>
+                                            </div>
+                                            
+                                            
+                                            
+                                        </div>
+                                    </td>
+                                </tr>
+                                
+                                
+                                <tr data-table="order_items" class="data-row" onclick="toggleKeys(this)">
+                                    <td>
+                                        <span class="mono">order_items</span>
+                                        <span class="expand-hint">(click to expand)</span>
+                                    </td>
+                                    <td><span class="change change-add">+6</span></td>
+                                    <td><span class="change">—</span></td>
+                                    <td><span class="change">—</span></td>
+                                </tr>
+                                
+                                <tr class="keys-row" data-table="order_items" style="display:none;">
+                                    <td colspan="4">
+                                        <div class="keys-detail">
+                                            
+                                            <div class="keys-section">
+                                                <span class="keys-label change-add">Added Keys:</span>
+                                                <div class="keys-list"><span class="key-item">10</span><span class="key-item">11</span><span class="key-item">13</span><span class="key-item">14</span><span class="key-item">9</span><span class="key-item">12</span></div>
+                                            </div>
+                                            
+                                            
+                                            
+                                        </div>
+                                    </td>
+                                </tr>
+                                
+                                
+                                <tr data-table="orders" class="data-row" onclick="toggleKeys(this)">
+                                    <td>
+                                        <span class="mono">orders</span>
+                                        <span class="expand-hint">(click to expand)</span>
+                                    </td>
+                                    <td><span class="change change-add">+5</span></td>
+                                    <td><span class="change">—</span></td>
+                                    <td><span class="change change-modify">~3</span></td>
+                                </tr>
+                                
+                                <tr class="keys-row" data-table="orders" style="display:none;">
+                                    <td colspan="4">
+                                        <div class="keys-detail">
+                                            
+                                            <div class="keys-section">
+                                                <span class="keys-label change-add">Added Keys:</span>
+                                                <div class="keys-list"><span class="key-item">6</span><span class="key-item">7</span><span class="key-item">9</span><span class="key-item">8</span><span class="key-item">10</span></div>
+                                            </div>
+                                            
+                                            
+                                            
+                                            <div class="keys-section">
+                                                <span class="keys-label change-modify">Modified Keys:</span>
+                                                <div class="keys-list"><span class="key-item">3</span><span class="key-item">4</span><span class="key-item">5</span></div>
+                                            </div>
+                                            
+                                        </div>
+                                    </td>
+                                </tr>
+                                
+                                
+                                <tr data-table="products" class="data-row" onclick="toggleKeys(this)">
+                                    <td>
+                                        <span class="mono">products</span>
+                                        <span class="expand-hint">(click to expand)</span>
+                                    </td>
+                                    <td><span class="change change-add">+3</span></td>
+                                    <td><span class="change">—</span></td>
+                                    <td><span class="change change-modify">~10</span></td>
+                                </tr>
+                                
+                                <tr class="keys-row" data-table="products" style="display:none;">
+                                    <td colspan="4">
+                                        <div class="keys-detail">
+                                            
+                                            <div class="keys-section">
+                                                <span class="keys-label change-add">Added Keys:</span>
+                                                <div class="keys-list"><span class="key-item">12</span><span class="key-item">11</span><span class="key-item">13</span></div>
+                                            </div>
+                                            
+                                            
+                                            
+                                            <div class="keys-section">
+                                                <span class="keys-label change-modify">Modified Keys:</span>
+                                                <div class="keys-list"><span class="key-item">3</span><span class="key-item">4</span><span class="key-item">6</span><span class="key-item">8</span><span class="key-item">9</span><span class="key-item">10</span><span class="key-item">5</span><span class="key-item">7</span><span class="key-item">1</span><span class="key-item">2</span></div>
+                                            </div>
+                                            
+                                        </div>
+                                    </td>
+                                </tr>
+                                
+                                
+                            </tbody>
+                        </table>
+                    </div>
+                
+            </div>
+
+            <div id="tab-conflicts" class="tab-panel" data-title="Conflicts">
+                
+                    <div class="filters">
+                        <select class="filter-select" id="conflict-filter" onchange="filterConflicts()">
+                            <option value="">All tables</option>
+                        </select>
+                    </div>
+                    <div class="conflict-list" id="conflict-list">
+                        
+                        <div class="conflict-item" data-table="orders">
+                            <span class="conflict-table">orders</span>
+                            <span class="conflict-key">3</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">50e98d4f0d2f...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">3bc0bb9da318...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="orders">
+                            <span class="conflict-table">orders</span>
+                            <span class="conflict-key">4</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">91c74b904980...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">932e3c9169d2...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="orders">
+                            <span class="conflict-table">orders</span>
+                            <span class="conflict-key">5</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">579ea721981c...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">f71fa3411956...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">1</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">91290ea738a1...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">6a0483d92962...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">2</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">bf9d32823bd2...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">0c78ab070b93...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">3</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">8d56e3071d26...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">f0a691c2fd9a...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">4</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">0a4bb61bbee7...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">d86101d3905a...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">6</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">131705dda71e...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">fd58eb3590d5...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">8</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">602de4ce149c...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">74347a9a8653...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">9</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">b58fe1a5cd09...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">8fc3ad499b63...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">10</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">056fec0d5c80...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">3ebc00ec928f...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">5</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">809e6e458343...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">d9e14527579f...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="products">
+                            <span class="conflict-table">products</span>
+                            <span class="conflict-key">7</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">2c83bd23bb23...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">0fceddb13a5d...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="customers">
+                            <span class="conflict-table">customers</span>
+                            <span class="conflict-key">2</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">99cac2a7c695...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">0a949f3c2ddf...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="customers">
+                            <span class="conflict-table">customers</span>
+                            <span class="conflict-key">3</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">8f56cdab82c9...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">2a3cf69f64dc...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="customers">
+                            <span class="conflict-table">customers</span>
+                            <span class="conflict-key">4</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">b4257f97cc9f...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">a16b7ce17528...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="customers">
+                            <span class="conflict-table">customers</span>
+                            <span class="conflict-key">5</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">2014b0374b60...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">7f8723118572...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="conflict-item" data-table="customers">
+                            <span class="conflict-table">customers</span>
+                            <span class="conflict-key">1</span>
+                            <div class="conflict-hashes">
+                                <span class="hash">f30811df6706...</span>
+                                <span class="hash-arrow">→</span>
+                                <span class="hash">dcb1c5d6e44a...</span>
+                            </div>
+                            <div class="conflict-badges">
+                                
+                                <span class="badge badge-warning">Pending</span>
+                            </div>
+                        </div>
+                        
+                    </div>
+                
+            </div>
+
+            
+        </div>
+    </div>
+
+    <script>
+        function switchTab(id) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.querySelector('[data-tab="'+id+'"]').classList.add('active');
+            document.getElementById('tab-'+id).classList.add('active');
+        }
+
+        function filterTable() {
+            const v = document.getElementById('table-filter').value;
+            document.querySelectorAll('#data-table tbody tr.data-row').forEach(r => {
+                const show = !v || r.dataset.table === v;
+                r.style.display = show ? '' : 'none';
+                const keysRow = r.nextElementSibling;
+                if (keysRow && keysRow.classList.contains('keys-row')) {
+                    keysRow.style.display = 'none';
+                }
+            });
+        }
+
+        function toggleKeys(row) {
+            const keysRow = row.nextElementSibling;
+            if (keysRow && keysRow.classList.contains('keys-row')) {
+                keysRow.style.display = keysRow.style.display === 'none' ? '' : 'none';
+            }
+        }
+
+        function filterConflicts() {
+            const v = document.getElementById('conflict-filter').value;
+            document.querySelectorAll('#conflict-list .conflict-item').forEach(r => {
+                r.style.display = !v || r.dataset.table === v ? '' : 'none';
+            });
+        }
+
+        function copySQL() {
+            const t = document.getElementById('sql-content').textContent;
+            navigator.clipboard.writeText(t).then(() => {
+                const b = event.target;
+                b.textContent = 'Copied';
+                setTimeout(() => b.textContent = 'Copy', 1500);
+            });
+        }
+
+        function highlightSQL(code) {
+            const kw = ['SELECT','INSERT','UPDATE','DELETE','FROM','WHERE','INTO','VALUES','SET','CREATE','ALTER','DROP','TABLE','COLUMN','INDEX','ADD','PRIMARY','KEY','FOREIGN','REFERENCES','NOT','NULL','DEFAULT','BEGIN','COMMIT','ROLLBACK','AND','OR','IN','ON','CASCADE','UNIQUE','CONSTRAINT','MODIFY','IF','EXISTS','CASE','WHEN','THEN','ELSE','END'];
+            let h = code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            h = h.replace(/(--.*$)/gm,'<span class="sql-comment">$1</span>');
+            h = h.replace(/('(?:[^'\\]|\\.)*')/g,'<span class="sql-string">$1</span>');
+            h = h.replace(/\b(\d+)\b/g,'<span class="sql-number">$1</span>');
+            h = h.replace(new RegExp('\\b('+kw.join('|')+')\\b','gi'),'<span class="sql-keyword">$1</span>');
+            return h;
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const sql = document.getElementById('sql-content');
+            if (sql) sql.innerHTML = highlightSQL(sql.textContent);
+
+            const cf = document.getElementById('conflict-filter');
+            if (cf) {
+                const ts = new Set();
+                document.querySelectorAll('#conflict-list .conflict-item').forEach(i => ts.add(i.dataset.table));
+                ts.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; cf.appendChild(o); });
+            }
+        });
+    </script>
+</body>
+</html>
