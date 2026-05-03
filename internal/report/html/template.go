@@ -874,7 +874,7 @@ const reportTemplate = `<!DOCTYPE html>
         <div class="tabs">
             <nav class="tab-nav">
                 <button class="tab-btn active" data-tab="schema" onclick="switchTab('schema')">
-                    Schema{{if .HasSchemaDiff}}<span class="tab-count has-warning">{{len .SchemaChanges}}</span>{{end}}
+                    Schema{{if .HasSchemaDiff}}<span class="tab-count has-warning">{{add (len .SchemaChanges) .Summary.ViewsChanged .Summary.RoutinesChanged .Summary.TriggersChanged .Summary.SequencesChanged}}</span>{{end}}
                 </button>
                 <button class="tab-btn" data-tab="data" onclick="switchTab('data')">
                     Data{{if .HasDataDiff}}<span class="tab-count has-items">{{.Summary.TablesWithChanges}}</span>{{end}}

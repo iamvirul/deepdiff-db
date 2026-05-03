@@ -1790,7 +1790,7 @@ func loadPostgreSQLSequences(ctx context.Context, db *sql.DB, s *Schema, ignore 
 	rows, err := db.QueryContext(ctx, `
 		SELECT sequencename, start_value, increment_by, min_value, max_value, cache_size, cycle
 		FROM pg_sequences
-		WHERE schemaname = 'public'
+		WHERE schemaname = current_schema()
 		ORDER BY sequencename
 	`)
 	if err != nil {
