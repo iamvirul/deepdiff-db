@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  macOS Distribution package definition for DeepDiff DB.
+  __APP_VERSION__ is substituted by the release workflow at build time.
+  __APP_TITLE__ is substituted with the full title string, e.g. "DeepDiff DB 1.4.1".
+-->
+<installer-gui-script minSpecVersion="2">
+
+    <title>__APP_TITLE__</title>
+    <organization>com.iamvirul</organization>
+
+    <!--
+      allow_localSystem  = installs to /usr/local/bin on the boot volume (requires admin).
+      The standard destination-select pane lets the user pick which disk to install on.
+    -->
+    <domains enable_localSystem="true" enable_currentUserHome="false"/>
+    <options customize="never" require-scripts="false" rootVolumeOnly="false"/>
+
+    <!-- Custom intro page shown before the destination picker -->
+    <welcome    file="welcome.html"  mime-type="text/html"/>
+    <readme     file="readme.html"   mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+
+    <pkg-ref id="com.iamvirul.deepdiffdb"/>
+
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.iamvirul.deepdiffdb"/>
+        </line>
+    </choices-outline>
+
+    <choice id="default"/>
+    <choice id="com.iamvirul.deepdiffdb" visible="false">
+        <pkg-ref id="com.iamvirul.deepdiffdb"/>
+    </choice>
+
+    <pkg-ref id="com.iamvirul.deepdiffdb"
+             version="__APP_VERSION__"
+             onConclusion="none">deepdiffdb-component.pkg</pkg-ref>
+
+</installer-gui-script>
