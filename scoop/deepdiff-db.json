@@ -1,12 +1,12 @@
 {
-    "version": "1.4.4",
+    "version": "1.4.5",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/iamvirul/deepdiff-db/releases/download/v1.4.4/deepdiffdb_1.4.4_windows_amd64.zip",
+            "url": "https://github.com/iamvirul/deepdiff-db/releases/download/v1.4.5/deepdiffdb_1.4.5_windows_amd64.zip",
             "bin": [
                 "deepdiffdb.exe"
             ],
-            "hash": "8c8a6d92dc0a1e12cc2ed8542798d3df88bc3016f4b024410a1a3b29a173f850"
+            "hash": "7579a987662827768f2cd0efad2086cebf33b820e1aa89449cb30f80a91e6df2"
         }
     },
     "homepage": "https://iamvirul.github.io/deepdiff-db/",
