@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-05-19
+
+### Security
+
+- **Bumped Go to 1.25.10** — Resolves 4 Go standard library vulnerabilities reported by `govulncheck`:
+  - **GO-2026-4982** — XSS via meta content URL escape bypass in `html/template`
+  - **GO-2026-4980** — XSS via escaper bypass in `html/template`
+  - **GO-2026-4971** — Panic on NUL byte in `net.Dial` / `net.LookupPort` (Windows)
+  - **GO-2026-4918** — HTTP/2 infinite loop on bad `SETTINGS_MAX_FRAME_SIZE` in `net/http`
+  ([#122](https://github.com/iamvirul/deepdiff-db/pull/122))
+
 ## [1.4.4] - 2026-05-03
 
 ### Fixed

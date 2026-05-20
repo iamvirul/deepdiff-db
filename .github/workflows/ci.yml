@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.24', '1.25.9']
+        go-version: ['1.24', '1.25.10']
     
     steps:
       - name: Checkout code
@@ -44,7 +44,7 @@ jobs:
         continue-on-error: false
 
       - name: Merge coverage files
-        if: matrix.go-version == '1.25.9'
+        if: matrix.go-version == '1.25.10'
         run: |
           # Merge coverage files using go tool cover
           echo "mode: atomic" > coverage.txt
@@ -52,7 +52,7 @@ jobs:
         continue-on-error: false
 
       - name: Verify coverage file exists
-        if: matrix.go-version == '1.25.9'
+        if: matrix.go-version == '1.25.10'
         run: |
           if [ ! -f coverage.txt ]; then
             echo "Error: coverage.txt not found"
@@ -62,7 +62,7 @@ jobs:
           head -5 coverage.txt
 
       - name: Upload coverage artifact for merging
-        if: matrix.go-version == '1.25.9'
+        if: matrix.go-version == '1.25.10'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-unit-${{ github.run_id }}
@@ -81,7 +81,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.9'
+          go-version: '1.25.10'
           cache-dependency-path: go.sum
 
       - name: Verify dependencies
@@ -133,7 +133,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.9'
+          go-version: '1.25.10'
           cache-dependency-path: go.sum
 
       - name: Download unit test coverage artifact
@@ -176,7 +176,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.9'
+          go-version: '1.25.10'
           cache-dependency-path: go.sum
 
       - name: Run linter
@@ -198,7 +198,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.9'
+          go-version: '1.25.10'
           cache-dependency-path: go.sum
 
       - name: Download dependencies
