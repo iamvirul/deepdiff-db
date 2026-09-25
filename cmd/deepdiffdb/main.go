@@ -201,6 +201,8 @@ func run(args []string) error {
 		return runSchemaMigrate(args[1:])
 	case "diff":
 		return runFullDiff(args[1:])
+	case "row-diff":
+		return runRowDiff(args[1:])
 	case "gen-pack":
 		return runGenPack(args[1:])
 	case "apply":
@@ -325,6 +327,7 @@ func runFullDiff(args []string) error {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
 	generateHTML := fs.Bool("html", false, "Generate interactive HTML report")
+	showRowDiff := fs.Bool("row-diff", false, "Display and generate column-level diffs for changed rows")
 	batchSizeFlag := fs.Int("batch-size", 0, "Rows per keyset-paginated query (0 = use config default)")
 	parallelFlag := fs.Int("parallel", 0, "Max tables hashed concurrently (0 = use config default)")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
@@ -468,6 +471,30 @@ func runFullDiff(args []string) error {
 		if conflicts.HasConflicts() {
 			fmt.Printf("Warning: %d conflicts detected. Review %s\n", len(conflicts.Conflicts), filepath.Join(cfg.Output.Dir, "conflicts.json"))
 		}
+
+		if *showRowDiff {
+			log.Info("fetching column-level row differences")
+			rowReport, err := resolve.FetchRowDiffReport(
+				ctx, prodDB, devDB, cfg.Prod.Driver, cfg.Dev.Driver,
+				prodSchema, devSchema, dataDiff, conflicts, resolve.RowDiffOptions{
+					StatusFilter: "updated",
+				},
+			)
+			if err != nil {
+				log.Warn("failed to fetch row diffs", "error", err)
+			} else if rowReport.HasChanges() {
+				if err := resolve.WriteRowDiffReport(rowReport, cfg.Output.Dir); err != nil {
+					log.Warn("failed to write row diff report", "error", err)
+				}
+				display := cli.NewDisplay()
+				for _, trd := range rowReport.Tables {
+					for _, rd := range trd.Rows {
+						display.PrintRowDiff(rd.Table, rd.Key, string(rd.Status), rd.Columns)
+					}
+				}
+				fmt.Printf("Row-level column diffs written to %s and %s\n", filepath.Join(cfg.Output.Dir, "row_diff.json"), filepath.Join(cfg.Output.Dir, "row_diff.txt"))
+			}
+		}
 	} else {
 		fmt.Println("No data differences found.")
 	}
@@ -500,6 +527,158 @@ func runFullDiff(args []string) error {
 	// Return deferred schema drift error so exit code is non-zero when drift was found,
 	// even though all output files have been written successfully.
 	return schemaDriftErr
+}
+
+// runRowDiff executes the "row-diff" command to inspect column-level differences for changed rows.
+func runRowDiff(args []string) error {
+	fs := flag.NewFlagSet("row-diff", flag.ContinueOnError)
+	configPath := fs.String("config", "deepdiffdb.config.yaml", "Path to configuration file")
+	tableFlag := fs.String("table", "", "Filter by specific table name")
+	keyFlag := fs.String("key", "", "Filter by primary key value")
+	statusFlag := fs.String("status", "updated", "Row status to inspect: updated, added, removed, or all")
+	limitFlag := fs.Int("limit", 0, "Max rows to inspect per table (0 = unlimited)")
+	formatFlag := fs.String("format", "table", "Output format: table or json")
+	outputFlag := fs.String("output", "", "Output directory to save reports (default: config output dir)")
+	batchSizeFlag := fs.Int("batch-size", 0, "Rows per keyset-paginated query (0 = use config default)")
+	parallelFlag := fs.Int("parallel", 0, "Max tables hashed concurrently (0 = use config default)")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	logFile := fs.String("log-file", "", "Write logs to file")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	log, logCloser, err := initializeLogger(*verbose, *logFile, *logLevel, *logFormat)
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
+
+	log.Info("starting row-level data diff")
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	outDir := cfg.Output.Dir
+	if *outputFlag != "" {
+		outDir = *outputFlag
+	}
+
+	ctx := logger.ToContext(context.Background(), log)
+
+	prodDB, err := openDatabaseWithSpinner(ctx, cfg.Prod, "production")
+	if err != nil {
+		return fmt.Errorf("prod connection failed: %w", err)
+	}
+	defer prodDB.Close()
+
+	devDB, err := openDatabaseWithSpinner(ctx, cfg.Dev, "development")
+	if err != nil {
+		return fmt.Errorf("dev connection failed: %w", err)
+	}
+	defer devDB.Close()
+
+	log.Info("loading database schemas")
+	prodSchema, err := schema.LoadSchema(ctx, prodDB, cfg.Prod.Driver, cfg.Prod.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
+	if err != nil {
+		return fmt.Errorf("load prod schema: %w", err)
+	}
+	devSchema, err := schema.LoadSchema(ctx, devDB, cfg.Dev.Driver, cfg.Dev.Database, cfg.Ignore.Tables, schema.LoadSchemaOptions{IgnoreViews: cfg.Ignore.Views, IgnoreRoutines: cfg.Ignore.Routines, IgnoreTriggers: cfg.Ignore.Triggers, IgnoreSequences: cfg.Ignore.Sequences})
+	if err != nil {
+		return fmt.Errorf("load dev schema: %w", err)
+	}
+
+	var dataDiff content.DataDiff
+	var conflicts content.Conflicts
+
+	// If table and key are specified, we can query the row directly without full table hashing
+	if *tableFlag != "" && *keyFlag != "" {
+		log.Info("direct row inspection for key", "table", *tableFlag, "key", *keyFlag)
+	} else {
+		ignoreColumn := content.IgnoreMatcher(cfg.Ignore.Columns)
+		batchSize := resolveBatchSize(*batchSizeFlag, cfg.Performance.HashBatchSize)
+		maxParallel := resolveParallel(*parallelFlag, cfg.Performance.MaxParallelTables)
+
+		devByCanonical := make(map[string]schema.Table, len(devSchema.Tables))
+		for name, devTable := range devSchema.Tables {
+			devByCanonical[schema.CanonicalIdent(name)] = devTable
+		}
+		sharedProdTables := make(map[string]schema.Table)
+		sharedDevTables := make(map[string]schema.Table)
+		for name, prodTable := range prodSchema.Tables {
+			if *tableFlag != "" && schema.CanonicalIdent(name) != schema.CanonicalIdent(*tableFlag) {
+				continue
+			}
+			if devTable, ok := devByCanonical[schema.CanonicalIdent(name)]; ok {
+				sharedProdTables[name] = prodTable
+				sharedDevTables[devTable.Name] = devTable
+			}
+		}
+
+		if len(sharedProdTables) == 0 {
+			if *tableFlag != "" {
+				return fmt.Errorf("table %q not found in both databases", *tableFlag)
+			}
+			fmt.Println("No matching tables found to compare.")
+			return nil
+		}
+
+		log.Info("hashing tables to detect row differences", "table_count", len(sharedProdTables))
+		prodHashes, err := hashTablesParallel(ctx, sharedProdTables, prodDB, cfg.Prod.Driver, ignoreColumn, batchSize, maxParallel)
+		if err != nil {
+			return fmt.Errorf("hash prod tables: %w", err)
+		}
+		devHashes, err := hashTablesParallel(ctx, sharedDevTables, devDB, cfg.Dev.Driver, ignoreColumn, batchSize, maxParallel)
+		if err != nil {
+			return fmt.Errorf("hash dev tables: %w", err)
+		}
+		dataDiff, conflicts = content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
+	}
+
+	opts := resolve.RowDiffOptions{
+		TableFilter:  *tableFlag,
+		KeyFilter:    *keyFlag,
+		StatusFilter: *statusFlag,
+		Limit:        *limitFlag,
+	}
+
+	report, err := resolve.FetchRowDiffReport(ctx, prodDB, devDB, cfg.Prod.Driver, cfg.Dev.Driver, prodSchema, devSchema, dataDiff, conflicts, opts)
+	if err != nil {
+		return fmt.Errorf("fetch row diff report: %w", err)
+	}
+
+	if err := resolve.WriteRowDiffReport(report, outDir); err != nil {
+		log.Warn("failed to write row diff report", "error", err)
+	}
+
+	if *formatFlag == "json" {
+		data, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal json: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	if !report.HasChanges() {
+		fmt.Println("No row-level differences found matching criteria.")
+		return nil
+	}
+
+	display := cli.NewDisplay()
+	for _, trd := range report.Tables {
+		for _, rd := range trd.Rows {
+			display.PrintRowDiff(rd.Table, rd.Key, string(rd.Status), rd.Columns)
+		}
+	}
+	fmt.Printf("Total differing rows inspected: %d\n", report.TotalRows())
+	fmt.Printf("Row diff report written to %s and %s\n", filepath.Join(outDir, "row_diff.json"), filepath.Join(outDir, "row_diff.txt"))
+	return nil
 }
 
 // runGenPack performs the "gen-pack" command: it loads configuration, compares prod and dev schemas, and generates a migration pack for any detected data differences while writing schema and data reports to the configured output directory.
@@ -1090,8 +1269,8 @@ func runResolveConflicts(args []string) error {
 		}
 
 		// Fetch row data for comparison
-		prod, dev, err := resolve.FetchConflictRows(
-			ctx, prodDB, devDB, cfg.Prod.Driver,
+		prod, dev, err := resolve.FetchConflictRowsCrossEngine(
+			ctx, prodDB, devDB, cfg.Prod.Driver, cfg.Dev.Driver,
 			prodSchema, devSchema, res.Conflict,
 		)
 		if err != nil {
@@ -1484,7 +1663,8 @@ Commands:
   check             Validate configuration and show quick summary
   schema-diff       Detect schema drift
   schema-migrate    Generate schema migration script
-  diff              Full diff: schema + data (supports --html for interactive report)
+  diff              Full diff: schema + data (supports --html, --row-diff)
+  row-diff          Inspect changed row data in columns (supports --table, --key, --status, --format)
   gen-pack          Generate SQL migration pack (supports --html, --resume)
   apply             Apply migration pack (supports --resume)
   resolve-conflicts Interactively resolve pending conflicts (supports --resume)

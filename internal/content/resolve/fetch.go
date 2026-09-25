@@ -29,8 +29,26 @@ type ColumnDiff struct {
 	Differs bool
 }
 
-// FetchConflictRows fetches both production and development row data for a conflict.
-// Returns nil for a row if it doesn't exist in that database.
+// FindTableByCanonicalName searches a schema for a table matching tableName,
+// trying exact match first, then canonical (case-folded) match.
+func FindTableByCanonicalName(sch *schema.Schema, tableName string) (schema.Table, bool) {
+	if sch == nil || len(sch.Tables) == 0 {
+		return schema.Table{}, false
+	}
+	if tbl, ok := sch.Tables[tableName]; ok {
+		return tbl, true
+	}
+	canon := schema.CanonicalIdent(tableName)
+	for name, tbl := range sch.Tables {
+		if schema.CanonicalIdent(name) == canon {
+			return tbl, true
+		}
+	}
+	return schema.Table{}, false
+}
+
+// FetchConflictRows fetches both production and development row data for a conflict
+// using a single driver. Delegates to FetchConflictRowsCrossEngine.
 func FetchConflictRows(
 	ctx context.Context,
 	prodDB, devDB *sql.DB,
@@ -38,36 +56,40 @@ func FetchConflictRows(
 	prodSchema, devSchema *schema.Schema,
 	conflict content.Conflict,
 ) (prod, dev *RowData, err error) {
-	// Get table schema from both databases
-	prodTable, prodExists := prodSchema.Tables[conflict.Table]
-	devTable, devExists := devSchema.Tables[conflict.Table]
+	return FetchConflictRowsCrossEngine(ctx, prodDB, devDB, driver, driver, prodSchema, devSchema, conflict)
+}
+
+// FetchConflictRowsCrossEngine fetches both production and development row data for a conflict,
+// supporting independent drivers (e.g. postgres vs oracle) and case-insensitive table matching.
+// Returns nil for a row if it doesn't exist in that database.
+func FetchConflictRowsCrossEngine(
+	ctx context.Context,
+	prodDB, devDB *sql.DB,
+	prodDriver, devDriver string,
+	prodSchema, devSchema *schema.Schema,
+	conflict content.Conflict,
+) (prod, dev *RowData, err error) {
+	// Match table schema from both databases case-insensitively
+	prodTable, prodExists := FindTableByCanonicalName(prodSchema, conflict.Table)
+	devTable, devExists := FindTableByCanonicalName(devSchema, conflict.Table)
 
 	if !prodExists && !devExists {
 		return nil, nil, fmt.Errorf("table %s not found in either database", conflict.Table)
 	}
 
-	// Use dev table schema as reference (it should have all columns)
-	var refTable schema.Table
-	if devExists {
-		refTable = devTable
-	} else {
-		refTable = prodTable
-	}
-
-	// Get ordered column list
-	columns := getOrderedColumns(refTable)
-
-	// Fetch from production
+	// Fetch from production using prod-specific table and columns
 	if prodExists {
-		prod, err = fetchRowData(ctx, prodDB, driver, prodTable, columns, conflict.Key)
+		columns := getOrderedColumns(prodTable)
+		prod, err = FetchRowData(ctx, prodDB, prodDriver, prodTable, columns, conflict.Key)
 		if err != nil && !isNoRowsError(err) {
 			return nil, nil, fmt.Errorf("fetch prod row: %w", err)
 		}
 	}
 
-	// Fetch from development
+	// Fetch from development using dev-specific table and columns
 	if devExists {
-		dev, err = fetchRowData(ctx, devDB, driver, devTable, columns, conflict.Key)
+		columns := getOrderedColumns(devTable)
+		dev, err = FetchRowData(ctx, devDB, devDriver, devTable, columns, conflict.Key)
 		if err != nil && !isNoRowsError(err) {
 			return nil, nil, fmt.Errorf("fetch dev row: %w", err)
 		}
@@ -76,8 +98,8 @@ func FetchConflictRows(
 	return prod, dev, nil
 }
 
-// fetchRowData fetches a single row from the database.
-func fetchRowData(
+// FetchRowData fetches a single row from the database using its primary key.
+func FetchRowData(
 	ctx context.Context,
 	db *sql.DB,
 	driver string,
@@ -139,51 +161,64 @@ func fetchRowData(
 }
 
 // CompareRows compares two rows and returns the differences.
+// It matches columns case-insensitively across engines (e.g. PostgreSQL "email"
+// matches Oracle "EMAIL") while labeling with the prod-side column name.
 // Returns a list of column differences, with Differs=true for columns that don't match.
 func CompareRows(prod, dev *RowData) []ColumnDiff {
 	if prod == nil && dev == nil {
 		return nil
 	}
 
-	// Collect all columns from both rows
-	colSet := make(map[string]bool)
-	if prod != nil {
-		for _, col := range prod.Columns {
-			colSet[col] = true
-		}
-	}
+	var diffs []ColumnDiff
+	matchedDev := make(map[string]bool)
+
+	// Build dev canonical lookup map
+	devByCanonical := make(map[string]string)
 	if dev != nil {
 		for _, col := range dev.Columns {
-			colSet[col] = true
+			devByCanonical[schema.CanonicalIdent(col)] = col
 		}
 	}
 
-	// Sort columns for consistent output
-	columns := make([]string, 0, len(colSet))
-	for col := range colSet {
-		columns = append(columns, col)
-	}
-	sort.Strings(columns)
-
-	// Compare each column
-	diffs := make([]ColumnDiff, 0, len(columns))
-	for _, col := range columns {
-		var prodVal, devVal any
-		if prod != nil {
-			prodVal = prod.Values[col]
+	if prod != nil {
+		for _, pCol := range prod.Columns {
+			canon := schema.CanonicalIdent(pCol)
+			var devVal any
+			differs := true
+			if dCol, ok := devByCanonical[canon]; ok {
+				matchedDev[dCol] = true
+				if dev != nil {
+					devVal = dev.Values[dCol]
+					differs = !valuesEqual(prod.Values[pCol], devVal)
+				}
+			}
+			diffs = append(diffs, ColumnDiff{
+				Column:  pCol,
+				ProdVal: prod.Values[pCol],
+				DevVal:  devVal,
+				Differs: differs,
+			})
 		}
-		if dev != nil {
-			devVal = dev.Values[col]
-		}
-
-		differs := !valuesEqual(prodVal, devVal)
-		diffs = append(diffs, ColumnDiff{
-			Column:  col,
-			ProdVal: prodVal,
-			DevVal:  devVal,
-			Differs: differs,
-		})
 	}
+
+	// Dev columns that do not exist in prod
+	if dev != nil {
+		for _, dCol := range dev.Columns {
+			if !matchedDev[dCol] {
+				diffs = append(diffs, ColumnDiff{
+					Column:  dCol,
+					ProdVal: nil,
+					DevVal:  dev.Values[dCol],
+					Differs: true,
+				})
+			}
+		}
+	}
+
+	// Sort columns alphabetically for deterministic output
+	sort.Slice(diffs, func(i, j int) bool {
+		return strings.ToLower(diffs[i].Column) < strings.ToLower(diffs[j].Column)
+	})
 
 	return diffs
 }
@@ -226,9 +261,11 @@ func splitKey(key string, expected int) ([]string, error) {
 func quoteIdent(driver, ident string) string {
 	switch driver {
 	case "mysql":
-		return "`" + ident + "`"
-	case "postgres", "postgresql":
-		return `"` + ident + `"`
+		return "`" + strings.ReplaceAll(ident, "`", "``") + "`"
+	case "postgres", "postgresql", "sqlite", "oracle":
+		return "\"" + strings.ReplaceAll(ident, "\"", "\"\"") + "\""
+	case "mssql":
+		return "[" + strings.ReplaceAll(ident, "]", "]]") + "]"
 	default:
 		return ident
 	}
