@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Cross-engine case-insensitive table discovery & row hashing**:
+  - Tables are discovered and paired across database engines that enforce different default identifier cases (e.g., PostgreSQL lowercase `"customers"` $\leftrightarrow$ Oracle UPPERCASE `"CUSTOMERS"`).
+  - Normalizes identifiers via canonical name folding (`schema.CanonicalIdent`) while generating dialect-specific SQL quoting for each engine.
+- **Column-level row inspection (`row-diff` command and `--row-diff` flag)**:
+  - New CLI command `deepdiffdb row-diff` and `--row-diff` flag for `deepdiffdb diff`.
+  - Side-by-side terminal comparison table showing column values between production and development with differing columns flagged with `*`.
+  - Supports `--table`, `--key`, `--status` (`updated`, `added`, `removed`, `all`), `--limit`, and `--format` (`table` or `json`).
+  - Writes machine-readable `row_diff.json` and formatted text `row_diff.txt` to the output directory.
+- **HTML report viewer enhancements**:
+  - **Data Changes Tab**: Opens automatically when data drift exists; expanding any table displays the complete column comparison table for every modified, added, or removed row.
+  - **Dedicated Row Data Tab**: Card view of every differing row across all tables with real-time table filtering and diff counters.
+  - **Conflicts Tab**: Displays conflicting keys with source and target SHA-256 hashes alongside side-by-side column difference tables.
+- **Documentation & Sample Project**:
+  - New feature guide: `website/docs/features/cross-engine-diff.md` explaining cross-engine identifier folding and pipeline verification.
+  - New command guide: `website/docs/commands/row-diff.md`.
+  - Live interactive sample HTML report updated at `/samples/report.html`.
+  - New **Sample 18** (`samples/18-cross-engine-row-diff/`): PostgreSQL 16 $\leftrightarrow$ Oracle XE 21c migration verification with seeded `um_user` and `um_user_attribute` drift.
+
+### Fixed
+
+- **False negative "No differences found" on cross-engine migrations**:
+  - Fixed an issue where `deepdiffdb diff` reported zero differences between PostgreSQL and Oracle because exact string matching failed on uppercase vs. lowercase table names (e.g. `um_user_attribute` vs. `UM_USER_ATTRIBUTE`).
+
 ## [1.4.5] - 2026-05-19
 
 ### Security
