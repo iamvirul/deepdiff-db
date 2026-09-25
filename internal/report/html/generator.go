@@ -468,10 +468,6 @@ func buildTableDiffs(dataDiff *content.DataDiff, opts *ReportOptions) []TableDif
 	return diffs
 }
 
-// buildConflictItemsWithResolutions converts conflicts to display format with resolution details.
-func buildConflictItemsWithResolutions(conflicts *content.Conflicts, resolutions []resolve.Resolution) []ConflictDisplay {
-	return buildConflictItemsWithResolutionsAndRowDiffs(conflicts, resolutions, nil)
-}
 
 // buildConflictItemsWithResolutionsAndRowDiffs converts conflicts to display format with resolution and row diff details.
 func buildConflictItemsWithResolutionsAndRowDiffs(conflicts *content.Conflicts, resolutions []resolve.Resolution, rowReport *resolve.RowDiffReport) []ConflictDisplay {
