@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-25
+
 ### Added
 
 - **Cross-engine case-insensitive table discovery & row hashing**:
@@ -570,7 +572,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.3...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.5...v1.5.0
+[1.4.5]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.4...v1.4.5
 [1.4.4]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.3...v1.4.4
 [1.4.3]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.1...v1.4.2
