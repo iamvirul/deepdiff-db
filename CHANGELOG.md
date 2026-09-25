@@ -32,6 +32,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **False negative "No differences found" on cross-engine migrations**:
   - Fixed an issue where `deepdiffdb diff` reported zero differences between PostgreSQL and Oracle because exact string matching failed on uppercase vs. lowercase table names (e.g. `um_user_attribute` vs. `UM_USER_ATTRIBUTE`).
 
+### Security
+
+- **Bumped Go to 1.25.13**: Resolves Go standard library vulnerabilities reported by `govulncheck`:
+  - **GO-2026-6218**: Quadratic complexity in `net/url`
+  - **GO-2026-6091**: Context tracking in `html/template`
+  - **GO-2026-6090** & **GO-2026-5856**: Handshake and Encrypted Client Hello handling in `crypto/tls`
+  - **GO-2026-6088**: Recursion depth guard in `encoding/xml`
+  - **GO-2026-5972**: Maximum recursion depth in `encoding/asn1`
+  - **GO-2026-5039**: Input formatting in `net/textproto`
+  - **GO-2026-5037**: Inefficient hostname parsing in `crypto/x509`
+  - **GO-2026-5026**: Punycode label validation in `net/http`
+- **Bumped `golang.org/x/text` to v0.39.0**:
+  - **GO-2026-5970**: Infinite loop on invalid input in `golang.org/x/text`
+- **Updated `security.yml` workflow**:
+  - Switched from hardcoded older Go version (`1.25.9`) to `go-version-file: go.mod` to ensure CI security scans always run with the active patched toolchain.
+
 ## [1.4.5] - 2026-05-19
 
 ### Security
