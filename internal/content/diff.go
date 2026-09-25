@@ -1,6 +1,10 @@
 package content
 
-import "github.com/iamvirul/deepdiff-db/internal/schema"
+import (
+	"sort"
+
+	"github.com/iamvirul/deepdiff-db/internal/schema"
+)
 
 // TableDataDiff captures row-level differences for one table.
 type TableDataDiff struct {
@@ -72,22 +76,41 @@ func DiffTableHashes(table string, prod, dev map[string]string) TableDataDiff {
 func BuildDataDiff(prodSchema, devSchema *schema.Schema, prodHashes, devHashes map[string]map[string]string) (DataDiff, Conflicts) {
 	diff := DataDiff{}
 	conflicts := Conflicts{}
+
+	// Index dev tables by canonical name so a table is matched to its prod
+	// counterpart even when the engines fold identifier case differently
+	// (PostgreSQL "customers" vs Oracle "CUSTOMERS"). Hashes are still looked
+	// up by each side's real table name.
+	devByCanonical := make(map[string]string, len(devSchema.Tables))
+	for devName := range devSchema.Tables {
+		devByCanonical[schema.CanonicalIdent(devName)] = devName
+	}
+
+	// Iterate prod tables in deterministic order for stable report output.
+	prodNames := make([]string, 0, len(prodSchema.Tables))
 	for name := range prodSchema.Tables {
-		if _, ok := devSchema.Tables[name]; !ok {
+		prodNames = append(prodNames, name)
+	}
+	sort.Strings(prodNames)
+
+	for _, prodName := range prodNames {
+		devName, ok := devByCanonical[schema.CanonicalIdent(prodName)]
+		if !ok {
 			continue
 		}
 
-		pHashes := prodHashes[name]
-		dHashes := devHashes[name]
+		pHashes := prodHashes[prodName]
+		dHashes := devHashes[devName]
 
-		td := DiffTableHashes(name, pHashes, dHashes)
+		// Label the table with the prod-side name (the source of truth).
+		td := DiffTableHashes(prodName, pHashes, dHashes)
 		diff.Tables = append(diff.Tables, td)
 
 		// Detect conflicts (rows that exist in both but differ)
 		for k, prodHash := range pHashes {
 			if devHash, ok := dHashes[k]; ok && devHash != prodHash {
 				conflicts.Conflicts = append(conflicts.Conflicts, Conflict{
-					Table:    name,
+					Table:    prodName,
 					Key:      k,
 					ProdHash: prodHash,
 					DevHash:  devHash,
