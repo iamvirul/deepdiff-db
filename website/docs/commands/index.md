@@ -14,6 +14,7 @@ DeepDiff DB exposes a set of focused commands. Each command does one thing; chai
 | `schema-diff` | Detect schema drift between production and development |
 | `schema-migrate` | Generate a standalone schema migration SQL script |
 | `diff` | Full diff: schema introspection + row-level data comparison |
+| `row-diff` | Inspect column-level differences for modified/added/removed rows |
 | `gen-pack` | Generate a complete SQL migration pack (schema + data) |
 | `apply` | Apply a migration pack to the production database |
 | `resolve-conflicts` | Interactively (or automatically) resolve data conflicts |

@@ -592,6 +592,15 @@ const reportTemplate = `<!DOCTYPE html>
             overflow: hidden;
         }
 
+        .conflict-item-card {
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+
+        .conflict-item-card:last-child {
+            border-bottom: none;
+        }
+
         .conflict-item {
             display: grid;
             grid-template-columns: 140px 1fr 200px 100px;
@@ -600,10 +609,76 @@ const reportTemplate = `<!DOCTYPE html>
             padding: 12px 16px;
             background: var(--bg);
             font-size: 13px;
+            cursor: pointer;
         }
 
         .conflict-item:hover {
             background: var(--bg-secondary);
+        }
+
+        .conflict-item-body {
+            padding: 0 16px 14px 16px;
+            background: var(--bg-secondary);
+            border-top: 1px dashed var(--border);
+        }
+
+        .row-data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin-top: 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .row-data-table th, .row-data-table td {
+            padding: 7px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .row-data-table th {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .row-data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .diff-row-changed {
+            background: rgba(234, 88, 12, 0.08);
+        }
+
+        .diff-star {
+            color: #ea580c;
+            font-weight: bold;
+        }
+
+        .rowdiff-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .rowdiff-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .rowdiff-body {
+            padding: 12px 16px;
         }
 
         .conflict-table {
@@ -873,21 +948,26 @@ const reportTemplate = `<!DOCTYPE html>
 
         <div class="tabs">
             <nav class="tab-nav">
-                <button class="tab-btn active" data-tab="schema" onclick="switchTab('schema')">
-                    Schema{{if .HasSchemaDiff}}<span class="tab-count has-warning">{{add (len .SchemaChanges) .Summary.ViewsChanged .Summary.RoutinesChanged .Summary.TriggersChanged .Summary.SequencesChanged}}</span>{{end}}
+                <button class="tab-btn {{if .HasDataDiff}}active{{end}}" data-tab="data" onclick="switchTab('data')">
+                    Data Changes{{if .HasDataDiff}}<span class="tab-count has-items">{{.Summary.TablesWithChanges}}</span>{{end}}
                 </button>
-                <button class="tab-btn" data-tab="data" onclick="switchTab('data')">
-                    Data{{if .HasDataDiff}}<span class="tab-count has-items">{{.Summary.TablesWithChanges}}</span>{{end}}
+                {{if .HasRowDiffs}}
+                <button class="tab-btn" data-tab="rowdiff" onclick="switchTab('rowdiff')">
+                    Row Data<span class="tab-count has-items">{{.RowDiffReport.TotalRows}}</span>
                 </button>
+                {{end}}
                 <button class="tab-btn" data-tab="conflicts" onclick="switchTab('conflicts')">
                     Conflicts{{if .HasConflicts}}<span class="tab-count has-danger">{{.Summary.TotalConflicts}}</span>{{end}}
+                </button>
+                <button class="tab-btn {{if not .HasDataDiff}}active{{end}}" data-tab="schema" onclick="switchTab('schema')">
+                    Schema{{if .HasSchemaDiff}}<span class="tab-count has-warning">{{add (len .SchemaChanges) .Summary.ViewsChanged .Summary.RoutinesChanged .Summary.TriggersChanged .Summary.SequencesChanged}}</span>{{end}}
                 </button>
                 {{if .HasMigration}}
                 <button class="tab-btn" data-tab="sql" onclick="switchTab('sql')">Migration</button>
                 {{end}}
             </nav>
 
-            <div id="tab-schema" class="tab-panel active" data-title="Schema Changes">
+            <div id="tab-schema" class="tab-panel {{if not .HasDataDiff}}active{{end}}" data-title="Schema Changes">
                 {{if .HasSchemaDiff}}
                     {{range .SchemaChanges}}
                     <div class="diff-section">
@@ -1035,7 +1115,7 @@ const reportTemplate = `<!DOCTYPE html>
                 {{end}}
             </div>
 
-            <div id="tab-data" class="tab-panel" data-title="Data Changes">
+            <div id="tab-data" class="tab-panel {{if .HasDataDiff}}active{{end}}" data-title="Data Changes">
                 {{if .HasDataDiff}}
                     <div class="filters">
                         <select class="filter-select" id="table-filter" onchange="filterTable()">
@@ -1058,14 +1138,14 @@ const reportTemplate = `<!DOCTYPE html>
                                 <tr data-table="{{.Table}}" class="data-row" onclick="toggleKeys(this)">
                                     <td>
                                         <span class="mono">{{.Table}}</span>
-                                        {{if or .AddedKeys .RemovedKeys .UpdatedKeys}}<span class="expand-hint">(click to expand)</span>{{end}}
+                                        {{if or .AddedKeys .RemovedKeys .UpdatedKeys .HasRowDiffs}}<span class="expand-hint">(click to view row data)</span>{{end}}
                                     </td>
                                     <td>{{if gt .AddedCount 0}}<span class="change change-add">+{{.AddedCount}}</span>{{else}}<span class="change">—</span>{{end}}</td>
                                     <td>{{if gt .RemovedCount 0}}<span class="change change-remove">−{{.RemovedCount}}</span>{{else}}<span class="change">—</span>{{end}}</td>
                                     <td>{{if gt .UpdatedCount 0}}<span class="change change-modify">~{{.UpdatedCount}}</span>{{else}}<span class="change">—</span>{{end}}</td>
                                 </tr>
-                                {{if or .AddedKeys .RemovedKeys .UpdatedKeys}}
-                                <tr class="keys-row" data-table="{{.Table}}" style="display:none;">
+                                {{if or .AddedKeys .RemovedKeys .UpdatedKeys .HasRowDiffs}}
+                                <tr class="keys-row" data-table="{{.Table}}">
                                     <td colspan="4">
                                         <div class="keys-detail">
                                             {{if .AddedKeys}}
@@ -1084,6 +1164,40 @@ const reportTemplate = `<!DOCTYPE html>
                                             <div class="keys-section">
                                                 <span class="keys-label change-modify">Modified Keys:</span>
                                                 <div class="keys-list">{{range .UpdatedKeys}}<span class="key-item">{{.}}</span>{{end}}</div>
+                                            </div>
+                                            {{end}}
+                                            {{if .HasRowDiffs}}
+                                            <div class="keys-section" style="margin-top: 14px;">
+                                                <span class="keys-label" style="margin-bottom: 8px;">Row Data Differences ({{len .RowDiffs}} row{{if ne (len .RowDiffs) 1}}s{{end}}):</span>
+                                                {{range .RowDiffs}}
+                                                <div class="rowdiff-card" style="margin-bottom: 12px;">
+                                                    <div class="rowdiff-header">
+                                                        <span class="rowdiff-key mono">Key: {{.Key}}</span>
+                                                        <span class="badge {{if eq .Status "updated"}}badge-warning{{else if eq .Status "added"}}badge-success{{else}}badge-danger{{end}}">{{.Status}}</span>
+                                                        {{if .DiffColumns}}<span class="text-secondary" style="font-size: 11px; margin-left: 8px;">Changed: {{join .DiffColumns ", "}}</span>{{end}}
+                                                    </div>
+                                                    <div class="rowdiff-body">
+                                                        <table class="row-data-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th style="width: 25%;">Column</th>
+                                                                    <th style="width: 37.5%;">Production</th>
+                                                                    <th style="width: 37.5%;">Development</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {{range .Columns}}
+                                                                <tr class="{{if .Differs}}diff-row-changed{{end}}">
+                                                                    <td class="col-name mono">{{.Column}}{{if .Differs}} <span class="diff-star">*</span>{{end}}</td>
+                                                                    <td class="col-val mono">{{formatVal .ProdVal}}</td>
+                                                                    <td class="col-val mono">{{formatVal .DevVal}}</td>
+                                                                </tr>
+                                                                {{end}}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                                {{end}}
                                             </div>
                                             {{end}}
                                         </div>
@@ -1111,24 +1225,48 @@ const reportTemplate = `<!DOCTYPE html>
                     </div>
                     <div class="conflict-list" id="conflict-list">
                         {{range .ConflictItems}}
-                        <div class="conflict-item" data-table="{{.Table}}">
-                            <span class="conflict-table">{{.Table}}</span>
-                            <span class="conflict-key">{{.Key}}</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">{{.ProdHash}}</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">{{.DevHash}}</span>
-                            </div>
-                            <div class="conflict-badges">
-                                {{if .Strategy}}
-                                <span class="badge badge-strategy {{if eq .Strategy "ours"}}badge-neutral{{else if eq .Strategy "theirs"}}badge-success{{else}}badge-warning{{end}}">{{.Strategy}}</span>
-                                {{end}}
-                                {{if .IsResolved}}
-                                    {{if eq .Decision "keep_prod"}}<span class="badge badge-neutral">Keep Source</span>
-                                    {{else if eq .Decision "use_dev"}}<span class="badge badge-success">Use Target</span>
+                        <div class="conflict-item-card" data-table="{{.Table}}">
+                            <div class="conflict-item">
+                                <span class="conflict-table">{{.Table}}</span>
+                                <span class="conflict-key">{{.Key}}</span>
+                                <div class="conflict-hashes">
+                                    <span class="hash">{{.ProdHash}}</span>
+                                    <span class="hash-arrow">→</span>
+                                    <span class="hash">{{.DevHash}}</span>
+                                </div>
+                                <div class="conflict-badges">
+                                    {{if .Strategy}}
+                                    <span class="badge badge-strategy {{if eq .Strategy "ours"}}badge-neutral{{else if eq .Strategy "theirs"}}badge-success{{else}}badge-warning{{end}}">{{.Strategy}}</span>
+                                    {{end}}
+                                    {{if .IsResolved}}
+                                        {{if eq .Decision "keep_prod"}}<span class="badge badge-neutral">Keep Source</span>
+                                        {{else if eq .Decision "use_dev"}}<span class="badge badge-success">Use Target</span>
+                                        {{else}}<span class="badge badge-warning">Pending</span>{{end}}
                                     {{else}}<span class="badge badge-warning">Pending</span>{{end}}
-                                {{else}}<span class="badge badge-warning">Pending</span>{{end}}
+                                </div>
                             </div>
+                            {{if .HasColumnDiffs}}
+                            <div class="conflict-item-body">
+                                <table class="row-data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 25%;">Column</th>
+                                            <th style="width: 37.5%;">Production</th>
+                                            <th style="width: 37.5%;">Development</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{range .ColumnDiffs}}
+                                        <tr class="{{if .Differs}}diff-row-changed{{end}}">
+                                            <td class="col-name mono">{{.Column}}{{if .Differs}} <span class="diff-star">*</span>{{end}}</td>
+                                            <td class="col-val mono">{{formatVal .ProdVal}}</td>
+                                            <td class="col-val mono">{{formatVal .DevVal}}</td>
+                                        </tr>
+                                        {{end}}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {{end}}
                         </div>
                         {{end}}
                     </div>
@@ -1139,6 +1277,49 @@ const reportTemplate = `<!DOCTYPE html>
                     </div>
                 {{end}}
             </div>
+
+            {{if .HasRowDiffs}}
+            <div id="tab-rowdiff" class="tab-panel" data-title="Row Data">
+                <div class="filters">
+                    <select class="filter-select" id="rowdiff-filter" onchange="filterRowDiffs()">
+                        <option value="">All tables</option>
+                    </select>
+                </div>
+                <div class="rowdiff-list" id="rowdiff-list">
+                    {{range .RowDiffReport.Tables}}
+                        {{range .Rows}}
+                        <div class="rowdiff-card" data-table="{{.Table}}">
+                            <div class="rowdiff-header">
+                                <span class="rowdiff-table mono">{{.Table}}</span>
+                                <span class="rowdiff-key mono">Key: {{.Key}}</span>
+                                <span class="badge {{if eq .Status "updated"}}badge-warning{{else if eq .Status "added"}}badge-success{{else}}badge-danger{{end}}">{{.Status}}</span>
+                            </div>
+                            <div class="rowdiff-body">
+                                <table class="row-data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 25%;">Column</th>
+                                            <th style="width: 37.5%;">Production</th>
+                                            <th style="width: 37.5%;">Development</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{range .Columns}}
+                                        <tr class="{{if .Differs}}diff-row-changed{{end}}">
+                                            <td class="col-name mono">{{.Column}}{{if .Differs}} <span class="diff-star">*</span>{{end}}</td>
+                                            <td class="col-val mono">{{formatVal .ProdVal}}</td>
+                                            <td class="col-val mono">{{formatVal .DevVal}}</td>
+                                        </tr>
+                                        {{end}}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {{end}}
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
 
             {{if .HasMigration}}
             <div id="tab-sql" class="tab-panel" data-title="Migration SQL">
@@ -1185,8 +1366,17 @@ const reportTemplate = `<!DOCTYPE html>
 
         function filterConflicts() {
             const v = document.getElementById('conflict-filter').value;
-            document.querySelectorAll('#conflict-list .conflict-item').forEach(r => {
-                r.style.display = !v || r.dataset.table === v ? '' : 'none';
+            document.querySelectorAll('#conflict-list .conflict-item-card').forEach(r => {
+                const show = !v || r.dataset.table === v;
+                r.style.display = show ? '' : 'none';
+            });
+        }
+
+        function filterRowDiffs() {
+            const v = document.getElementById('rowdiff-filter').value;
+            document.querySelectorAll('#rowdiff-list .rowdiff-card').forEach(r => {
+                const show = !v || r.dataset.table === v;
+                r.style.display = show ? '' : 'none';
             });
         }
 
@@ -1216,8 +1406,20 @@ const reportTemplate = `<!DOCTYPE html>
             const cf = document.getElementById('conflict-filter');
             if (cf) {
                 const ts = new Set();
-                document.querySelectorAll('#conflict-list .conflict-item').forEach(i => ts.add(i.dataset.table));
+                document.querySelectorAll('#conflict-list .conflict-item-card').forEach(i => ts.add(i.dataset.table));
                 ts.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; cf.appendChild(o); });
+            }
+
+            const rf = document.getElementById('rowdiff-filter');
+            if (rf) {
+                const rts = new Set();
+                document.querySelectorAll('#rowdiff-list .rowdiff-card').forEach(i => rts.add(i.dataset.table));
+                rts.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; rf.appendChild(o); });
+            }
+
+            const hash = window.location.hash.replace('#', '');
+            if (hash && document.getElementById('tab-' + hash)) {
+                switchTab(hash);
             }
         });
     </script>
