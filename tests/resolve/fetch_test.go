@@ -564,3 +564,114 @@ func TestFetchConflictRows_NoPrimaryKey(t *testing.T) {
 		t.Error("expected error for table with no primary key")
 	}
 }
+
+// ============================================================================
+// Cross-engine case-insensitive table and column matching tests
+// ============================================================================
+
+func TestFetchConflictRowsCrossEngine_CaseInsensitiveTable(t *testing.T) {
+	ctx := context.Background()
+	prodDB := openFetchMemDB(t)
+	devDB := openFetchMemDB(t)
+
+	mustExec(t, prodDB, `CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, email TEXT)`)
+	mustExec(t, prodDB, `INSERT INTO customers VALUES (1, 'Alice', 'alice@prod.com')`)
+
+	mustExec(t, devDB, `CREATE TABLE CUSTOMERS (ID INTEGER PRIMARY KEY, NAME TEXT, EMAIL TEXT)`)
+	mustExec(t, devDB, `INSERT INTO CUSTOMERS VALUES (1, 'Alice', 'alice@dev.com')`)
+
+	prodSch := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"customers": {
+				Name: "customers",
+				Columns: map[string]schema.Column{
+					"id":    {Name: "id"},
+					"name":  {Name: "name"},
+					"email": {Name: "email"},
+				},
+				PrimaryKey: []string{"id"},
+			},
+		},
+	}
+	devSch := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"CUSTOMERS": {
+				Name: "CUSTOMERS",
+				Columns: map[string]schema.Column{
+					"ID":    {Name: "ID"},
+					"NAME":  {Name: "NAME"},
+					"EMAIL": {Name: "EMAIL"},
+				},
+				PrimaryKey: []string{"ID"},
+			},
+		},
+	}
+
+	conflict := content.Conflict{Table: "customers", Key: "1"}
+	prod, dev, err := resolve.FetchConflictRowsCrossEngine(ctx, prodDB, devDB, "sqlite", "sqlite", prodSch, devSch, conflict)
+	if err != nil {
+		t.Fatalf("FetchConflictRowsCrossEngine: %v", err)
+	}
+	if prod == nil || dev == nil {
+		t.Fatal("expected both prod and dev rows across case-differing table names")
+	}
+
+	diffs := resolve.CompareRows(prod, dev)
+	if len(diffs) != 3 {
+		t.Fatalf("expected 3 column diffs, got %d", len(diffs))
+	}
+
+	for _, d := range diffs {
+		if d.Column == "email" {
+			if !d.Differs {
+				t.Errorf("expected email column to differ: prod=%v, dev=%v", d.ProdVal, d.DevVal)
+			}
+		} else {
+			if d.Differs {
+				t.Errorf("expected column %q to match across case-differing names, but marked differing", d.Column)
+			}
+		}
+	}
+}
+
+func TestCompareRows_CrossEngineColumnCasing(t *testing.T) {
+	prod := &resolve.RowData{
+		Columns: []string{"id", "name", "email", "status"},
+		Values: map[string]any{
+			"id":     int64(42),
+			"name":   "Dan",
+			"email":  "dan@example.com",
+			"status": "ACTIVE",
+		},
+	}
+	dev := &resolve.RowData{
+		Columns: []string{"ID", "NAME", "EMAIL", "STATUS"},
+		Values: map[string]any{
+			"ID":     int64(42),
+			"NAME":   "Dan",
+			"EMAIL":  "dan+new@example.com",
+			"STATUS": "ACTIVE",
+		},
+	}
+
+	diffs := resolve.CompareRows(prod, dev)
+	if len(diffs) != 4 {
+		t.Fatalf("expected 4 matched columns, got %d", len(diffs))
+	}
+
+	differingCount := 0
+	var diffCol string
+	for _, d := range diffs {
+		if d.Differs {
+			differingCount++
+			diffCol = d.Column
+		}
+	}
+
+	if differingCount != 1 {
+		t.Fatalf("expected exactly 1 differing column, got %d", differingCount)
+	}
+	if diffCol != "email" {
+		t.Errorf("expected differing column to be 'email', got %q", diffCol)
+	}
+}

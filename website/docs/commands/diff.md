@@ -28,6 +28,7 @@ Tables with schema drift are skipped for data diffing and flagged in the report.
 |---|---|
 | `--config` | Path to the configuration file (default: `deepdiffdb.config.yaml`) |
 | `--html` | Generate an interactive HTML report (`report.html`) in addition to JSON/text outputs |
+| `--row-diff` | Inspect column-level differences for changed rows directly in terminal and write `row_diff.json` and `row_diff.txt` |
 | `--batch-size N` | Rows per keyset-paginated query (overrides `performance.hash_batch_size`) |
 | `--parallel N` | Max tables hashed concurrently (overrides `performance.max_parallel_tables`) |
 | `--verbose` | Enable debug-level logging |
@@ -45,6 +46,8 @@ All files are written to `output.dir` (default: `./diff-output`).
 | `schema_diff.txt` | Human-readable schema diff |
 | `content_diff.json` | Row-level differences: added, removed, updated rows per table |
 | `conflicts.json` | Rows that exist in both databases with conflicting values |
+| `row_diff.json` | Column-level differences for each changed row (with `--row-diff` or `--html`) |
+| `row_diff.txt` | Human-readable side-by-side column diff report (with `--row-diff`) |
 | `summary.txt` | High-level statistics: tables scanned, rows added/updated/removed, conflict count |
 | `report.html` | Interactive HTML report (only when `--html` is used) |
 
@@ -54,7 +57,10 @@ All files are written to `output.dir` (default: `./diff-output`).
 # Basic diff
 deepdiffdb diff --config deepdiffdb.config.yaml
 
-# With HTML report and streaming flags for large tables
+# Full diff with column-level row inspection and interactive HTML report
+deepdiffdb diff --config deepdiffdb.config.yaml --row-diff --html
+
+# With streaming flags for large tables
 deepdiffdb diff --config deepdiffdb.config.yaml --html --batch-size 5000 --parallel 4
 ```
 

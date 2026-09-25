@@ -10,7 +10,11 @@ DeepDiff DB can generate a self-contained, interactive HTML report alongside the
 
 **[→ View Sample Report](pathname:///samples/report.html)**
 
-The sample report is generated from two real MySQL databases with intentional schema drift: added/removed/modified views, routines, and triggers, plus table-level column and index changes with data conflicts.
+The sample report is generated directly from a cross-engine migration diff (**PostgreSQL $\leftrightarrow$ Oracle XE**). It demonstrates:
+- The **Data Changes** tab with automatic expansion and embedded column-level comparisons (`*` highlighting differing fields like `email`)
+- The dedicated **Row Data** tab with per-table filtering across all differing rows
+- The **Conflicts** tab with SHA-256 hash comparison and column difference tables
+- Full print and PDF export styling
 
 ## Generating a Report
 
@@ -56,18 +60,25 @@ Lists every schema object that changed between prod and dev.
 - Added, removed, and modified sequences
 - For modified sequences: shows which numeric properties differ (increment, min/max value, cache, cycle)
 
-### Data Diff Tab
+### Data Changes Tab
 
 - Summary counts per table: rows added, rows removed, rows updated
-- Expandable per-table section showing the primary key of each changed row
-- Filtering controls to show only added / removed / updated rows
+- Click any table to expand and view both primary key listings and full **side-by-side column-level row differences** for every modified, added, or removed row
+- Table filter dropdown for quick navigation
+
+### Row Data Tab
+
+- Dedicated card view for every differing row across the entire database
+- Displays side-by-side columns: **Column name**, **Production value**, and **Development value**
+- Asterisks (`*`) and highlighted background colors immediately draw attention to columns that differ
+- Filter by table name using the real-time filter dropdown
 
 ### Conflicts Tab
 
-- Lists all conflicts grouped by table
-- Each conflict shows the full row comparison with changed columns highlighted
-- Resolution status badge (auto-resolved, pending, resolved) when `resolutions.json` is present
-- Per-table resolution strategy shown when configured
+- Lists all conflicts grouped by table with SHA-256 hash comparison (`prod_hash → dev_hash`)
+- Embedded column comparison table showing exactly which fields differ
+- Resolution status badge (`Keep Source`, `Use Target`, or `Pending`) when resolutions are applied
+- Per-table resolution strategy breakdown table
 
 ### SQL Migration Preview Tab
 

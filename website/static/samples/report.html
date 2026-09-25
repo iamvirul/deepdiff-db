@@ -589,6 +589,15 @@
             overflow: hidden;
         }
 
+        .conflict-item-card {
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+
+        .conflict-item-card:last-child {
+            border-bottom: none;
+        }
+
         .conflict-item {
             display: grid;
             grid-template-columns: 140px 1fr 200px 100px;
@@ -597,10 +606,76 @@
             padding: 12px 16px;
             background: var(--bg);
             font-size: 13px;
+            cursor: pointer;
         }
 
         .conflict-item:hover {
             background: var(--bg-secondary);
+        }
+
+        .conflict-item-body {
+            padding: 0 16px 14px 16px;
+            background: var(--bg-secondary);
+            border-top: 1px dashed var(--border);
+        }
+
+        .row-data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin-top: 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .row-data-table th, .row-data-table td {
+            padding: 7px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .row-data-table th {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .row-data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .diff-row-changed {
+            background: rgba(234, 88, 12, 0.08);
+        }
+
+        .diff-star {
+            color: #ea580c;
+            font-weight: bold;
+        }
+
+        .rowdiff-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .rowdiff-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .rowdiff-body {
+            padding: 12px 16px;
         }
 
         .conflict-table {
@@ -774,19 +849,19 @@
             <div class="meta">
                 <div class="meta-item">
                     <span class="meta-label">Generated</span>
-                    <span>2026-05-03 13:38:34 &#43;0530</span>
+                    <span>2026-09-25 08:54:47 &#43;0530</span>
                 </div>
                 <div class="meta-item">
                     <span class="meta-label">Source</span>
-                    <span class="mono">localhost:3316/prod_ecommerce</span>
+                    <span class="mono">127.0.0.1:55432/appdb</span>
                 </div>
                 <div class="meta-item">
                     <span class="meta-label">Target</span>
-                    <span class="mono">localhost:3317/dev_ecommerce</span>
+                    <span class="mono">127.0.0.1:51521/XEPDB1</span>
                 </div>
                 <div class="meta-item">
                     <span class="meta-label">Version</span>
-                    <span>v1.4.0-dev.20260503T080705Z.59ac4a3</span>
+                    <span>dev</span>
                 </div>
             </div>
         </header>
@@ -797,23 +872,23 @@
                 <div class="stat-label">Schema</div>
             </div>
             <div class="stat">
-                <div class="stat-value">7</div>
+                <div class="stat-value">1</div>
                 <div class="stat-label">Tables</div>
             </div>
             <div class="stat">
-                <div class="stat-value success">+20</div>
+                <div class="stat-value ">0</div>
                 <div class="stat-label">Added</div>
             </div>
             <div class="stat">
-                <div class="stat-value danger">-7</div>
+                <div class="stat-value danger">-2</div>
                 <div class="stat-label">Removed</div>
             </div>
             <div class="stat">
-                <div class="stat-value warning">18</div>
+                <div class="stat-value warning">1</div>
                 <div class="stat-label">Modified</div>
             </div>
             <div class="stat">
-                <div class="stat-value danger">18</div>
+                <div class="stat-value danger">1</div>
                 <div class="stat-label">Conflicts</div>
             </div>
         </div>
@@ -822,19 +897,24 @@
 
         <div class="tabs">
             <nav class="tab-nav">
-                <button class="tab-btn active" data-tab="schema" onclick="switchTab('schema')">
-                    Schema<span class="tab-count has-warning">12</span>
+                <button class="tab-btn active" data-tab="data" onclick="switchTab('data')">
+                    Data Changes<span class="tab-count has-items">1</span>
                 </button>
-                <button class="tab-btn" data-tab="data" onclick="switchTab('data')">
-                    Data<span class="tab-count has-items">6</span>
+                
+                <button class="tab-btn" data-tab="rowdiff" onclick="switchTab('rowdiff')">
+                    Row Data<span class="tab-count has-items">3</span>
                 </button>
+                
                 <button class="tab-btn" data-tab="conflicts" onclick="switchTab('conflicts')">
-                    Conflicts<span class="tab-count has-danger">18</span>
+                    Conflicts<span class="tab-count has-danger">1</span>
+                </button>
+                <button class="tab-btn " data-tab="schema" onclick="switchTab('schema')">
+                    Schema<span class="tab-count has-warning">2</span>
                 </button>
                 
             </nav>
 
-            <div id="tab-schema" class="tab-panel active" data-title="Schema Changes">
+            <div id="tab-schema" class="tab-panel " data-title="Schema Changes">
                 
                     
                     <div class="diff-section">
@@ -842,7 +922,7 @@
                             <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
                                 <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
                             </svg>
-                            <span class="diff-table">feature_flags</span>
+                            <span class="diff-table">CUSTOMERS</span>
                             <span class="diff-type">
                                 <span class="badge badge-success">New Table</span>
                                 
@@ -855,7 +935,7 @@
                             
                             <div class="diff-row modify">
                                 <div class="diff-indicator">i</div>
-                                <div class="diff-content">Table &#39;feature_flags&#39; exists in dev but not in prod</div>
+                                <div class="diff-content">Table &#39;CUSTOMERS&#39; exists in dev but not in prod</div>
                             </div>
                             
                         </div>
@@ -868,201 +948,36 @@
                             </svg>
                             <span class="diff-table">customers</span>
                             <span class="diff-type">
-                                <span class="badge badge-warning">Modified</span>
-                            </span>
-                        </div>
-                        <div class="diff-body">
-                            
-                            <div class="diff-row modify">
-                                <div class="diff-indicator">~</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">email</span>
-                                    <span class="diff-detail">Type changed: varchar(100) -&gt; varchar(255)</span>
-                                </div>
-                            </div>
-                            
-                            
-                            
-                            
-                        </div>
-                    </div>
-                    
-                    <div class="diff-section">
-                        <div class="diff-header" onclick="this.classList.toggle('open')">
-                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
-                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
-                            </svg>
-                            <span class="diff-table">orders</span>
-                            <span class="diff-type">
-                                <span class="badge badge-warning">Modified</span>
+                                <span class="badge badge-danger">Dropped</span>
+                                
                             </span>
                         </div>
                         <div class="diff-body">
                             
                             
-                            <div class="diff-row add">
-                                <div class="diff-indicator">+</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">INDEX idx_customer_id</span>
-                                    <span class="diff-detail">(customer_id)</span>
-                                </div>
-                            </div>
                             
-                            <div class="diff-row remove">
-                                <div class="diff-indicator">−</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">INDEX customer_id</span>
-                                    <span class="diff-detail">(customer_id)</span>
-                                </div>
-                            </div>
-                            
-                            
-                            
-                        </div>
-                    </div>
-                    
-                    <div class="diff-section">
-                        <div class="diff-header" onclick="this.classList.toggle('open')">
-                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
-                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
-                            </svg>
-                            <span class="diff-table">products</span>
-                            <span class="diff-type">
-                                <span class="badge badge-warning">Modified</span>
-                            </span>
-                        </div>
-                        <div class="diff-body">
-                            
-                            <div class="diff-row add">
-                                <div class="diff-indicator">+</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">discount_percent</span>
-                                    <span class="diff-detail">Column added: discount_percent decimal(5,2)</span>
-                                </div>
-                            </div>
-                            
-                            
-                            
-                            
-                        </div>
-                    </div>
-                    
-                    
-                    <div class="diff-section">
-                        <div class="diff-header open" onclick="this.classList.toggle('open')">
-                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
-                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
-                            </svg>
-                            <span class="diff-table">Views</span>
-                            <span class="diff-type"><span class="badge badge-warning">3 change(s)</span></span>
-                        </div>
-                        <div class="diff-body">
-                            
-                            <div class="diff-row add">
-                                <div class="diff-indicator">+</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">v_customer_stats</span>
-                                    <span class="diff-detail">View &#39;v_customer_stats&#39; exists in dev but not in prod</span>
-                                </div>
-                            </div>
-                            
-                            <div class="diff-row remove">
-                                <div class="diff-indicator">−</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">v_customer_summary</span>
-                                    <span class="diff-detail">View &#39;v_customer_summary&#39; exists in prod but not in dev</span>
-                                </div>
-                            </div>
                             
                             <div class="diff-row modify">
-                                <div class="diff-indicator">~</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">v_active_orders</span>
-                                    <span class="diff-detail">View definition changed</span>
-                                </div>
+                                <div class="diff-indicator">i</div>
+                                <div class="diff-content">Table &#39;customers&#39; exists in prod but not in dev</div>
                             </div>
                             
                         </div>
                     </div>
                     
                     
-                    <div class="diff-section">
-                        <div class="diff-header open" onclick="this.classList.toggle('open')">
-                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
-                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
-                            </svg>
-                            <span class="diff-table">Routines</span>
-                            <span class="diff-type"><span class="badge badge-warning">3 change(s)</span></span>
-                        </div>
-                        <div class="diff-body">
-                            
-                            <div class="diff-row add">
-                                <div class="diff-indicator">+</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">FUNCTION: fn_format_price</span>
-                                    <span class="diff-detail">FUNCTION &#39;fn_format_price&#39; exists in dev but not in prod</span>
-                                </div>
-                            </div>
-                            
-                            <div class="diff-row modify">
-                                <div class="diff-indicator">~</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">fn_calculate_total</span>
-                                    <span class="diff-detail">definition changed; parameters changed</span>
-                                </div>
-                            </div>
-                            
-                            <div class="diff-row modify">
-                                <div class="diff-indicator">~</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">fn_get_customer_tier</span>
-                                    <span class="diff-detail">definition changed</span>
-                                </div>
-                            </div>
-                            
-                        </div>
-                    </div>
                     
-                    
-                    <div class="diff-section">
-                        <div class="diff-header open" onclick="this.classList.toggle('open')">
-                            <svg class="diff-chevron" viewBox="0 0 16 16" fill="currentColor">
-                                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
-                            </svg>
-                            <span class="diff-table">Triggers</span>
-                            <span class="diff-type"><span class="badge badge-warning">2 change(s)</span></span>
-                        </div>
-                        <div class="diff-body">
-                            
-                            <div class="diff-row add">
-                                <div class="diff-indicator">+</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">trg_products_updated_at (table: products)</span>
-                                    <span class="diff-detail">Trigger &#39;trg_products_updated_at&#39; on table &#39;products&#39; exists in dev but not in prod</span>
-                                </div>
-                            </div>
-                            
-                            <div class="diff-row modify">
-                                <div class="diff-indicator">~</div>
-                                <div class="diff-content">
-                                    <span class="diff-col">trg_orders_audit</span>
-                                    <span class="diff-detail">definition changed</span>
-                                </div>
-                            </div>
-                            
-                        </div>
-                    </div>
                     
                     
                 
             </div>
 
-            <div id="tab-data" class="tab-panel" data-title="Data Changes">
+            <div id="tab-data" class="tab-panel active" data-title="Data Changes">
                 
                     <div class="filters">
                         <select class="filter-select" id="table-filter" onchange="filterTable()">
                             <option value="">All tables</option>
-                            <option value="audit_log">audit_log</option><option value="customers">customers</option><option value="inventory_log">inventory_log</option><option value="order_items">order_items</option><option value="orders">orders</option><option value="products">products</option>
+                            <option value="customers">customers</option>
                         </select>
                     </div>
                     <div class="table-wrap">
@@ -1077,170 +992,174 @@
                             </thead>
                             <tbody>
                                 
-                                <tr data-table="audit_log" class="data-row" onclick="toggleKeys(this)">
+                                <tr data-table="customers" class="data-row" onclick="toggleKeys(this)">
                                     <td>
-                                        <span class="mono">audit_log</span>
-                                        <span class="expand-hint">(click to expand)</span>
+                                        <span class="mono">customers</span>
+                                        <span class="expand-hint">(click to view row data)</span>
                                     </td>
                                     <td><span class="change">—</span></td>
-                                    <td><span class="change change-remove">−7</span></td>
-                                    <td><span class="change">—</span></td>
+                                    <td><span class="change change-remove">−2</span></td>
+                                    <td><span class="change change-modify">~1</span></td>
                                 </tr>
                                 
-                                <tr class="keys-row" data-table="audit_log" style="display:none;">
+                                <tr class="keys-row" data-table="customers">
                                     <td colspan="4">
                                         <div class="keys-detail">
                                             
                                             
                                             <div class="keys-section">
                                                 <span class="keys-label change-remove">Removed Keys:</span>
-                                                <div class="keys-list"><span class="key-item">8</span><span class="key-item">9</span><span class="key-item">7</span><span class="key-item">10</span><span class="key-item">3</span><span class="key-item">4</span><span class="key-item">6</span></div>
+                                                <div class="keys-list"><span class="key-item">5</span><span class="key-item">6</span></div>
                                             </div>
-                                            
-                                            
-                                        </div>
-                                    </td>
-                                </tr>
-                                
-                                
-                                <tr data-table="customers" class="data-row" onclick="toggleKeys(this)">
-                                    <td>
-                                        <span class="mono">customers</span>
-                                        <span class="expand-hint">(click to expand)</span>
-                                    </td>
-                                    <td><span class="change change-add">+1</span></td>
-                                    <td><span class="change">—</span></td>
-                                    <td><span class="change change-modify">~5</span></td>
-                                </tr>
-                                
-                                <tr class="keys-row" data-table="customers" style="display:none;">
-                                    <td colspan="4">
-                                        <div class="keys-detail">
-                                            
-                                            <div class="keys-section">
-                                                <span class="keys-label change-add">Added Keys:</span>
-                                                <div class="keys-list"><span class="key-item">6</span></div>
-                                            </div>
-                                            
                                             
                                             
                                             <div class="keys-section">
                                                 <span class="keys-label change-modify">Modified Keys:</span>
-                                                <div class="keys-list"><span class="key-item">3</span><span class="key-item">4</span><span class="key-item">5</span><span class="key-item">1</span><span class="key-item">2</span></div>
-                                            </div>
-                                            
-                                        </div>
-                                    </td>
-                                </tr>
-                                
-                                
-                                <tr data-table="inventory_log" class="data-row" onclick="toggleKeys(this)">
-                                    <td>
-                                        <span class="mono">inventory_log</span>
-                                        <span class="expand-hint">(click to expand)</span>
-                                    </td>
-                                    <td><span class="change change-add">+5</span></td>
-                                    <td><span class="change">—</span></td>
-                                    <td><span class="change">—</span></td>
-                                </tr>
-                                
-                                <tr class="keys-row" data-table="inventory_log" style="display:none;">
-                                    <td colspan="4">
-                                        <div class="keys-detail">
-                                            
-                                            <div class="keys-section">
-                                                <span class="keys-label change-add">Added Keys:</span>
-                                                <div class="keys-list"><span class="key-item">7</span><span class="key-item">8</span><span class="key-item">9</span><span class="key-item">10</span><span class="key-item">6</span></div>
+                                                <div class="keys-list"><span class="key-item">4</span></div>
                                             </div>
                                             
                                             
-                                            
-                                        </div>
-                                    </td>
-                                </tr>
-                                
-                                
-                                <tr data-table="order_items" class="data-row" onclick="toggleKeys(this)">
-                                    <td>
-                                        <span class="mono">order_items</span>
-                                        <span class="expand-hint">(click to expand)</span>
-                                    </td>
-                                    <td><span class="change change-add">+6</span></td>
-                                    <td><span class="change">—</span></td>
-                                    <td><span class="change">—</span></td>
-                                </tr>
-                                
-                                <tr class="keys-row" data-table="order_items" style="display:none;">
-                                    <td colspan="4">
-                                        <div class="keys-detail">
-                                            
-                                            <div class="keys-section">
-                                                <span class="keys-label change-add">Added Keys:</span>
-                                                <div class="keys-list"><span class="key-item">9</span><span class="key-item">11</span><span class="key-item">13</span><span class="key-item">14</span><span class="key-item">10</span><span class="key-item">12</span></div>
-                                            </div>
-                                            
-                                            
-                                            
-                                        </div>
-                                    </td>
-                                </tr>
-                                
-                                
-                                <tr data-table="orders" class="data-row" onclick="toggleKeys(this)">
-                                    <td>
-                                        <span class="mono">orders</span>
-                                        <span class="expand-hint">(click to expand)</span>
-                                    </td>
-                                    <td><span class="change change-add">+5</span></td>
-                                    <td><span class="change">—</span></td>
-                                    <td><span class="change change-modify">~3</span></td>
-                                </tr>
-                                
-                                <tr class="keys-row" data-table="orders" style="display:none;">
-                                    <td colspan="4">
-                                        <div class="keys-detail">
-                                            
-                                            <div class="keys-section">
-                                                <span class="keys-label change-add">Added Keys:</span>
-                                                <div class="keys-list"><span class="key-item">10</span><span class="key-item">6</span><span class="key-item">7</span><span class="key-item">8</span><span class="key-item">9</span></div>
-                                            </div>
-                                            
-                                            
-                                            
-                                            <div class="keys-section">
-                                                <span class="keys-label change-modify">Modified Keys:</span>
-                                                <div class="keys-list"><span class="key-item">4</span><span class="key-item">5</span><span class="key-item">3</span></div>
-                                            </div>
-                                            
-                                        </div>
-                                    </td>
-                                </tr>
-                                
-                                
-                                <tr data-table="products" class="data-row" onclick="toggleKeys(this)">
-                                    <td>
-                                        <span class="mono">products</span>
-                                        <span class="expand-hint">(click to expand)</span>
-                                    </td>
-                                    <td><span class="change change-add">+3</span></td>
-                                    <td><span class="change">—</span></td>
-                                    <td><span class="change change-modify">~10</span></td>
-                                </tr>
-                                
-                                <tr class="keys-row" data-table="products" style="display:none;">
-                                    <td colspan="4">
-                                        <div class="keys-detail">
-                                            
-                                            <div class="keys-section">
-                                                <span class="keys-label change-add">Added Keys:</span>
-                                                <div class="keys-list"><span class="key-item">13</span><span class="key-item">11</span><span class="key-item">12</span></div>
-                                            </div>
-                                            
-                                            
-                                            
-                                            <div class="keys-section">
-                                                <span class="keys-label change-modify">Modified Keys:</span>
-                                                <div class="keys-list"><span class="key-item">1</span><span class="key-item">3</span><span class="key-item">5</span><span class="key-item">7</span><span class="key-item">8</span><span class="key-item">2</span><span class="key-item">4</span><span class="key-item">6</span><span class="key-item">9</span><span class="key-item">10</span></div>
+                                            <div class="keys-section" style="margin-top: 14px;">
+                                                <span class="keys-label" style="margin-bottom: 8px;">Row Data Differences (3 rows):</span>
+                                                
+                                                <div class="rowdiff-card" style="margin-bottom: 12px;">
+                                                    <div class="rowdiff-header">
+                                                        <span class="rowdiff-key mono">Key: 4</span>
+                                                        <span class="badge badge-warning">updated</span>
+                                                        <span class="text-secondary" style="font-size: 11px; margin-left: 8px;">Changed: email</span>
+                                                    </div>
+                                                    <div class="rowdiff-body">
+                                                        <table class="row-data-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th style="width: 25%;">Column</th>
+                                                                    <th style="width: 37.5%;">Production</th>
+                                                                    <th style="width: 37.5%;">Development</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                
+                                                                <tr class="">
+                                                                    <td class="col-name mono">country</td>
+                                                                    <td class="col-val mono">FR</td>
+                                                                    <td class="col-val mono">FR</td>
+                                                                </tr>
+                                                                
+                                                                <tr class="diff-row-changed">
+                                                                    <td class="col-name mono">email <span class="diff-star">*</span></td>
+                                                                    <td class="col-val mono">dan@example.com</td>
+                                                                    <td class="col-val mono">dan&#43;new@example.com</td>
+                                                                </tr>
+                                                                
+                                                                <tr class="">
+                                                                    <td class="col-name mono">id</td>
+                                                                    <td class="col-val mono">4</td>
+                                                                    <td class="col-val mono">4</td>
+                                                                </tr>
+                                                                
+                                                                <tr class="">
+                                                                    <td class="col-name mono">name</td>
+                                                                    <td class="col-val mono">Dan</td>
+                                                                    <td class="col-val mono">Dan</td>
+                                                                </tr>
+                                                                
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="rowdiff-card" style="margin-bottom: 12px;">
+                                                    <div class="rowdiff-header">
+                                                        <span class="rowdiff-key mono">Key: 5</span>
+                                                        <span class="badge badge-danger">removed</span>
+                                                        <span class="text-secondary" style="font-size: 11px; margin-left: 8px;">Changed: country, email, id, name</span>
+                                                    </div>
+                                                    <div class="rowdiff-body">
+                                                        <table class="row-data-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th style="width: 25%;">Column</th>
+                                                                    <th style="width: 37.5%;">Production</th>
+                                                                    <th style="width: 37.5%;">Development</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                
+                                                                <tr class="diff-row-changed">
+                                                                    <td class="col-name mono">country <span class="diff-star">*</span></td>
+                                                                    <td class="col-val mono">IN</td>
+                                                                    <td class="col-val mono">NULL</td>
+                                                                </tr>
+                                                                
+                                                                <tr class="diff-row-changed">
+                                                                    <td class="col-name mono">email <span class="diff-star">*</span></td>
+                                                                    <td class="col-val mono">eve@example.com</td>
+                                                                    <td class="col-val mono">NULL</td>
+                                                                </tr>
+                                                                
+                                                                <tr class="diff-row-changed">
+                                                                    <td class="col-name mono">id <span class="diff-star">*</span></td>
+                                                                    <td class="col-val mono">5</td>
+                                                                    <td class="col-val mono">NULL</td>
+                                                                </tr>
+                                                                
+                                                                <tr class="diff-row-changed">
+                                                                    <td class="col-name mono">name <span class="diff-star">*</span></td>
+                                                                    <td class="col-val mono">Eve</td>
+                                                                    <td class="col-val mono">NULL</td>
+                                                                </tr>
+                                                                
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="rowdiff-card" style="margin-bottom: 12px;">
+                                                    <div class="rowdiff-header">
+                                                        <span class="rowdiff-key mono">Key: 6</span>
+                                                        <span class="badge badge-danger">removed</span>
+                                                        <span class="text-secondary" style="font-size: 11px; margin-left: 8px;">Changed: country, email, id, name</span>
+                                                    </div>
+                                                    <div class="rowdiff-body">
+                                                        <table class="row-data-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th style="width: 25%;">Column</th>
+                                                                    <th style="width: 37.5%;">Production</th>
+                                                                    <th style="width: 37.5%;">Development</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                
+                                                                <tr class="diff-row-changed">
+                                                                    <td class="col-name mono">country <span class="diff-star">*</span></td>
+                                                                    <td class="col-val mono">JP</td>
+                                                                    <td class="col-val mono">NULL</td>
+                                                                </tr>
+                                                                
+                                                                <tr class="diff-row-changed">
+                                                                    <td class="col-name mono">email <span class="diff-star">*</span></td>
+                                                                    <td class="col-val mono">frank@example.com</td>
+                                                                    <td class="col-val mono">NULL</td>
+                                                                </tr>
+                                                                
+                                                                <tr class="diff-row-changed">
+                                                                    <td class="col-name mono">id <span class="diff-star">*</span></td>
+                                                                    <td class="col-val mono">6</td>
+                                                                    <td class="col-val mono">NULL</td>
+                                                                </tr>
+                                                                
+                                                                <tr class="diff-row-changed">
+                                                                    <td class="col-name mono">name <span class="diff-star">*</span></td>
+                                                                    <td class="col-val mono">Frank</td>
+                                                                    <td class="col-val mono">NULL</td>
+                                                                </tr>
+                                                                
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                                
                                             </div>
                                             
                                         </div>
@@ -1263,261 +1182,218 @@
                     </div>
                     <div class="conflict-list" id="conflict-list">
                         
-                        <div class="conflict-item" data-table="orders">
-                            <span class="conflict-table">orders</span>
-                            <span class="conflict-key">3</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">50e98d4f0d2f...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">3bc0bb9da318...</span>
+                        <div class="conflict-item-card" data-table="customers">
+                            <div class="conflict-item">
+                                <span class="conflict-table">customers</span>
+                                <span class="conflict-key">4</span>
+                                <div class="conflict-hashes">
+                                    <span class="hash">f29abbc96823...</span>
+                                    <span class="hash-arrow">→</span>
+                                    <span class="hash">e25da4226966...</span>
+                                </div>
+                                <div class="conflict-badges">
+                                    
+                                    <span class="badge badge-warning">Pending</span>
+                                </div>
                             </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
+                            
+                            <div class="conflict-item-body">
+                                <table class="row-data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 25%;">Column</th>
+                                            <th style="width: 37.5%;">Production</th>
+                                            <th style="width: 37.5%;">Development</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        
+                                        <tr class="">
+                                            <td class="col-name mono">country</td>
+                                            <td class="col-val mono">FR</td>
+                                            <td class="col-val mono">FR</td>
+                                        </tr>
+                                        
+                                        <tr class="diff-row-changed">
+                                            <td class="col-name mono">email <span class="diff-star">*</span></td>
+                                            <td class="col-val mono">dan@example.com</td>
+                                            <td class="col-val mono">dan&#43;new@example.com</td>
+                                        </tr>
+                                        
+                                        <tr class="">
+                                            <td class="col-name mono">id</td>
+                                            <td class="col-val mono">4</td>
+                                            <td class="col-val mono">4</td>
+                                        </tr>
+                                        
+                                        <tr class="">
+                                            <td class="col-name mono">name</td>
+                                            <td class="col-val mono">Dan</td>
+                                            <td class="col-val mono">Dan</td>
+                                        </tr>
+                                        
+                                    </tbody>
+                                </table>
                             </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="orders">
-                            <span class="conflict-table">orders</span>
-                            <span class="conflict-key">4</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">91c74b904980...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">932e3c9169d2...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="orders">
-                            <span class="conflict-table">orders</span>
-                            <span class="conflict-key">5</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">579ea721981c...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">f71fa3411956...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">10</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">056fec0d5c80...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">3ebc00ec928f...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">1</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">91290ea738a1...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">6a0483d92962...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">3</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">8d56e3071d26...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">f0a691c2fd9a...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">5</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">809e6e458343...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">d9e14527579f...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">7</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">2c83bd23bb23...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">0fceddb13a5d...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">8</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">602de4ce149c...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">74347a9a8653...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">2</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">bf9d32823bd2...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">0c78ab070b93...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">4</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">0a4bb61bbee7...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">d86101d3905a...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">6</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">131705dda71e...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">fd58eb3590d5...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="products">
-                            <span class="conflict-table">products</span>
-                            <span class="conflict-key">9</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">b58fe1a5cd09...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">8fc3ad499b63...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="customers">
-                            <span class="conflict-table">customers</span>
-                            <span class="conflict-key">2</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">99cac2a7c695...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">0a949f3c2ddf...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="customers">
-                            <span class="conflict-table">customers</span>
-                            <span class="conflict-key">3</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">8f56cdab82c9...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">2a3cf69f64dc...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="customers">
-                            <span class="conflict-table">customers</span>
-                            <span class="conflict-key">4</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">b4257f97cc9f...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">a16b7ce17528...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="customers">
-                            <span class="conflict-table">customers</span>
-                            <span class="conflict-key">5</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">2014b0374b60...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">7f8723118572...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
-                        </div>
-                        
-                        <div class="conflict-item" data-table="customers">
-                            <span class="conflict-table">customers</span>
-                            <span class="conflict-key">1</span>
-                            <div class="conflict-hashes">
-                                <span class="hash">f30811df6706...</span>
-                                <span class="hash-arrow">→</span>
-                                <span class="hash">dcb1c5d6e44a...</span>
-                            </div>
-                            <div class="conflict-badges">
-                                
-                                <span class="badge badge-warning">Pending</span>
-                            </div>
+                            
                         </div>
                         
                     </div>
                 
             </div>
+
+            
+            <div id="tab-rowdiff" class="tab-panel" data-title="Row Data">
+                <div class="filters">
+                    <select class="filter-select" id="rowdiff-filter" onchange="filterRowDiffs()">
+                        <option value="">All tables</option>
+                    </select>
+                </div>
+                <div class="rowdiff-list" id="rowdiff-list">
+                    
+                        
+                        <div class="rowdiff-card" data-table="customers">
+                            <div class="rowdiff-header">
+                                <span class="rowdiff-table mono">customers</span>
+                                <span class="rowdiff-key mono">Key: 4</span>
+                                <span class="badge badge-warning">updated</span>
+                            </div>
+                            <div class="rowdiff-body">
+                                <table class="row-data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 25%;">Column</th>
+                                            <th style="width: 37.5%;">Production</th>
+                                            <th style="width: 37.5%;">Development</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        
+                                        <tr class="">
+                                            <td class="col-name mono">country</td>
+                                            <td class="col-val mono">FR</td>
+                                            <td class="col-val mono">FR</td>
+                                        </tr>
+                                        
+                                        <tr class="diff-row-changed">
+                                            <td class="col-name mono">email <span class="diff-star">*</span></td>
+                                            <td class="col-val mono">dan@example.com</td>
+                                            <td class="col-val mono">dan&#43;new@example.com</td>
+                                        </tr>
+                                        
+                                        <tr class="">
+                                            <td class="col-name mono">id</td>
+                                            <td class="col-val mono">4</td>
+                                            <td class="col-val mono">4</td>
+                                        </tr>
+                                        
+                                        <tr class="">
+                                            <td class="col-name mono">name</td>
+                                            <td class="col-val mono">Dan</td>
+                                            <td class="col-val mono">Dan</td>
+                                        </tr>
+                                        
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div class="rowdiff-card" data-table="customers">
+                            <div class="rowdiff-header">
+                                <span class="rowdiff-table mono">customers</span>
+                                <span class="rowdiff-key mono">Key: 5</span>
+                                <span class="badge badge-danger">removed</span>
+                            </div>
+                            <div class="rowdiff-body">
+                                <table class="row-data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 25%;">Column</th>
+                                            <th style="width: 37.5%;">Production</th>
+                                            <th style="width: 37.5%;">Development</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        
+                                        <tr class="diff-row-changed">
+                                            <td class="col-name mono">country <span class="diff-star">*</span></td>
+                                            <td class="col-val mono">IN</td>
+                                            <td class="col-val mono">NULL</td>
+                                        </tr>
+                                        
+                                        <tr class="diff-row-changed">
+                                            <td class="col-name mono">email <span class="diff-star">*</span></td>
+                                            <td class="col-val mono">eve@example.com</td>
+                                            <td class="col-val mono">NULL</td>
+                                        </tr>
+                                        
+                                        <tr class="diff-row-changed">
+                                            <td class="col-name mono">id <span class="diff-star">*</span></td>
+                                            <td class="col-val mono">5</td>
+                                            <td class="col-val mono">NULL</td>
+                                        </tr>
+                                        
+                                        <tr class="diff-row-changed">
+                                            <td class="col-name mono">name <span class="diff-star">*</span></td>
+                                            <td class="col-val mono">Eve</td>
+                                            <td class="col-val mono">NULL</td>
+                                        </tr>
+                                        
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div class="rowdiff-card" data-table="customers">
+                            <div class="rowdiff-header">
+                                <span class="rowdiff-table mono">customers</span>
+                                <span class="rowdiff-key mono">Key: 6</span>
+                                <span class="badge badge-danger">removed</span>
+                            </div>
+                            <div class="rowdiff-body">
+                                <table class="row-data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 25%;">Column</th>
+                                            <th style="width: 37.5%;">Production</th>
+                                            <th style="width: 37.5%;">Development</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        
+                                        <tr class="diff-row-changed">
+                                            <td class="col-name mono">country <span class="diff-star">*</span></td>
+                                            <td class="col-val mono">JP</td>
+                                            <td class="col-val mono">NULL</td>
+                                        </tr>
+                                        
+                                        <tr class="diff-row-changed">
+                                            <td class="col-name mono">email <span class="diff-star">*</span></td>
+                                            <td class="col-val mono">frank@example.com</td>
+                                            <td class="col-val mono">NULL</td>
+                                        </tr>
+                                        
+                                        <tr class="diff-row-changed">
+                                            <td class="col-name mono">id <span class="diff-star">*</span></td>
+                                            <td class="col-val mono">6</td>
+                                            <td class="col-val mono">NULL</td>
+                                        </tr>
+                                        
+                                        <tr class="diff-row-changed">
+                                            <td class="col-name mono">name <span class="diff-star">*</span></td>
+                                            <td class="col-val mono">Frank</td>
+                                            <td class="col-val mono">NULL</td>
+                                        </tr>
+                                        
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                    
+                </div>
+            </div>
+            
 
             
         </div>
@@ -1552,8 +1428,17 @@
 
         function filterConflicts() {
             const v = document.getElementById('conflict-filter').value;
-            document.querySelectorAll('#conflict-list .conflict-item').forEach(r => {
-                r.style.display = !v || r.dataset.table === v ? '' : 'none';
+            document.querySelectorAll('#conflict-list .conflict-item-card').forEach(r => {
+                const show = !v || r.dataset.table === v;
+                r.style.display = show ? '' : 'none';
+            });
+        }
+
+        function filterRowDiffs() {
+            const v = document.getElementById('rowdiff-filter').value;
+            document.querySelectorAll('#rowdiff-list .rowdiff-card').forEach(r => {
+                const show = !v || r.dataset.table === v;
+                r.style.display = show ? '' : 'none';
             });
         }
 
@@ -1583,8 +1468,20 @@
             const cf = document.getElementById('conflict-filter');
             if (cf) {
                 const ts = new Set();
-                document.querySelectorAll('#conflict-list .conflict-item').forEach(i => ts.add(i.dataset.table));
+                document.querySelectorAll('#conflict-list .conflict-item-card').forEach(i => ts.add(i.dataset.table));
                 ts.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; cf.appendChild(o); });
+            }
+
+            const rf = document.getElementById('rowdiff-filter');
+            if (rf) {
+                const rts = new Set();
+                document.querySelectorAll('#rowdiff-list .rowdiff-card').forEach(i => rts.add(i.dataset.table));
+                rts.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; rf.appendChild(o); });
+            }
+
+            const hash = window.location.hash.replace('#', '');
+            if (hash && document.getElementById('tab-' + hash)) {
+                switchTab(hash);
             }
         });
     </script>

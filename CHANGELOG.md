@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-25
+
+### Added
+
+- **Cross-engine case-insensitive table discovery & row hashing**:
+  - Tables are discovered and paired across database engines that enforce different default identifier cases (e.g., PostgreSQL lowercase `"customers"` $\leftrightarrow$ Oracle UPPERCASE `"CUSTOMERS"`).
+  - Normalizes identifiers via canonical name folding (`schema.CanonicalIdent`) while generating dialect-specific SQL quoting for each engine.
+- **Column-level row inspection (`row-diff` command and `--row-diff` flag)**:
+  - New CLI command `deepdiffdb row-diff` and `--row-diff` flag for `deepdiffdb diff`.
+  - Side-by-side terminal comparison table showing column values between production and development with differing columns flagged with `*`.
+  - Supports `--table`, `--key`, `--status` (`updated`, `added`, `removed`, `all`), `--limit`, and `--format` (`table` or `json`).
+  - Writes machine-readable `row_diff.json` and formatted text `row_diff.txt` to the output directory.
+- **HTML report viewer enhancements**:
+  - **Data Changes Tab**: Opens automatically when data drift exists; expanding any table displays the complete column comparison table for every modified, added, or removed row.
+  - **Dedicated Row Data Tab**: Card view of every differing row across all tables with real-time table filtering and diff counters.
+  - **Conflicts Tab**: Displays conflicting keys with source and target SHA-256 hashes alongside side-by-side column difference tables.
+- **Documentation & Sample Project**:
+  - New feature guide: `website/docs/features/cross-engine-diff.md` explaining cross-engine identifier folding and pipeline verification.
+  - New command guide: `website/docs/commands/row-diff.md`.
+  - Live interactive sample HTML report updated at `/samples/report.html`.
+  - New **Sample 18** (`samples/18-cross-engine-row-diff/`): PostgreSQL 16 $\leftrightarrow$ Oracle XE 21c migration verification with seeded `um_user` and `um_user_attribute` drift.
+
+### Fixed
+
+- **False negative "No differences found" on cross-engine migrations**:
+  - Fixed an issue where `deepdiffdb diff` reported zero differences between PostgreSQL and Oracle because exact string matching failed on uppercase vs. lowercase table names (e.g. `um_user_attribute` vs. `UM_USER_ATTRIBUTE`).
+
+### Security
+
+- **Bumped Go to 1.25.13**: Resolves Go standard library vulnerabilities reported by `govulncheck`:
+  - **GO-2026-6218**: Quadratic complexity in `net/url`
+  - **GO-2026-6091**: Context tracking in `html/template`
+  - **GO-2026-6090** & **GO-2026-5856**: Handshake and Encrypted Client Hello handling in `crypto/tls`
+  - **GO-2026-6088**: Recursion depth guard in `encoding/xml`
+  - **GO-2026-5972**: Maximum recursion depth in `encoding/asn1`
+  - **GO-2026-5039**: Input formatting in `net/textproto`
+  - **GO-2026-5037**: Inefficient hostname parsing in `crypto/x509`
+  - **GO-2026-5026**: Punycode label validation in `net/http`
+- **Bumped `golang.org/x/text` to v0.39.0**:
+  - **GO-2026-5970**: Infinite loop on invalid input in `golang.org/x/text`
+- **Updated `security.yml` workflow**:
+  - Switched from hardcoded older Go version (`1.25.9`) to `go-version-file: go.mod` to ensure CI security scans always run with the active patched toolchain.
+
 ## [1.4.5] - 2026-05-19
 
 ### Security
@@ -529,7 +572,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL schema-aware queries
 - MySQL foreign key check handling
 
-[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.3...HEAD
+[Unreleased]: https://github.com/iamvirul/deepdiff-db/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.5...v1.5.0
+[1.4.5]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.4...v1.4.5
 [1.4.4]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.3...v1.4.4
 [1.4.3]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/iamvirul/deepdiff-db/compare/v1.4.1...v1.4.2

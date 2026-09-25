@@ -131,7 +131,7 @@ export default function Home() {
       <div className={styles.hero}>
         <div className={styles.heroBg} />
         <div className={styles.heroContent}>
-          <div className={styles.heroBadge}>v1.4 — Views, Routines, Triggers &amp; Sequences</div>
+          <div className={styles.heroBadge}>v1.5 — Column-Level Drift &amp; Cross-Engine Row Diff</div>
           <h1 className={styles.heroTitle}>
             Database diff that<br />
             <span className={styles.heroGradient}>actually ships</span>

@@ -1,0 +1,32 @@
+# DeepDiff DB Configuration: PostgreSQL (Prod) <-> Oracle (Dev)
+# Demonstrates cross-engine case-insensitive table discovery and row diffing.
+
+prod:
+  driver: postgres
+  host: localhost
+  port: 55432
+  user: postgres
+  password: secret
+  database: appdb
+  ssl_mode: disable
+
+dev:
+  driver: oracle
+  host: localhost
+  port: 51521
+  user: appuser
+  password: secret
+  database: XEPDB1
+
+ignore:
+  tables: []
+  columns:
+    - created_at
+    - CREATED_AT
+
+performance:
+  hash_batch_size: 1000
+  max_parallel_tables: 4
+
+output:
+  dir: ./diff-output

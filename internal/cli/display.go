@@ -107,6 +107,51 @@ func (d *Display) PrintConflictComparison(prod, dev *resolve.RowData, diffs []re
 	fmt.Fprintln(d.writer)
 }
 
+// PrintRowDiff displays a side-by-side comparison of a row's column differences.
+func (d *Display) PrintRowDiff(table, key, status string, diffs []resolve.ColumnDiff) {
+	d.PrintDoubleLine()
+	fmt.Fprintf(d.writer, "Table: %s | Key: %s (%s)\n", table, key, status)
+	d.PrintDoubleLine()
+
+	// Calculate column widths
+	colWidth := 20
+	valWidth := 24
+
+	// Print header
+	fmt.Fprintf(d.writer, "  %-*s | %-*s | %-*s\n",
+		colWidth, "Column",
+		valWidth, "Production",
+		valWidth, "Development")
+	fmt.Fprintf(d.writer, "  %s+%s+%s\n",
+		strings.Repeat("-", colWidth+1),
+		strings.Repeat("-", valWidth+2),
+		strings.Repeat("-", valWidth+2))
+
+	// Print each column
+	for _, diff := range diffs {
+		prodStr := formatValueForDisplay(diff.ProdVal, valWidth)
+		devStr := formatValueForDisplay(diff.DevVal, valWidth)
+
+		marker := ""
+		if diff.Differs {
+			marker = " *"
+		}
+
+		fmt.Fprintf(d.writer, "  %-*s | %-*s | %-*s%s\n",
+			colWidth, truncate(diff.Column, colWidth),
+			valWidth, prodStr,
+			valWidth, devStr,
+			marker)
+	}
+
+	fmt.Fprintln(d.writer)
+	if hasDifferences(diffs) {
+		fmt.Fprintln(d.writer, "  * indicates columns that differ")
+	}
+	d.PrintDoubleLine()
+	fmt.Fprintln(d.writer)
+}
+
 // PrintSummary displays the resolution summary.
 func (d *Display) PrintSummary(summary resolve.ResolutionSummary, outputPath string) {
 	d.PrintDoubleLine()
