@@ -4,6 +4,10 @@ sidebar_position: 1
 
 # Cross-Engine Data Diff & Verification
 
+:::info Added in v1.5.0
+DeepDiff DB v1.5.0 introduces automatic identifier case folding for cross-engine schema discovery and row-level diffing.
+:::
+
 DeepDiff DB supports **cross-engine data diffing and migration verification**, allowing you to compare schemas and row data between completely different database engines (such as **PostgreSQL $\leftrightarrow$ Oracle**, **MySQL $\leftrightarrow$ PostgreSQL**, or **SQLite $\leftrightarrow$ MSSQL**).
 
 ![Live Migration Pipeline Mismatch](/img/cross-engine-pipeline-mismatch.jpg)

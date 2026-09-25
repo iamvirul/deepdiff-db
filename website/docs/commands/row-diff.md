@@ -4,6 +4,10 @@ sidebar_position: 6
 
 # row-diff
 
+:::info Added in v1.5.0
+The `row-diff` command and `--row-diff` flag were added in DeepDiff DB v1.5.0.
+:::
+
 Inspects column-level differences for modified, added, or removed rows between production and development databases. Displays a side-by-side terminal comparison with differing columns highlighted, and writes machine-readable reports.
 
 ![row-diff Terminal Inspection](/img/row-diff-terminal.svg)

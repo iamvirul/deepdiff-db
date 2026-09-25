@@ -148,14 +148,14 @@ deepdiffdb --version
 Expected output:
 
 ```
-DeepDiff DB v1.4.0
+DeepDiff DB v1.5.0
 ```
 
 ---
 
 ## Build from Source
 
-Requires Go 1.25.9 or later.
+Requires Go 1.25.13 or later.
 
 ```bash
 go install github.com/iamvirul/deepdiff-db/cmd/deepdiffdb@latest

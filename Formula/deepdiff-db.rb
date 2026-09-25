@@ -5,12 +5,12 @@
 class DeepdiffDb < Formula
   desc "Compare databases, detect schema drift, and generate safe SQL migration packs."
   homepage "https://iamvirul.github.io/deepdiff-db/"
-  version "1.4.5"
+  version "1.5.0"
   license "Apache-2.0"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.4.5/deepdiffdb_1.4.5_darwin_amd64.tar.gz"
+      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.5.0/deepdiffdb_1.5.0_darwin_amd64.tar.gz"
       sha256 "0080d5f36c799cf72f9e5021ed25d3db2c0b59622001d28acf725f7d9153cb4b"
 
       define_method(:install) do
@@ -18,7 +18,7 @@ class DeepdiffDb < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.4.5/deepdiffdb_1.4.5_darwin_arm64.tar.gz"
+      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.5.0/deepdiffdb_1.5.0_darwin_arm64.tar.gz"
       sha256 "61e41b7a54faa1d3e24a6e09eb17b1002d5d96b226fdae2e8f8ca7cbdbd344c2"
 
       define_method(:install) do
@@ -29,14 +29,14 @@ class DeepdiffDb < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.4.5/deepdiffdb_1.4.5_linux_amd64.tar.gz"
+      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.5.0/deepdiffdb_1.5.0_linux_amd64.tar.gz"
       sha256 "3f10e5d32b98a1f742f279bcf17d62e2877b642fb0d188a6f638652c93f43ccf"
       define_method(:install) do
         bin.install "deepdiffdb"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.4.5/deepdiffdb_1.4.5_linux_arm64.tar.gz"
+      url "https://github.com/iamvirul/deepdiff-db/releases/download/v1.5.0/deepdiffdb_1.5.0_linux_arm64.tar.gz"
       sha256 "e062a5538cdba16e74c4fd033f80a048764f76c897696e9f81eb5047949b825b"
       define_method(:install) do
         bin.install "deepdiffdb"

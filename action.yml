@@ -11,7 +11,7 @@ inputs:
   command:
     description: >
       DeepDiff DB command to run.
-      One of: check, schema-diff, schema-migrate, diff, gen-pack, apply, resolve-conflicts
+      One of: check, schema-diff, schema-migrate, diff, row-diff, gen-pack, apply, resolve-conflicts, version
     required: true
     default: diff
 
