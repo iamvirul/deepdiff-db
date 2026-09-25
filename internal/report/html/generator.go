@@ -63,6 +63,9 @@ func templateFuncs() template.FuncMap {
 		"join": func(items []string, sep string) string {
 			return strings.Join(items, sep)
 		},
+		"formatVal": func(v any) string {
+			return resolve.FormatValue(v)
+		},
 		"formatTime": func(t time.Time) string {
 			return t.Format("2006-01-02 15:04:05 MST")
 		},
@@ -175,11 +178,17 @@ func BuildReportData(
 		data.TableDiffs = buildTableDiffs(dataDiff, opts)
 	}
 
+	// Process row diff report
+	if opts.RowDiffReport != nil && opts.RowDiffReport.HasChanges() {
+		data.RowDiffReport = opts.RowDiffReport
+		data.HasRowDiffs = true
+	}
+
 	// Process conflicts with resolution details
 	if conflicts != nil && conflicts.HasConflicts() {
 		data.Conflicts = conflicts
 		data.HasConflicts = true
-		data.ConflictItems = buildConflictItemsWithResolutions(conflicts, resolutions)
+		data.ConflictItems = buildConflictItemsWithResolutionsAndRowDiffs(conflicts, resolutions, opts.RowDiffReport)
 	}
 
 	// Process resolutions and build breakdown
@@ -438,6 +447,16 @@ func buildTableDiffs(dataDiff *content.DataDiff, opts *ReportOptions) []TableDif
 			td.UpdatedKeys = limitKeys(t.Updated, maxKeys)
 		}
 
+		if opts.RowDiffReport != nil {
+			for _, trd := range opts.RowDiffReport.Tables {
+				if schema.CanonicalIdent(trd.Table) == schema.CanonicalIdent(t.Table) {
+					td.RowDiffs = trd.Rows
+					td.HasRowDiffs = len(trd.Rows) > 0
+					break
+				}
+			}
+		}
+
 		diffs = append(diffs, td)
 	}
 
@@ -451,6 +470,11 @@ func buildTableDiffs(dataDiff *content.DataDiff, opts *ReportOptions) []TableDif
 
 // buildConflictItemsWithResolutions converts conflicts to display format with resolution details.
 func buildConflictItemsWithResolutions(conflicts *content.Conflicts, resolutions []resolve.Resolution) []ConflictDisplay {
+	return buildConflictItemsWithResolutionsAndRowDiffs(conflicts, resolutions, nil)
+}
+
+// buildConflictItemsWithResolutionsAndRowDiffs converts conflicts to display format with resolution and row diff details.
+func buildConflictItemsWithResolutionsAndRowDiffs(conflicts *content.Conflicts, resolutions []resolve.Resolution, rowReport *resolve.RowDiffReport) []ConflictDisplay {
 	var items []ConflictDisplay
 
 	// Build a map of resolutions by table+key for quick lookup
@@ -458,6 +482,17 @@ func buildConflictItemsWithResolutions(conflicts *content.Conflicts, resolutions
 	for _, r := range resolutions {
 		key := r.Conflict.Table + ":" + r.Conflict.Key
 		resolutionMap[key] = r
+	}
+
+	// Build a map of row diffs by table+key for quick lookup
+	rowDiffMap := make(map[string]resolve.RowDiff)
+	if rowReport != nil {
+		for _, t := range rowReport.Tables {
+			for _, rd := range t.Rows {
+				rowDiffMap[rd.Table+":"+rd.Key] = rd
+				rowDiffMap[schema.CanonicalIdent(rd.Table)+":"+rd.Key] = rd
+			}
+		}
 	}
 
 	for _, c := range conflicts.Conflicts {
@@ -475,6 +510,16 @@ func buildConflictItemsWithResolutions(conflicts *content.Conflicts, resolutions
 			item.Decision = string(res.Decision)
 			item.Resolution = string(res.Decision)
 			item.IsResolved = res.Resolved
+		}
+
+		if rd, ok := rowDiffMap[key]; ok {
+			item.ColumnDiffs = rd.Columns
+			item.DiffColumns = rd.DiffColumns
+			item.HasColumnDiffs = len(rd.Columns) > 0
+		} else if rd, ok := rowDiffMap[schema.CanonicalIdent(c.Table)+":"+c.Key]; ok {
+			item.ColumnDiffs = rd.Columns
+			item.DiffColumns = rd.DiffColumns
+			item.HasColumnDiffs = len(rd.Columns) > 0
 		}
 
 		items = append(items, item)

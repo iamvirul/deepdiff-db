@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/iamvirul/deepdiff-db/internal/content"
+	"github.com/iamvirul/deepdiff-db/internal/content/resolve"
 	"github.com/iamvirul/deepdiff-db/internal/schema"
 )
 
@@ -91,6 +92,10 @@ type ReportData struct {
 	// SQL Migration
 	MigrationSQL string `json:"migration_sql,omitempty"`
 	HasMigration bool   `json:"has_migration"`
+
+	// Row data differences
+	RowDiffReport *resolve.RowDiffReport `json:"row_diff_report,omitempty"`
+	HasRowDiffs   bool                   `json:"has_row_diffs"`
 }
 
 // ReportSummary contains aggregate statistics.
@@ -160,14 +165,16 @@ type ForeignKeyChangeDisplay struct {
 
 // TableDiffDisplay represents a table's data differences for display.
 type TableDiffDisplay struct {
-	Table        string   `json:"table"`
-	AddedCount   int      `json:"added_count"`
-	RemovedCount int      `json:"removed_count"`
-	UpdatedCount int      `json:"updated_count"`
-	AddedKeys    []string `json:"added_keys,omitempty"`
-	RemovedKeys  []string `json:"removed_keys,omitempty"`
-	UpdatedKeys  []string `json:"updated_keys,omitempty"`
-	HasChanges   bool     `json:"has_changes"`
+	Table        string            `json:"table"`
+	AddedCount   int               `json:"added_count"`
+	RemovedCount int               `json:"removed_count"`
+	UpdatedCount int               `json:"updated_count"`
+	AddedKeys    []string          `json:"added_keys,omitempty"`
+	RemovedKeys  []string          `json:"removed_keys,omitempty"`
+	UpdatedKeys  []string          `json:"updated_keys,omitempty"`
+	HasChanges   bool              `json:"has_changes"`
+	RowDiffs     []resolve.RowDiff `json:"row_diffs,omitempty"`
+	HasRowDiffs  bool              `json:"has_row_diffs"`
 }
 
 // ConflictDisplay represents a conflict for display.
@@ -179,7 +186,10 @@ type ConflictDisplay struct {
 	Resolution string `json:"resolution,omitempty"` // "keep_prod", "use_dev", "pending"
 	Strategy   string `json:"strategy,omitempty"`   // "ours", "theirs", "manual"
 	Decision   string `json:"decision,omitempty"`   // "keep_prod", "use_dev", "pending"
-	IsResolved bool   `json:"is_resolved"`
+	IsResolved     bool                 `json:"is_resolved"`
+	ColumnDiffs    []resolve.ColumnDiff `json:"column_diffs,omitempty"`
+	DiffColumns    []string             `json:"differing_columns,omitempty"`
+	HasColumnDiffs bool                 `json:"has_column_diffs"`
 }
 
 // TableStrategyDisplay shows the resolution strategy for a table.
@@ -213,6 +223,9 @@ type ReportOptions struct {
 
 	// Enable PDF export button (requires browser print)
 	EnablePDFExport bool
+
+	// RowDiffReport contains column-level row differences for display
+	RowDiffReport *resolve.RowDiffReport
 }
 
 // DefaultReportOptions returns sensible defaults for report generation.

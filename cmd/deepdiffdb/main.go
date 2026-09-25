@@ -466,33 +466,37 @@ func runFullDiff(args []string) error {
 
 	log.Info("full diff complete", "tables_scanned", tablesScanned, "has_changes", dataDiff.HasChanges())
 	fmt.Println("Schema OK. Data diff complete.")
+	var rowReport *resolve.RowDiffReport
 	if dataDiff.HasChanges() {
 		fmt.Printf("Changes detected. See %s, %s, and %s\n", filepath.Join(cfg.Output.Dir, "content_diff.json"), filepath.Join(cfg.Output.Dir, "conflicts.json"), filepath.Join(cfg.Output.Dir, "summary.txt"))
 		if conflicts.HasConflicts() {
 			fmt.Printf("Warning: %d conflicts detected. Review %s\n", len(conflicts.Conflicts), filepath.Join(cfg.Output.Dir, "conflicts.json"))
 		}
 
-		if *showRowDiff {
+		if *showRowDiff || *generateHTML {
 			log.Info("fetching column-level row differences")
-			rowReport, err := resolve.FetchRowDiffReport(
+			fetchedReport, err := resolve.FetchRowDiffReport(
 				ctx, prodDB, devDB, cfg.Prod.Driver, cfg.Dev.Driver,
 				prodSchema, devSchema, dataDiff, conflicts, resolve.RowDiffOptions{
-					StatusFilter: "updated",
+					StatusFilter: "all",
 				},
 			)
 			if err != nil {
 				log.Warn("failed to fetch row diffs", "error", err)
-			} else if rowReport.HasChanges() {
-				if err := resolve.WriteRowDiffReport(rowReport, cfg.Output.Dir); err != nil {
-					log.Warn("failed to write row diff report", "error", err)
-				}
-				display := cli.NewDisplay()
-				for _, trd := range rowReport.Tables {
-					for _, rd := range trd.Rows {
-						display.PrintRowDiff(rd.Table, rd.Key, string(rd.Status), rd.Columns)
+			} else if fetchedReport.HasChanges() {
+				rowReport = &fetchedReport
+				if *showRowDiff {
+					if err := resolve.WriteRowDiffReport(*rowReport, cfg.Output.Dir); err != nil {
+						log.Warn("failed to write row diff report", "error", err)
 					}
+					display := cli.NewDisplay()
+					for _, trd := range rowReport.Tables {
+						for _, rd := range trd.Rows {
+							display.PrintRowDiff(rd.Table, rd.Key, string(rd.Status), rd.Columns)
+						}
+					}
+					fmt.Printf("Row-level column diffs written to %s and %s\n", filepath.Join(cfg.Output.Dir, "row_diff.json"), filepath.Join(cfg.Output.Dir, "row_diff.txt"))
 				}
-				fmt.Printf("Row-level column diffs written to %s and %s\n", filepath.Join(cfg.Output.Dir, "row_diff.json"), filepath.Join(cfg.Output.Dir, "row_diff.txt"))
 			}
 		}
 	} else {
@@ -502,6 +506,9 @@ func runFullDiff(args []string) error {
 	// Generate HTML report if requested
 	if *generateHTML {
 		htmlPath := filepath.Join(cfg.Output.Dir, "report.html")
+		reportOpts := htmlreport.DefaultReportOptions()
+		reportOpts.RowDiffReport = rowReport
+
 		reportData := htmlreport.BuildReportData(
 			fmt.Sprintf("%s:%d/%s", cfg.Prod.Host, cfg.Prod.Port, cfg.Prod.Database),
 			fmt.Sprintf("%s:%d/%s", cfg.Dev.Host, cfg.Dev.Port, cfg.Dev.Database),
@@ -513,11 +520,11 @@ func runFullDiff(args []string) error {
 			"",  // No migration SQL for diff command
 			"",  // No migration pack for diff command
 			tablesScanned,
-			nil,
+			reportOpts,
 		)
 		reportData.Version = version
 
-		generator := htmlreport.NewGenerator(nil)
+		generator := htmlreport.NewGenerator(reportOpts)
 		if err := generator.GenerateReport(reportData, htmlPath); err != nil {
 			return fmt.Errorf("generate HTML report: %w", err)
 		}
