@@ -10,7 +10,11 @@ DeepDiff DB can generate a self-contained, interactive HTML report alongside the
 
 **[→ View Sample Report](pathname:///samples/report.html)**
 
-The sample report is generated from two real MySQL databases with intentional schema drift: added/removed/modified views, routines, and triggers, plus table-level column and index changes with data conflicts.
+The sample report is generated directly from a cross-engine migration diff (**PostgreSQL $\leftrightarrow$ Oracle XE**). It demonstrates:
+- The **Data Changes** tab with automatic expansion and embedded column-level comparisons (`*` highlighting differing fields like `email`)
+- The dedicated **Row Data** tab with per-table filtering across all differing rows
+- The **Conflicts** tab with SHA-256 hash comparison and column difference tables
+- Full print and PDF export styling
 
 ## Generating a Report
 

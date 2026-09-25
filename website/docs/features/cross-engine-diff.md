@@ -112,6 +112,8 @@ Table: customers | Key: 4 (updated)
 
 ## Interactive HTML Report
 
+**[→ View Live Interactive Report](pathname:///samples/report.html)**
+
 Generating an HTML report (`deepdiffdb diff --html`) provides an interactive side-by-side inspection view:
 
 - **Data Changes Tab**: Opens automatically when data drift exists. Clicking any table displays both key summaries and the complete column comparison table for every modified row.
