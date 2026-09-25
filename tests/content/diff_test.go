@@ -250,6 +250,53 @@ func TestBuildDataDiff(t *testing.T) {
 	}
 }
 
+// TestBuildDataDiff_CaseInsensitiveTableMatch verifies that a table which a
+// cross-engine migration folds to a different case (PostgreSQL "customers" ->
+// Oracle "CUSTOMERS") is still matched, so missing and changed rows are
+// detected instead of the table being silently skipped.
+func TestBuildDataDiff_CaseInsensitiveTableMatch(t *testing.T) {
+	prodSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"customers": {Name: "customers"},
+		},
+	}
+	devSchema := &schema.Schema{
+		Tables: map[string]schema.Table{
+			"CUSTOMERS": {Name: "CUSTOMERS"},
+		},
+	}
+
+	// Prod (source of truth) has ids 1,2,5; dev (Oracle) has 1,2 with 2 changed.
+	prodHashes := map[string]map[string]string{
+		"customers": {"1": "h1", "2": "h2_old", "5": "h5"},
+	}
+	devHashes := map[string]map[string]string{
+		"CUSTOMERS": {"1": "h1", "2": "h2_new"},
+	}
+
+	diff, conflicts := content.BuildDataDiff(prodSchema, devSchema, prodHashes, devHashes)
+
+	if len(diff.Tables) != 1 {
+		t.Fatalf("expected 1 matched table, got %d", len(diff.Tables))
+	}
+	td := diff.Tables[0]
+	if td.Table != "customers" {
+		t.Errorf("expected prod-side label 'customers', got %q", td.Table)
+	}
+	if len(td.Removed) != 1 || td.Removed[0] != "5" {
+		t.Errorf("expected removed (missing in dev) [5], got %v", td.Removed)
+	}
+	if len(td.Updated) != 1 || td.Updated[0] != "2" {
+		t.Errorf("expected updated [2], got %v", td.Updated)
+	}
+	if len(td.Added) != 0 {
+		t.Errorf("expected no added rows, got %v", td.Added)
+	}
+	if len(conflicts.Conflicts) != 1 || conflicts.Conflicts[0].Table != "customers" || conflicts.Conflicts[0].Key != "2" {
+		t.Errorf("expected 1 conflict on customers.2, got %v", conflicts.Conflicts)
+	}
+}
+
 func TestHasChanges(t *testing.T) {
 	tests := []struct {
 		name     string
