@@ -77,6 +77,58 @@ func TestHashTable(t *testing.T) {
 	}
 }
 
+// TestHashTable_CrossEngineCaseInsensitive verifies that identical row data
+// hashes the same regardless of identifier case. A cross-engine migration
+// (PostgreSQL lower-case -> Oracle upper-case) must not make matching rows look
+// different purely because column/table names are folded differently.
+func TestHashTable_CrossEngineCaseInsensitive(t *testing.T) {
+	ctx := context.Background()
+	db := openMemDB(t)
+
+	if _, err := db.ExecContext(ctx, `CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com'), (2, 'Bob', 'bob@example.com')`); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	// Same underlying table, described with lower-case (PostgreSQL-style) and
+	// upper-case (Oracle-style) identifiers. SQLite resolves both case-insensitively.
+	lower := usersTable()
+	upper := schema.Table{
+		Name: "USERS",
+		Columns: map[string]schema.Column{
+			"ID":    {Name: "ID"},
+			"NAME":  {Name: "NAME"},
+			"EMAIL": {Name: "EMAIL"},
+		},
+		PrimaryKey: []string{"ID"},
+	}
+
+	lowerHashes, err := content.HashTable(ctx, db, "sqlite", lower, nil, 0)
+	if err != nil {
+		t.Fatalf("hash lower: %v", err)
+	}
+	upperHashes, err := content.HashTable(ctx, db, "sqlite", upper, nil, 0)
+	if err != nil {
+		t.Fatalf("hash upper: %v", err)
+	}
+
+	if len(lowerHashes) != len(upperHashes) {
+		t.Fatalf("key count mismatch: lower=%d upper=%d", len(lowerHashes), len(upperHashes))
+	}
+	for key, lh := range lowerHashes {
+		uh, ok := upperHashes[key]
+		if !ok {
+			t.Errorf("key %q missing from upper-case hashing", key)
+			continue
+		}
+		if lh != uh {
+			t.Errorf("row hash for key %q differs across identifier case: %s vs %s", key, lh, uh)
+		}
+	}
+}
+
 func TestHashTable_WithIgnore(t *testing.T) {
 	ctx := context.Background()
 	db := openMemDB(t)

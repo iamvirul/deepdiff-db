@@ -423,13 +423,21 @@ func runFullDiff(args []string) error {
 	maxParallel := resolveParallel(*parallelFlag, cfg.Performance.MaxParallelTables)
 	log.Debug("hashing parameters", "batch_size", batchSize, "max_parallel", maxParallel)
 
-	// Build the set of shared tables (exist in both prod and dev).
+	// Build the set of shared tables (exist in both prod and dev). Matching is
+	// case-insensitive on the identifier so a table survives a cross-engine
+	// migration that folds names differently (PostgreSQL "customers" vs Oracle
+	// "CUSTOMERS"). Each side keeps its real name so table hashing generates
+	// correctly-cased SQL.
+	devByCanonical := make(map[string]schema.Table, len(devSchema.Tables))
+	for name, devTable := range devSchema.Tables {
+		devByCanonical[schema.CanonicalIdent(name)] = devTable
+	}
 	sharedProdTables := make(map[string]schema.Table)
 	sharedDevTables := make(map[string]schema.Table)
 	for name, prodTable := range prodSchema.Tables {
-		if devTable, ok := devSchema.Tables[name]; ok {
+		if devTable, ok := devByCanonical[schema.CanonicalIdent(name)]; ok {
 			sharedProdTables[name] = prodTable
-			sharedDevTables[name] = devTable
+			sharedDevTables[devTable.Name] = devTable
 		}
 	}
 

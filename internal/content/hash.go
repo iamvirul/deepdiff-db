@@ -339,7 +339,12 @@ func orderedColumns(tbl schema.Table, ignoreFn func(table, column string) bool) 
 		}
 		nonPK = append(nonPK, name)
 	}
-	sort.Strings(nonPK)
+	// Sort by canonical (case-folded) name so two engines that differ only in
+	// identifier case (e.g. PostgreSQL "email" vs Oracle "EMAIL") produce the
+	// same column order, and therefore comparable row hashes.
+	sort.Slice(nonPK, func(i, j int) bool {
+		return schema.CanonicalIdent(nonPK[i]) < schema.CanonicalIdent(nonPK[j])
+	})
 	cols = append(cols, nonPK...)
 	return cols
 }
@@ -412,7 +417,11 @@ func buildKey(cols []string, values []any, pk []string) (string, error) {
 func hashRow(cols []string, values []any) string {
 	var b strings.Builder
 	for i, col := range cols {
-		fmt.Fprintf(&b, "%s=%v\n", col, values[i])
+		// Use the canonical (case-folded) column name so a row with identical
+		// values hashes the same across engines that differ only in identifier
+		// case (PostgreSQL "email" vs Oracle "EMAIL"). Column order is already
+		// canonicalized by orderedColumns.
+		fmt.Fprintf(&b, "%s=%v\n", schema.CanonicalIdent(col), values[i])
 	}
 	sum := sha256.Sum256([]byte(b.String()))
 	return hex.EncodeToString(sum[:])
