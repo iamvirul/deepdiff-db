@@ -27,6 +27,7 @@ The `samples/` directory in the repository contains 17 self-contained example pr
 | 15 | [mssql-support](https://github.com/iamvirul/deepdiff-db/tree/main/samples/15-mssql-support) | Full MSSQL workflow: schema diff, data diff, gen-pack, apply | MSSQL | Yes |
 | 16 | [oracle-support](https://github.com/iamvirul/deepdiff-db/tree/main/samples/16-oracle-support) | Full Oracle workflow: schema drift, data diff, gen-pack, apply | Oracle | Yes |
 | 17 | [git-like-versioning](https://github.com/iamvirul/deepdiff-db/tree/main/samples/17-git-like-versioning) | Git-like versioning: commit snapshots, branches, checkout, ASCII tree graph, compare versions, generate rollback SQL | MySQL | Yes |
+| 18 | [cross-engine-row-diff](https://github.com/iamvirul/deepdiff-db/tree/main/samples/18-cross-engine-row-diff) | Cross-engine migration verification (PostgreSQL ↔ Oracle), case-folding resolution, and column-level `row-diff` | PostgreSQL / Oracle | Yes |
 
 ## Running a SQLite Sample
 
@@ -97,4 +98,19 @@ deepdiffdb version log
 deepdiffdb version diff <hash_v1> <hash_v3>
 deepdiffdb version rollback --out diff-output/rollback_v3.sql <hash_v3>
 docker-compose down -v
+```
+
+## Sample 18: Cross-Engine Row Diff & Migration Verification
+
+Sample 18 demonstrates real-world cross-engine migration verification between **PostgreSQL 16** (source) and **Oracle XE 21c** (target). It seeds tables with differing default identifier cases (`um_user` in PG vs `UM_USER` in Oracle, and `um_user_attribute` in PG vs `UM_USER_ATTRIBUTE` in Oracle) with intentional column drift:
+
+```bash
+cd samples/18-cross-engine-row-diff
+make up            # start PostgreSQL and Oracle containers
+make wait-healthy  # wait for both containers to be ready
+make seed          # populate schemas and test datasets
+make diff          # run cross-engine diff
+make row-diff      # inspect column-level row differences in terminal
+make html          # generate and open interactive HTML report
+make down          # stop containers
 ```
